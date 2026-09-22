@@ -1,0 +1,45 @@
+{
+  "name": "codex-claude-council",
+  "version": "0.1.0",
+  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, critique each other, and you get one synthesized answer.",
+  "author": {
+    "name": "Hamza Aziz",
+    "url": "https://github.com/hamza-aziz-ai"
+  },
+  "homepage": "https://github.com/hamza-aziz-ai/codex-claude-council",
+  "repository": "https://github.com/hamza-aziz-ai/codex-claude-council",
+  "license": "MIT",
+  "keywords": [
+    "council",
+    "second-opinion",
+    "codex",
+    "chatgpt",
+    "claude",
+    "cross-check",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {
+    "council": {
+      "command": "node",
+      "args": [
+        "./src/mcp-server.mjs"
+      ],
+      "cwd": "."
+    }
+  },
+  "interface": {
+    "displayName": "Codex–Claude Council",
+    "shortDescription": "A second opinion from Codex and Claude",
+    "longDescription": "Ask Codex and Claude independently, have each critique the other, and get one synthesized answer, all through your own ChatGPT and Claude subscriptions. Choose the model and effort per question.",
+    "developerName": "Hamza Aziz",
+    "category": "Productivity",
+    "capabilities": [],
+    "websiteURL": "https://github.com/hamza-aziz-ai/codex-claude-council",
+    "defaultPrompt": [
+      "Ask the council: is this design sound?",
+      "Get Claude's second opinion on this answer.",
+      "Run a council debate on these two options."
+    ]
+  }
+}

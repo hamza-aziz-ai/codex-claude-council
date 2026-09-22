@@ -1,0 +1,7 @@
+Review the other model's answer to the question below. Identify the strongest point, any error or unsupported claim, and what is missing. Be concise and constructive. Do not call tools.
+
+Question:
+$question
+
+Other model's answer:
+$other_answer

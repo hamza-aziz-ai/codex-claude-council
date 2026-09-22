@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "codex-claude-council",
+  "description": "Codex–Claude Council: a second opinion from both ChatGPT (Codex) and Claude, using your own subscriptions.",
+  "owner": {
+    "name": "Hamza Aziz",
+    "url": "https://github.com/hamza-aziz-ai"
+  },
+  "plugins": [
+    {
+      "name": "codex-claude-council",
+      "description": "Ask Codex (ChatGPT) and Claude, let them cross-critique, and get one answer. Uses your local Codex and Claude Code CLI sign-ins; no API keys.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

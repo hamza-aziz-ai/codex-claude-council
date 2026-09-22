@@ -1,0 +1,64 @@
+// Configuration: packaged defaults <- user config file <- per-call overrides.
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+export const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+export const NAME = 'codex-claude-council';
+export const SIDES = Object.freeze(['codex', 'claude']);
+export const EFFORTS = Object.freeze({
+  codex: Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']),
+  claude: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']),
+});
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,79}$/;
+
+export function packageVersion() {
+  return JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')).version;
+}
+
+export function userConfigPath() {
+  return process.env.COUNCIL_CONFIG || join(homedir(), `.${NAME}`, 'config.json');
+}
+
+function readJson(path, optional) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    if (optional && error.code === 'ENOENT') return {};
+    throw new Error(`could not read ${path}: ${error.message}`);
+  }
+  try {
+    return JSON.parse(text.replace(/^﻿/, ''));
+  } catch (error) {
+    throw new Error(`${path} is not valid JSON: ${error.message}`);
+  }
+}
+
+/** Re-read on every call, so edits to the user config apply without restarting anything. */
+export function loadConfig() {
+  const defaults = readJson(join(PACKAGE_ROOT, 'src', 'defaults.json'), false);
+  const user = readJson(userConfigPath(), true);
+  const config = { ...defaults, ...user };
+  for (const side of SIDES) config[side] = { ...defaults[side], ...(user[side] || {}) };
+  if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');
+  if (!SIDES.includes(config.synthesizer)) throw new Error('config: synthesizer must be "codex" or "claude"');
+  return config;
+}
+
+function text(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** Resolve model and effort for one side: per-call override first, then config. */
+export function resolveSide(side, overrides = {}, config = loadConfig()) {
+  const base = config[side] || {};
+  const model = text(overrides.model) ?? text(base.model);
+  const effort = (text(overrides.effort) ?? text(base.effort))?.toLowerCase() ?? null;
+  if (model && !MODEL_NAME.test(model)) throw new Error(`invalid ${side} model name: ${JSON.stringify(model)}`);
+  if (effort && !EFFORTS[side].includes(effort)) {
+    throw new Error(`${side} effort must be one of: ${EFFORTS[side].join(', ')} (got ${JSON.stringify(effort)})`);
+  }
+  return { model, effort };
+}

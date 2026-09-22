@@ -1,0 +1,16 @@
+Give the user a final answer to the question. Use both independent answers and the two critiques. Resolve disagreements where evidence allows; otherwise say what remains uncertain. Do not mention a council unless useful. Do not call tools.
+
+Question:
+$question
+
+Codex answer:
+$codex_answer
+
+Claude answer:
+$claude_answer
+
+Codex critique of Claude:
+$codex_critique
+
+Claude critique of Codex:
+$claude_critique
