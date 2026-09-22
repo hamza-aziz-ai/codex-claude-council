@@ -83,7 +83,7 @@ codex plugin add codex-claude-council@codex-claude-council
 
 1. Open **Settings**, and under **Customize** click **Plugins**.
 2. Click **+ Add ˅ → Add marketplace → Add from a repository**.
-3. Enter [`hamza-aziz-ai/codex-claude-council`](https://github.com/hamza-aziz-ai/codex-claude-council.git) in the **URL** field.
+3. Enter `hamza-aziz-ai/codex-claude-council` in the **URL** field.
 4. Turn **Sync automatically** on and click **Sync**.
 5. Install **codex-claude-council** from the new marketplace.
 
