@@ -6,7 +6,7 @@
 
 Ask **ChatGPT (through Codex)** and **Claude** the same question. They answer independently, critique each other, and you get one answer back, using the subscriptions you already have. No API keys.
 
-Works inside **Claude Code**, **Claude Cowork**, **Codex**, **Claude Desktop chat** and your **terminal**, on Windows, macOS and Linux. You can pick the model and effort for each side, per question.
+Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **ChatGPT desktop app** and your **terminal**, on Windows, macOS and Linux. You can pick the model and effort for each side, per question.
 
 ```mermaid
 flowchart LR
@@ -72,16 +72,32 @@ claude plugin marketplace add hamza-aziz-ai/codex-claude-council
 claude plugin install codex-claude-council@codex-claude-council
 ```
 
-**Codex** (CLI, IDE extension and desktop app)
+**Codex** (CLI and IDE extension)
 
 ```bash
 codex plugin marketplace add hamza-aziz-ai/codex-claude-council
 codex plugin add codex-claude-council@codex-claude-council
 ```
 
-**Claude Cowork** (Claude desktop app): **Customize → Plugins → + (Personal plugins) → Add marketplace**, enter `hamza-aziz-ai/codex-claude-council`, then install **codex-claude-council**. Keep the desktop app open while you use it; the server runs on your computer.
+**Claude Desktop** (Cowork and Code)
 
-**Claude Desktop chat**: `npx -y github:hamza-aziz-ai/codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop.
+1. Open **Settings**, and under **Customize** click **Plugins**.
+2. Click **+ Add ˅ → Add marketplace → Add from a repository**.
+3. Enter [`hamza-aziz-ai/codex-claude-council`](https://github.com/hamza-aziz-ai/codex-claude-council.git) in the **URL** field.
+4. Turn **Sync automatically** on and click **Sync**.
+5. Install **codex-claude-council** from the new marketplace.
+
+**ChatGPT desktop app**
+
+1. Open **Settings → Plugins**.
+2. Click **Add ˅ → + Add a marketplace**.
+3. Enter `https://github.com/hamza-aziz-ai/codex-claude-council.git` in **Source**.
+4. Click **Add marketplace**.
+5. Install **codex-claude-council** from the new marketplace.
+
+Keep the desktop app open while you use it: the council runs on your computer through your local CLIs, so both still need to be installed and signed in (see [Requirements](#requirements)).
+
+**Claude Desktop, Chat tab** (plugins only load in Cowork and Code): `npx -y github:hamza-aziz-ai/codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop.
 
 ## Use it
 
@@ -181,7 +197,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 
 - **"usage limit"**: your ChatGPT or Claude plan hit its limit. Wait for the reset or lower the effort.
 - **"timed out"**: raise `timeout_seconds` or lower the effort.
-- **Tools don't appear**: fully quit and reopen the app after installing. In Cowork, check the plugin is enabled under Customize → Plugins.
+- **Tools don't appear**: fully quit and reopen the app after installing. In Claude Desktop or the ChatGPT desktop app, check the plugin is installed and enabled under **Settings → Plugins**.
 - **`node` not found by a desktop app on macOS**: GUI apps don't read your shell profile, so Node installed with nvm may be invisible to them. Install Node from nodejs.org or Homebrew.
 - **CLI not found**: set `codex.command` / `claude.command` to the full path.
 
@@ -198,7 +214,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 npx -y github:hamza-aziz-ai/codex-claude-council uninstall
 ```
 
-This removes the plugin from Claude Code and Codex and the Claude Desktop entry, and keeps your config file. In Cowork, uninstall it under **Customize → Plugins**.
+This removes the plugin from Claude Code and Codex and the Claude Desktop chat entry, and keeps your config file. In Claude Desktop or the ChatGPT desktop app, uninstall it under **Settings → Plugins**.
 
 ## Development
 

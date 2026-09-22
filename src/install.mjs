@@ -206,7 +206,8 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
   }
   say('', 'Done. Next:',
     '  - Restart Claude Code and Codex (and Claude Desktop) so they load the plugin.',
-    `  - Claude Cowork: Customize > Plugins > "+" > Add marketplace > ${DEFAULT_SOURCE}, then install ${NAME}.`,
+    `  - Claude Desktop: Settings > Plugins (under Customize) > + Add > Add marketplace > Add from a repository > ${DEFAULT_SOURCE} > Sync, then install ${NAME}.`,
+    `  - ChatGPT desktop: Settings > Plugins > Add > + Add a marketplace > https://github.com/${DEFAULT_SOURCE}.git > Add marketplace, then install ${NAME}.`,
     `  - Optional defaults (model, effort, timeout): npx -y github:${DEFAULT_SOURCE} config --init, then edit ${userConfigPath()}`,
     '  - Try it: "Ask the council: <your question>"');
   if (check.signIn.length) say('', 'Sign-in still needed before the council can answer:', ...check.signIn.map(p => `  - ${p}`));

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 (2026-09-22)
+
+- Install steps for the ChatGPT desktop app, and corrected steps for Claude Desktop (Settings → Plugins → Add from a repository → Sync), in the README and the installer's closing message.
+
 ## 0.3.0 (2026-09-22)
 
 - **Claude now writes the final answer by default** (previously Codex). Change the default with `"synthesizer"` in the config file, or per question with the new `synthesizer` option on `council_ask` / `debate` (`--synthesizer` in the terminal). `chatgpt` is accepted as another name for `codex`.
