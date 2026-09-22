@@ -23,6 +23,7 @@ Leave model and effort out unless the user asks for them; the defaults come from
 - `council_ask` / `debate`: `codex_model`, `codex_effort`, `claude_model`, `claude_effort` (each side can be set on its own)
 - Codex effort: none, minimal, low, medium, high, xhigh. Claude effort: low, medium, high, xhigh, max. Claude models accept aliases such as opus, sonnet or fable.
 - "ChatGPT" means the Codex side.
+- `synthesizer` on `council_ask` / `debate`: who writes the final answer, `claude` (the default) or `codex`. Pass it only when the user names who should write it, e.g. "let ChatGPT write the final answer".
 
 ## Until they agree
 

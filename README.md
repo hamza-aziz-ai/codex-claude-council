@@ -96,8 +96,13 @@ Just ask in plain language:
 | "Council this with **ChatGPT on gpt-5.6-sol at xhigh** and **Claude on opus at max**: …" | `council_ask` with per-side overrides |
 | "Ask the council and **keep going until they agree**: …" | `council_ask` with `max_rounds: 0` |
 | "Council debate, **at most 3 rounds** to reach agreement: …" | `debate` with `max_rounds: 3` |
+| "Ask the council, and let **ChatGPT write the final answer**: …" | `council_ask` with `synthesizer: "codex"` |
 
 The models run in an empty folder with no tools, so include the code or text you want reviewed in the question. A single-pass council run is five CLI calls. At high effort that can take several minutes, and it counts against both plans' usage limits.
+
+### Who writes the final answer: `synthesizer`
+
+**Claude** writes the final answer by default. Pass `synthesizer: "codex"` (ChatGPT) or `"claude"` for one question, or change the default in your config. In the agreement loop the synthesizer drafts the joint answer and the other model reviews it.
 
 ### Until they agree: `max_rounds`
 
@@ -116,7 +121,7 @@ The drafter endorses its own draft, so the reviewer's `AGREE` means both models 
 | Tool | Optional inputs |
 |---|---|
 | `ask_codex`, `ask_claude` | `model`, `effort` |
-| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `max_rounds` |
+| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds` |
 
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`
 - Claude effort: `low`, `medium`, `high`, `xhigh`, `max`
@@ -130,6 +135,7 @@ Anything you leave out comes from your config.
 npx -y github:hamza-aziz-ai/codex-claude-council ask "Which is faster for 10M rows, A or B?"
 npx -y github:hamza-aziz-ai/codex-claude-council debate "..." --codex-effort xhigh --claude-model opus
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --max-rounds 0      # until both agree
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --synthesizer codex  # ChatGPT writes the final answer
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --effort low
 npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet --effort max
 ```
@@ -147,7 +153,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 ```json
 {
   "timeout_seconds": 600,
-  "synthesizer": "codex",
+  "synthesizer": "claude",
   "allow_api_key_auth": false,
   "codex":  { "command": null, "model": null, "effort": "high" },
   "claude": { "command": null, "model": null, "effort": "high" }
@@ -157,7 +163,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | Setting | Meaning |
 |---|---|
 | `timeout_seconds` | limit for each CLI call |
-| `synthesizer` | which model writes the final answer: `codex` or `claude` |
+| `synthesizer` | which model writes the final answer: `claude` (default) or `codex` (ChatGPT) |
 | `codex.model`, `claude.model` | default model; `null` uses the CLI's own default |
 | `codex.effort`, `claude.effort` | default effort |
 | `codex.command`, `claude.command` | full path to a CLI if it isn't found automatically |

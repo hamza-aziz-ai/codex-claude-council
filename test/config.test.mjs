@@ -16,7 +16,7 @@ function withUserConfig(content, fn) {
 test('packaged defaults apply when there is no user config', () => withUserConfig(undefined, () => {
   const config = loadConfig();
   assert.equal(config.timeout_seconds, 600);
-  assert.equal(config.synthesizer, 'codex');
+  assert.equal(config.synthesizer, 'claude', 'Claude writes the final answer by default');
   assert.deepEqual(resolveSide('codex', {}, config), { model: null, effort: 'high' });
   assert.deepEqual(resolveSide('claude', {}, config), { model: null, effort: 'high' });
 }));
@@ -49,5 +49,6 @@ test('model names cannot smuggle in flags or shell syntax', () => withUserConfig
 test('broken config files give a clear error', () => {
   withUserConfig('{not json', () => assert.throws(() => loadConfig(), /not valid JSON/));
   withUserConfig({ synthesizer: 'gemini' }, () => assert.throws(() => loadConfig(), /synthesizer/));
+  withUserConfig({ synthesizer: 'ChatGPT' }, () => assert.equal(loadConfig().synthesizer, 'codex'));
   withUserConfig({ timeout_seconds: 0 }, () => assert.throws(() => loadConfig(), /timeout_seconds/));
 });

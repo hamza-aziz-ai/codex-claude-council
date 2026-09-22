@@ -17,7 +17,8 @@ test('single-model and council commands with overrides', () => {
   assert.equal(cli(['claude', '--model', 'opus'], 'from stdin\n').stdout.trim(), 'claude[opus|high] from stdin');
   const ask = cli(['ask', 'Which?', '--codex-model', 'gpt-x', '--claude-effort', 'max']);
   assert.equal(ask.status, 0, ask.stderr);
-  assert.match(ask.stdout, /^codex\[gpt-x\|high\]/);
+  assert.match(ask.stdout, /^claude\[-\|max\]/, 'Claude writes the final answer by default');
+  assert.match(cli(['ask', 'Which?', '--codex-model', 'gpt-x', '--synthesizer', 'chatgpt']).stdout, /^codex\[gpt-x\|high\]/);
 });
 
 test('wrong flags for a command are rejected', () => {
@@ -67,7 +68,7 @@ test('--max-rounds runs the agreement loop and reports progress on stderr', () =
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /both agree with this answer \(2 rounds\)/);
-  assert.match(result.stderr, /\[council\] Round 2: Claude agrees/);
+  assert.match(result.stderr, /\[council\] Round 2: Codex \(ChatGPT\) agrees/);
   const wrong = cli(['claude', 'q', '--max-rounds', '2']);
   assert.equal(wrong.status, 1);
   assert.match(wrong.stderr, /does not take --max-rounds/);

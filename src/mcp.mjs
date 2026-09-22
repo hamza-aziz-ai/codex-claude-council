@@ -25,10 +25,16 @@ const roundsField = {
     + 'repeat for at most N rounds, stopping as soon as both agree. 0: repeat until both agree, with no round limit '
     + '(can take a long time and use a lot of both plans\' usage). Set only when the user asks for agreement, consensus or a number of rounds.',
 };
+const synthesizerField = {
+  type: 'string',
+  enum: ['claude', 'codex'],
+  description: 'Optional: which model writes the final answer ("codex" is ChatGPT). With max_rounds it drafts the joint answer '
+    + 'and the other model reviews it. Omit to use the configured default (Claude unless the user changed it).',
+};
 const councilFields = {
   codex_model: modelField('codex'), codex_effort: effortField('codex'),
   claude_model: modelField('claude'), claude_effort: effortField('claude'),
-  max_rounds: roundsField,
+  synthesizer: synthesizerField, max_rounds: roundsField,
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 

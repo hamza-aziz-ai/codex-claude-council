@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (2026-09-22)
+
+- **Claude now writes the final answer by default** (previously Codex). Change the default with `"synthesizer"` in the config file, or per question with the new `synthesizer` option on `council_ask` / `debate` (`--synthesizer` in the terminal). `chatgpt` is accepted as another name for `codex`.
+- In the agreement loop the synthesizer drafts the joint answer and the other model reviews it, so with the new default Claude drafts and Codex (ChatGPT) reviews.
+
 ## 0.2.0 (2026-09-22)
 
 - New `max_rounds` option on `council_ask` and `debate` (`--max-rounds` in the terminal): after the critiques, the synthesizer drafts one joint answer and the other model reviews it until both agree. Omit it for the usual single pass; `N` allows at most N rounds (stopping early on agreement); `0` means no limit.

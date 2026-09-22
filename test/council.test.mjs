@@ -42,12 +42,12 @@ test('each call runs in its own empty temporary folder', async () => {
 
 test('council_ask: five calls, overrides reach every call on their side only', async () => {
   const answer = await invoke('council_ask', 'Which is better?', { codex_effort: 'low', claude_model: 'sonnet' });
-  assert.match(answer, /^codex\[gpt-test\|low\]/, 'codex synthesizes by default');
+  assert.match(answer, /^claude\[sonnet\|high\]/, 'Claude writes the final answer by default');
   const calls = fake.questionCalls();
   const codexCalls = calls.filter(c => c.cli === 'codex');
   const claudeCalls = calls.filter(c => c.cli === 'claude');
-  assert.equal(codexCalls.length, 3);
-  assert.equal(claudeCalls.length, 2);
+  assert.equal(codexCalls.length, 2);
+  assert.equal(claudeCalls.length, 3);
   for (const c of codexCalls) assert.equal(c.args[c.args.indexOf('-c') + 1], 'model_reasoning_effort=low');
   for (const c of claudeCalls) {
     assert.equal(c.args[c.args.indexOf('--model') + 1], 'sonnet');
@@ -56,7 +56,6 @@ test('council_ask: five calls, overrides reach every call on their side only', a
 });
 
 test('debate returns answers, critiques and the settings used', async () => {
-  fake.writeConfig({ synthesizer: 'claude' });
   const result = JSON.parse(await invoke('debate', 'Pick one', { claude_effort: 'max' }));
   assert.deepEqual(Object.keys(result).sort(), ['answer', 'claude', 'claude_critique', 'codex', 'codex_critique', 'settings']);
   assert.deepEqual(result.settings, {
@@ -141,7 +140,19 @@ test('verdict and notes parsing', () => {
 test('without max_rounds the council is a single pass with one synthesis', async () => {
   const result = JSON.parse(await invoke('debate', 'q'));
   assert.equal(result.agreed, undefined);
-  assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['synthesize:codex']);
+  assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['synthesize:claude']);
+});
+
+test('who writes the final answer: config default, then per-call override (ChatGPT = codex)', async () => {
+  fake.writeConfig({ synthesizer: 'codex' });
+  assert.match(await invoke('council_ask', 'q'), /^codex/);
+  assert.match(await invoke('council_ask', 'q', { synthesizer: 'claude' }), /^claude/);
+  fake.writeConfig();
+  assert.match(await invoke('council_ask', 'q', { synthesizer: 'ChatGPT' }), /^codex/);
+  const result = JSON.parse(await invoke('debate', 'q', { synthesizer: 'codex' }));
+  assert.equal(result.settings.synthesizer, 'codex');
+  await assert.rejects(invoke('council_ask', 'q', { synthesizer: 'gemini' }), /synthesizer must be "claude" or "codex"/);
+  await assert.rejects(invoke('ask_claude', 'q', { synthesizer: 'codex' }), /does not accept: synthesizer/);
 });
 
 test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AGREE_AT: '2' }), async () => {
@@ -149,8 +160,8 @@ test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AG
   assert.equal(result.agreed, true);
   assert.equal(result.rounds_run, 2);
   assert.deepEqual(result.rounds.map(r => r.verdict), ['disagree', 'agree']);
-  assert.deepEqual(result.rounds.map(r => [r.drafter, r.reviewer]), [['codex', 'claude'], ['codex', 'claude']]);
-  assert.deepEqual(kinds(fake.questionCalls()).slice(4), ['draft:codex', 'review:claude', 'redraft:codex', 'review:claude']);
+  assert.deepEqual(result.rounds.map(r => [r.drafter, r.reviewer]), [['claude', 'codex'], ['claude', 'codex']]);
+  assert.deepEqual(kinds(fake.questionCalls()).slice(4), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
   assert.match(fake.questionCalls()[6].input, /review 1: objection 1/, 'the redraft sees the objections');
   assert.equal(result.settings.max_rounds, 5);
 }));
@@ -159,7 +170,7 @@ test('max_rounds N stops at the limit without agreement and says so', () => with
   const text = await invoke('council_ask', 'q', { max_rounds: '3' });
   assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('review')).length, 3);
   assert.match(text, /Not agreed after 3 rounds \(round limit of 3 reached\)/);
-  assert.match(text, /Claude's remaining objections:\n.*objection 3/);
+  assert.match(text, /Codex \(ChatGPT\)'s remaining objections:\n.*objection 3/);
   assert.ok(!/VERDICT/.test(text.split('remaining objections:')[1]), 'verdict line is stripped from the objections');
 }));
 
@@ -170,9 +181,8 @@ test('max_rounds 0 keeps going until both agree', () => withEnv(loopEnv({ FAKE_A
 }));
 
 test('the reviewer is the non-synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
-  fake.writeConfig({ synthesizer: 'claude' });
-  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 1 }));
-  assert.deepEqual([result.rounds[0].drafter, result.rounds[0].reviewer], ['claude', 'codex']);
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 1, synthesizer: 'codex' }));
+  assert.deepEqual([result.rounds[0].drafter, result.rounds[0].reviewer], ['codex', 'claude']);
   assert.equal(result.agreed, true);
 }));
 
@@ -180,8 +190,8 @@ test('a failure mid-loop returns the latest draft with the reason', () => withEn
   const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 0 }));
   assert.equal(result.agreed, false);
   assert.equal(result.rounds_run, 1);
-  assert.match(result.stopped_reason, /claude failed/);
-  assert.match(result.answer, /^codex/);
+  assert.match(result.stopped_reason, /codex failed/);
+  assert.match(result.answer, /^claude/);
 }));
 
 test('max_rounds is validated and only offered on council tools', async () => {

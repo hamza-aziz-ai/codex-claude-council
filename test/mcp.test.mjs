@@ -47,13 +47,14 @@ test('initialize reports the server and tool capability', async () => {
 test('tools/list exposes four tools with per-tool model/effort inputs', async () => {
   const { result } = await request('tools/list', {});
   const tools = Object.fromEntries(result.tools.map(tool => [tool.name, tool.inputSchema]));
-  const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'max_rounds'];
+  const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds'];
   assert.deepEqual(Object.keys(tools).sort(), ['ask_claude', 'ask_codex', 'council_ask', 'debate']);
   assert.deepEqual(Object.keys(tools.council_ask.properties), councilFields);
   assert.deepEqual(Object.keys(tools.debate.properties), councilFields);
   assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort']);
   assert.deepEqual(tools.ask_codex.properties.effort.enum, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
   assert.deepEqual(tools.ask_claude.properties.effort.enum, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(tools.debate.properties.synthesizer.enum, ['claude', 'codex']);
   assert.deepEqual({ type: tools.council_ask.properties.max_rounds.type, minimum: tools.council_ask.properties.max_rounds.minimum }, { type: 'integer', minimum: 0 });
   for (const schema of Object.values(tools)) assert.equal(schema.additionalProperties, false);
 });
@@ -68,7 +69,7 @@ test('council_ask with max_rounds sends progress notifications when asked', asyn
   assert.match(response.result.content[0].text, /both agree with this answer \(1 round\)/);
   assert.ok(progress.length >= 4 && progress.every(p => p.progressToken === 'p1'));
   assert.deepEqual(progress.map(p => p.progress), progress.map((_, i) => i + 1));
-  assert.ok(progress.some(p => /Round 1 of 2: Claude agrees/.test(p.message)), JSON.stringify(progress));
+  assert.ok(progress.some(p => /Round 1 of 2: Codex \(ChatGPT\) agrees/.test(p.message)), JSON.stringify(progress));
 });
 
 test('tools/call answers, and runs concurrent calls in parallel', async () => {

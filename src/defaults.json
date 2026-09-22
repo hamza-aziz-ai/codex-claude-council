@@ -1,6 +1,6 @@
 {
   "timeout_seconds": 600,
-  "synthesizer": "codex",
+  "synthesizer": "claude",
   "allow_api_key_auth": false,
   "codex": { "command": null, "model": null, "effort": "high" },
   "claude": { "command": null, "model": null, "effort": "high" }

@@ -12,6 +12,12 @@ export const EFFORTS = Object.freeze({
   claude: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']),
 });
 const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,79}$/;
+const SIDE_ALIASES = { codex: 'codex', chatgpt: 'codex', openai: 'codex', gpt: 'codex', claude: 'claude', anthropic: 'claude' };
+
+/** "codex" or "claude" from a side name or alias (ChatGPT means the Codex side); null if unrecognised. */
+export function sideName(value) {
+  return typeof value === 'string' ? SIDE_ALIASES[value.trim().toLowerCase()] ?? null : null;
+}
 
 export function packageVersion() {
   return JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')).version;
@@ -43,7 +49,8 @@ export function loadConfig() {
   const config = { ...defaults, ...user };
   for (const side of SIDES) config[side] = { ...defaults[side], ...(user[side] || {}) };
   if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');
-  if (!SIDES.includes(config.synthesizer)) throw new Error('config: synthesizer must be "codex" or "claude"');
+  config.synthesizer = sideName(config.synthesizer);
+  if (!config.synthesizer) throw new Error('config: synthesizer must be "claude" or "codex" (ChatGPT)');
   return config;
 }
 

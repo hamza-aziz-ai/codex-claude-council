@@ -3,9 +3,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { askClaude, askCodex } from './adapters.mjs';
-import { PACKAGE_ROOT, loadConfig, resolveSide } from './config.mjs';
+import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 
-const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'max_rounds'];
+const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds'];
 export const TOOL_OPTIONS = Object.freeze({
   ask_codex: ['model', 'effort'],
   ask_claude: ['model', 'effort'],
@@ -51,7 +51,13 @@ function checkOptions(tool, options) {
     }
     if (value === undefined || value === null) continue;
     if (typeof value !== 'string') throw new Error(`${key} must be a string`);
-    if (value.trim()) clean[key] = value.trim();
+    if (!value.trim()) continue;
+    if (key === 'synthesizer') {
+      clean.synthesizer = sideName(value);
+      if (!clean.synthesizer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
+      continue;
+    }
+    clean[key] = value.trim();
   }
   return clean;
 }
@@ -89,11 +95,14 @@ export function splitDraft(text) {
 /**
  * codex / claude: optional { model, effort } overrides for that side.
  * maxRounds: undefined for a single pass, 0 for no limit, N for at most N draft/review rounds.
+ * synthesizer: "claude" or "codex" writes the final answer (drafts, in the loop); default from config.
  */
-export async function debate(question, { codex = {}, claude = {}, maxRounds } = {}, { signal, onProgress } = {}) {
+export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
   maxRounds = parseMaxRounds(maxRounds);
   const config = loadConfig();
+  const writer = synthesizer === undefined ? config.synthesizer : sideName(synthesizer);
+  if (!writer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
   const settings = { codex: resolveSide('codex', codex, config), claude: resolveSide('claude', claude, config) };
   const task = {
     codex: text => s => askCodex(text, settings.codex, { config, signal: s }),
@@ -112,7 +121,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds } = 
   ]);
   const base = {
     codex: codexAnswer, claude: claudeAnswer, codex_critique: codexCritique, claude_critique: claudeCritique,
-    settings: { ...settings, synthesizer: config.synthesizer, max_rounds: maxRounds ?? null },
+    settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null },
   };
   const material = {
     question, codex_answer: codexAnswer, claude_answer: claudeAnswer,
@@ -120,13 +129,13 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds } = 
   };
 
   if (maxRounds === undefined) {
-    progress(`${LABEL[config.synthesizer]} is writing the final answer`);
-    return { answer: await ask(config.synthesizer, prompt('synthesize', material)), ...base };
+    progress(`${LABEL[writer]} is writing the final answer`);
+    return { answer: await ask(writer, prompt('synthesize', material)), ...base };
   }
 
   // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
   // The drafter endorses its own draft, so the reviewer's AGREE means both agree.
-  const drafter = config.synthesizer;
+  const drafter = writer;
   const reviewer = OTHER[drafter];
   const rounds = [];
   let draft = null;
@@ -176,7 +185,8 @@ export async function invoke(tool, question, options = {}, { signal, onProgress 
   if (tool === 'ask_codex') return askCodex(prompt('answer', { question }), clean, { signal });
   if (tool === 'ask_claude') return askClaude(prompt('answer', { question }), clean, { signal });
   const side = name => ({ model: clean[`${name}_model`], effort: clean[`${name}_effort`] });
-  const result = await debate(question, { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds },
+  const result = await debate(question,
+    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer },
     { signal, onProgress });
   return tool === 'council_ask' ? councilText(result) : JSON.stringify(result, null, 2);
 }
