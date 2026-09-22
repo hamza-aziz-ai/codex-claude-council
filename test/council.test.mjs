@@ -60,7 +60,7 @@ test('debate returns answers, critiques and the settings used', async () => {
   const result = JSON.parse(await invoke('debate', 'Pick one', { claude_effort: 'max' }));
   assert.deepEqual(Object.keys(result).sort(), ['answer', 'claude', 'claude_critique', 'codex', 'codex_critique', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude',
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: null,
   });
   assert.match(result.answer, /^claude\[opus\|max\]/);
   assert.match(result.codex_critique, /^codex.*claude\[opus\|max\] Pick one$/, 'codex critiques claude\'s answer');
@@ -115,4 +115,77 @@ test('slow calls time out and are killed', () => withEnv({ FAKE_SLEEP_MS: '20000
 test('a missing CLI gives install guidance', async () => {
   fake.writeConfig({ codex: { command: `${fake.dir}/does-not-exist/codex` } });
   await assert.rejects(askCodex('q'), /codex CLI not found at/);
+});
+
+// ---- Agreement loop (max_rounds) ----
+import { mkdtempSync as mkTemp } from 'node:fs';
+import { tmpdir as tmp } from 'node:os';
+import { join as joinPath } from 'node:path';
+import { readVerdict, splitDraft } from '../src/council.mjs';
+
+const loopEnv = extra => ({ FAKE_STATE: joinPath(mkTemp(joinPath(tmp(), 'council-state-')), 'reviews'), ...extra });
+const kinds = calls => calls.map(c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? `review:${c.cli}`
+  : c.input.startsWith('You are writing a final answer') ? `redraft:${c.cli}`
+    : c.input.includes('Write one final answer that both of you could sign') ? `draft:${c.cli}`
+      : c.input.startsWith('Give the user a final answer') ? `synthesize:${c.cli}` : `other:${c.cli}`));
+
+test('verdict and notes parsing', () => {
+  assert.equal(readVerdict('fine\nVERDICT: AGREE'), true);
+  assert.equal(readVerdict('**VERDICT:** DISAGREE'), false);
+  assert.equal(readVerdict('verdict: agree\n...\nVERDICT - DISAGREE'), false, 'the last verdict wins');
+  assert.equal(readVerdict('I agree with everything'), false, 'no verdict line means no agreement');
+  assert.deepEqual(splitDraft('The answer.\n---NOTES---\nDropped X.'), { answer: 'The answer.', notes: 'Dropped X.' });
+  assert.deepEqual(splitDraft('Only an answer'), { answer: 'Only an answer', notes: 'none' });
+});
+
+test('without max_rounds the council is a single pass with one synthesis', async () => {
+  const result = JSON.parse(await invoke('debate', 'q'));
+  assert.equal(result.agreed, undefined);
+  assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['synthesize:codex']);
+});
+
+test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AGREE_AT: '2' }), async () => {
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 5 }));
+  assert.equal(result.agreed, true);
+  assert.equal(result.rounds_run, 2);
+  assert.deepEqual(result.rounds.map(r => r.verdict), ['disagree', 'agree']);
+  assert.deepEqual(result.rounds.map(r => [r.drafter, r.reviewer]), [['codex', 'claude'], ['codex', 'claude']]);
+  assert.deepEqual(kinds(fake.questionCalls()).slice(4), ['draft:codex', 'review:claude', 'redraft:codex', 'review:claude']);
+  assert.match(fake.questionCalls()[6].input, /review 1: objection 1/, 'the redraft sees the objections');
+  assert.equal(result.settings.max_rounds, 5);
+}));
+
+test('max_rounds N stops at the limit without agreement and says so', () => withEnv(loopEnv({ FAKE_AGREE_AT: '0' }), async () => {
+  const text = await invoke('council_ask', 'q', { max_rounds: '3' });
+  assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('review')).length, 3);
+  assert.match(text, /Not agreed after 3 rounds \(round limit of 3 reached\)/);
+  assert.match(text, /Claude's remaining objections:\n.*objection 3/);
+  assert.ok(!/VERDICT/.test(text.split('remaining objections:')[1]), 'verdict line is stripped from the objections');
+}));
+
+test('max_rounds 0 keeps going until both agree', () => withEnv(loopEnv({ FAKE_AGREE_AT: '7' }), async () => {
+  const text = await invoke('council_ask', 'q', { max_rounds: 0 });
+  assert.match(text, /both agree with this answer \(7 rounds\)/);
+  assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('review')).length, 7);
+}));
+
+test('the reviewer is the non-synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
+  fake.writeConfig({ synthesizer: 'claude' });
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 1 }));
+  assert.deepEqual([result.rounds[0].drafter, result.rounds[0].reviewer], ['claude', 'codex']);
+  assert.equal(result.agreed, true);
+}));
+
+test('a failure mid-loop returns the latest draft with the reason', () => withEnv(loopEnv({ FAKE_AGREE_AT: '0', FAKE_FAIL_REVIEW_AT: '2' }), async () => {
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 0 }));
+  assert.equal(result.agreed, false);
+  assert.equal(result.rounds_run, 1);
+  assert.match(result.stopped_reason, /claude failed/);
+  assert.match(result.answer, /^codex/);
+}));
+
+test('max_rounds is validated and only offered on council tools', async () => {
+  for (const bad of [-1, 1.5, 'two', true]) await assert.rejects(invoke('council_ask', 'q', { max_rounds: bad }), /max_rounds must be a whole number/);
+  await assert.rejects(invoke('ask_codex', 'q', { max_rounds: 2 }), /does not accept: max_rounds/);
+  assert.equal(fake.calls().length, 0);
 });

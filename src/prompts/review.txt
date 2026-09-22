@@ -1,0 +1,14 @@
+Another AI model drafted a final answer to the question below, and you must decide whether you agree with it. Agree only if you would give this answer yourself: its claims are correct, nothing important is missing, and uncertainty is stated honestly. Differences of wording or style are not reasons to disagree. Do not agree just to end the discussion, and do not disagree over trivia. Do not call tools.
+
+If you disagree, list each objection specifically and say what should change.
+
+End your reply with exactly one final line: VERDICT: AGREE or VERDICT: DISAGREE
+
+Question:
+$question
+
+Draft answer:
+$draft
+
+Drafter's notes:
+$notes

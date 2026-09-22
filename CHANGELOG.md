@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 (2026-09-22)
+
+- New `max_rounds` option on `council_ask` and `debate` (`--max-rounds` in the terminal): after the critiques, the synthesizer drafts one joint answer and the other model reviews it until both agree. Omit it for the usual single pass; `N` allows at most N rounds (stopping early on agreement); `0` means no limit.
+- `debate` reports every draft/review round, whether the models agreed and why a loop stopped; `council_ask` says whether both models agree with the final answer.
+- If a call fails partway through the loop (for example a usage limit), the latest draft is returned with the reason instead of losing the run.
+- Progress notifications for MCP clients that request them, and progress lines on stderr in the terminal.
+- Codex plugin: raise the MCP tool timeout from Codex's 60-second default so long council runs are not cut off.
+
 ## 0.1.0 (2026-09-22)
 
 First public release.

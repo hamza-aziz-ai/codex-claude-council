@@ -15,7 +15,13 @@ flowchart LR
     LA --> CC[Codex critiques Claude]
     CA --> LC[Claude critiques Codex]
     CA & LA & CC & LC --> S[Synthesis: one final answer]
+    CA & LA & CC & LC -. max_rounds .-> D[Draft joint answer]
+    D --> R{Other model reviews}
+    R -- disagrees --> D
+    R -- agrees --> A[Answer both agree with]
 ```
+
+By default the council makes one pass. Set `max_rounds` and the two models keep drafting and reviewing one joint answer until they both agree with it.
 
 ## Requirements
 
@@ -88,15 +94,29 @@ Just ask in plain language:
 | "Get **Codex's** second opinion on this function." | `ask_codex` |
 | "Ask **Claude** only, with **sonnet** at **low** effort: …" | `ask_claude` with overrides |
 | "Council this with **ChatGPT on gpt-5.6-sol at xhigh** and **Claude on opus at max**: …" | `council_ask` with per-side overrides |
+| "Ask the council and **keep going until they agree**: …" | `council_ask` with `max_rounds: 0` |
+| "Council debate, **at most 3 rounds** to reach agreement: …" | `debate` with `max_rounds: 3` |
 
-The models run in an empty folder with no tools, so include the code or text you want reviewed in the question. A council run is five CLI calls in three rounds. At high effort that can take several minutes, and it counts against both plans' usage limits.
+The models run in an empty folder with no tools, so include the code or text you want reviewed in the question. A single-pass council run is five CLI calls. At high effort that can take several minutes, and it counts against both plans' usage limits.
+
+### Until they agree: `max_rounds`
+
+| `max_rounds` | What happens |
+|---|---|
+| omitted | single pass: answers, critiques, one synthesis (5 calls) |
+| `N` (1 or more) | after the critiques, the synthesizer drafts one joint answer and the other model reviews it; repeat for **at most N rounds**, stopping as soon as both agree (4 + 2 per round calls) |
+| `0` | the same loop with **no round limit**: it runs until both agree |
+
+The drafter endorses its own draft, so the reviewer's `AGREE` means both models agree with the exact final text. `council_ask` ends with a line saying whether they agreed; `debate` includes every draft and review. If the limit is reached, you get the latest draft and the reviewer's remaining objections. If a call fails partway through (for example a usage limit), you get the latest draft and the reason.
+
+`max_rounds: 0` can run for a long time and use a lot of both plans on questions where reasonable people disagree. You can stop it at any time (Esc / cancel in the app, Ctrl+C in the terminal).
 
 ### Model and effort
 
 | Tool | Optional inputs |
 |---|---|
 | `ask_codex`, `ask_claude` | `model`, `effort` |
-| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort` |
+| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `max_rounds` |
 
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`
 - Claude effort: `low`, `medium`, `high`, `xhigh`, `max`
@@ -109,6 +129,7 @@ Anything you leave out comes from your config.
 ```bash
 npx -y github:hamza-aziz-ai/codex-claude-council ask "Which is faster for 10M rows, A or B?"
 npx -y github:hamza-aziz-ai/codex-claude-council debate "..." --codex-effort xhigh --claude-model opus
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --max-rounds 0      # until both agree
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --effort low
 npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet --effort max
 ```
