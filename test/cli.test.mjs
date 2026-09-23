@@ -8,7 +8,7 @@ let fake;
 before(() => { fake = setup({ codex: { effort: 'high' }, claude: { effort: 'high' } }); });
 after(() => fake.cleanup());
 
-const cli = (args, input = '') => spawnSync(process.execPath, [join(ROOT, 'bin', 'cli.mjs'), ...args], {
+const cli = (args, input = '') => spawnSync(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), ...args], {
   input, encoding: 'utf8', env: { ...process.env, ...fake.env },
 });
 
@@ -63,7 +63,7 @@ test('config and doctor', () => {
 
 test('--max-rounds runs the agreement loop and reports progress on stderr', () => {
   const state = join(fake.dir, 'cli-reviews');
-  const result = spawnSync(process.execPath, [join(ROOT, 'bin', 'cli.mjs'), 'ask', 'Which?', '--max-rounds', '0'], {
+  const result = spawnSync(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'ask', 'Which?', '--max-rounds', '0'], {
     encoding: 'utf8', env: { ...process.env, ...fake.env, FAKE_STATE: state, FAKE_AGREE_AT: '2' },
   });
   assert.equal(result.status, 0, result.stderr);
