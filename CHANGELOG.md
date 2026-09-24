@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 (2026-09-24)
+
+- Only a model that can read the project is asked to check claims against it. Without a workspace, the critique and review prompts no longer mention a project.
+- **Security: Claude could read files outside the project through git options.** For example, `git blame --contents /etc/passwd -- README.md` was allowed and printed the file. The git options that read a file outside the project are now denied: `blame --contents`, `-S` and `--ignore-revs-file`, `ls-files -X` and `--exclude-from`, and `diff -O` and `--orderfile` (`--no-index` already was). Checked against the real Claude Code CLI: all are refused, while `blame -L`, `log -S`, `diff` and `status` still run.
+- **Two councils started at once no longer mix their turns.** With the same workspace and models they share each side's session, and only single turns took turns, so their prompts could interleave (one council's answer, the other's answer, then a critique). As each prompt now carries only what a model has not seen, a model could critique the other council's question. A council now holds both sessions from start to finish; the other one waits.
+
 ## 0.5.0 (2026-09-24)
 
 - **Both models can read your project.** New `workspace` option on all four tools (`--workspace` in the terminal, which defaults to the git repository you are in; `--no-workspace` for none). Both models then work in that folder: they can open files, search and run read-only git commands (log, diff, show, status, blame) to check facts about code, changes, fixes and logs. The skill tells the host to pass the project folder whenever it is working in one.

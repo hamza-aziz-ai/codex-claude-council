@@ -3,7 +3,7 @@
 // Each model keeps one session (see adapters.mjs), so every prompt carries only what it has not seen yet.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { askClaude, askCodex, requireBothSignedIn } from './adapters.mjs';
+import { askClaude, askCodex, holdSessions, requireBothSignedIn } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 
 const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace'];
@@ -54,6 +54,11 @@ export function accessNote(workspace) {
   return workspace
     ? `You can read the project at ${workspace}: open files, search, and run read-only git commands (log, diff, show, status, blame) to check facts before relying on them. You cannot change anything; writes are blocked. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
     : 'You have no tools and no access to files: answer from the text you are given.';
+}
+
+/** A sentence asking a model to check claims against the project, only when it can read one. */
+export function verifyNote(workspace) {
+  return workspace ? ' Where it matters, check claims against the project rather than assuming.' : '';
 }
 
 function checkOptions(tool, options) {
@@ -131,76 +136,81 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   if (!writer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
   const settings = { codex: resolveSide('codex', codex, config), claude: resolveSide('claude', claude, config) };
   const task = {
-    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace }),
-    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace }),
+    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, held: true }),
+    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, held: true }),
   };
-  const ask = async (side, text) => (await together(signal, [task[side](text)]))[0];
-  const progress = message => onProgress?.(message);
+  // The council holds both sessions from start to finish (see holdSessions).
+  const held = [{ side: 'codex', workspace, model: settings.codex.model }, { side: 'claude', workspace, model: settings.claude.model }];
+  return holdSessions(held, async () => {
+    const ask = async (side, text) => (await together(signal, [task[side](text)]))[0];
+    const progress = message => onProgress?.(message);
 
-  // Both models at once; build(me, them) writes each side's prompt. Results come back by side.
-  const bothSides = async build => {
-    const [codexText, claudeText] = await together(signal, [task.codex(build('codex', 'claude')), task.claude(build('claude', 'codex'))]);
-    return { codex: codexText, claude: claudeText };
-  };
+    // Both models at once; build(me, them) writes each side's prompt. Results come back by side.
+    const bothSides = async build => {
+      const [codexText, claudeText] = await together(signal, [task.codex(build('codex', 'claude')), task.claude(build('claude', 'codex'))]);
+      return { codex: codexText, claude: claudeText };
+    };
 
-  progress('Checking that Codex and Claude Code are both signed in');
-  await requireBothSignedIn(config, { signal });
+    progress('Checking that Codex and Claude Code are both signed in');
+    await requireBothSignedIn(config, { signal });
 
-  // Each step sends a model only what it has not seen: its own earlier turns are in its session.
-  progress('Codex (ChatGPT) and Claude are answering independently');
-  const access = accessNote(workspace);
-  const answers = await bothSides((me, them) => prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }));
-  progress('Each model is critiquing the other');
-  const critiques = await bothSides((me, them) => prompt('critique', { other: SPEAKER[them], other_answer: answers[them] }));
-  // The critiques are swapped: each model sees what the other said about its answer, and replies.
-  progress('Each model is replying to the critique of its answer');
-  const replies = await bothSides((me, them) => prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] }));
-  const base = {
-    codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
-    codex_reply: replies.codex, claude_reply: replies.claude,
-    settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null },
-  };
+    // Each step sends a model only what it has not seen: its own earlier turns are in its session.
+    progress('Codex (ChatGPT) and Claude are answering independently');
+    const access = accessNote(workspace);
+    const answers = await bothSides((me, them) => prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }));
+    progress('Each model is critiquing the other');
+    const verify = verifyNote(workspace);
+    const critiques = await bothSides((me, them) => prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify }));
+    // The critiques are swapped: each model sees what the other said about its answer, and replies.
+    progress('Each model is replying to the critique of its answer');
+    const replies = await bothSides((me, them) => prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] }));
+    const base = {
+      codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
+      codex_reply: replies.codex, claude_reply: replies.claude,
+      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null },
+    };
 
-  if (maxRounds === undefined) {
-    progress(`${LABEL[writer]} is writing the final answer`);
-    const other = OTHER[writer];
-    return { answer: await ask(writer, prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] })), ...base };
-  }
-
-  // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
-  // The drafter endorses its own draft, so the reviewer's AGREE means both agree.
-  const drafter = writer;
-  const reviewer = OTHER[drafter];
-  const rounds = [];
-  let draft = null;
-  let notes = 'none';
-  let objections = '';
-  let stoppedReason = null;
-  for (let round = 1; maxRounds === 0 || round <= maxRounds; round += 1) {
-    const limit = maxRounds === 0 ? '' : ` of ${maxRounds}`;
-    try {
-      progress(`Round ${round}${limit}: ${LABEL[drafter]} is drafting the joint answer`);
-      const text = await ask(drafter, round === 1
-        ? prompt('draft', { other: SPEAKER[reviewer], other_reply: replies[reviewer] })
-        : prompt('redraft', { other: SPEAKER[reviewer], objections }));
-      ({ answer: draft, notes } = splitDraft(text));
-      progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
-      // The reviewer has not seen the drafter's reply yet; its own earlier objections are in its session.
-      const context = round === 1 ? `${SPEAKER[drafter]}'s reply to your critique:\n${replies[drafter]}\n` : '';
-      const review = await ask(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes }));
-      const agreed = readVerdict(review);
-      rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
-      progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);
-      if (agreed) return { answer: draft, agreed: true, rounds_run: rounds.length, rounds, ...base };
-      objections = review;
-    } catch (error) {
-      // Keep the latest draft if a later call fails (for example a usage limit); cancelling still aborts.
-      if (signal?.aborted || draft === null) throw error;
-      stoppedReason = error.message;
-      break;
+    if (maxRounds === undefined) {
+      progress(`${LABEL[writer]} is writing the final answer`);
+      const other = OTHER[writer];
+      return { answer: await ask(writer, prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] })), ...base };
     }
-  }
-  return { answer: draft, agreed: false, rounds_run: rounds.length, rounds, stopped_reason: stoppedReason, ...base };
+
+    // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
+    // The drafter endorses its own draft, so the reviewer's AGREE means both agree.
+    const drafter = writer;
+    const reviewer = OTHER[drafter];
+    const rounds = [];
+    let draft = null;
+    let notes = 'none';
+    let objections = '';
+    let stoppedReason = null;
+    for (let round = 1; maxRounds === 0 || round <= maxRounds; round += 1) {
+      const limit = maxRounds === 0 ? '' : ` of ${maxRounds}`;
+      try {
+        progress(`Round ${round}${limit}: ${LABEL[drafter]} is drafting the joint answer`);
+        const text = await ask(drafter, round === 1
+          ? prompt('draft', { other: SPEAKER[reviewer], other_reply: replies[reviewer] })
+          : prompt('redraft', { other: SPEAKER[reviewer], objections }));
+        ({ answer: draft, notes } = splitDraft(text));
+        progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
+        // The reviewer has not seen the drafter's reply yet; its own earlier objections are in its session.
+        const context = round === 1 ? `${SPEAKER[drafter]}'s reply to your critique:\n${replies[drafter]}\n` : '';
+        const review = await ask(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify }));
+        const agreed = readVerdict(review);
+        rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
+        progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);
+        if (agreed) return { answer: draft, agreed: true, rounds_run: rounds.length, rounds, ...base };
+        objections = review;
+      } catch (error) {
+        // Keep the latest draft if a later call fails (for example a usage limit); cancelling still aborts.
+        if (signal?.aborted || draft === null) throw error;
+        stoppedReason = error.message;
+        break;
+      }
+    }
+    return { answer: draft, agreed: false, rounds_run: rounds.length, rounds, stopped_reason: stoppedReason, ...base };
+  });
 }
 
 /** Plain-text answer for council_ask and the terminal. */
