@@ -37,13 +37,16 @@ The conversation goes both ways whoever writes the final answer, and from step 2
 
 ## Requirements
 
-| | |
-|---|---|
-| [Node.js](https://nodejs.org) 20 or newer | runs the small MCP server (no dependencies) |
-| [Claude Code CLI](https://code.claude.com/docs/en/setup), signed in with a Claude Pro, Max, Team or Enterprise plan | `claude auth login` |
-| [Codex CLI](https://developers.openai.com/codex/cli), signed in with ChatGPT | `codex login` → *Sign in with ChatGPT* |
+| You need | Install | Sign in |
+|---|---|---|
+| [Node.js](https://nodejs.org) 20 or newer: runs the small MCP server (no dependencies) | [nodejs.org](https://nodejs.org) | – |
+| [Claude Code CLI](https://code.claude.com/docs/en/setup), with a Claude Pro, Max, Team or Enterprise plan | macOS / Linux / WSL: `curl -fsSL https://claude.ai/install.sh \| bash`<br>Windows: `irm https://claude.ai/install.ps1 \| iex` | `claude auth login` |
+| [Codex CLI](https://developers.openai.com/codex/cli), with a ChatGPT plan | any OS: `npm install -g @openai/codex`<br>macOS: `brew install --cask codex` | `codex login` → *Sign in with ChatGPT* |
+| [Git](https://git-scm.com) (recommended) | usually already installed | – |
 
-Both CLIs are required. The installer checks for them first and stops, with install instructions, if either is missing. Every council run also checks that both are signed in before it starts, and stops with the sign-in steps if either is not.
+- **Both CLIs are required.** The installer checks for them first and stops, with these install steps, if either is missing. Every council run also checks that both are signed in before it starts, and stops with the sign-in steps if either is not.
+- **Keep both CLIs up to date.** The council uses recent options: Claude Code's `--restricted`, and Codex's `exec resume` and web search. If a run fails with "unknown option" or "unexpected argument", update the CLI it names: `claude update`, or `npm install -g @openai/codex@latest` (or update Codex however you installed it).
+- **Git** lets both models look at your project's history, changes and blame. Without it, they can still read the files.
 
 ## Install
 
@@ -68,12 +71,47 @@ npx -y github:hamza-aziz-ai/codex-claude-council install
 The installer:
 
 1. checks Node.js 20+, the Claude Code CLI and the Codex CLI, and reports whether each CLI is signed in;
-2. adds the plugin to Claude Code and to Codex from this repository's marketplace;
-3. with `--claude-desktop`, also registers the MCP server with Claude Desktop chat.
+2. adds this repository's marketplace to Claude Code and to Codex, and installs the plugin in both (for Claude Code, for your user, so it works in every project);
+3. if the plugin is already installed, updates the marketplace and the plugin to the latest version instead;
+4. with `--claude-desktop`, also registers the MCP server with Claude Desktop chat.
 
-Options: `--only claude|codex`, `--claude-desktop`, `--dry-run`. With the `curl` installer, put options after `bash -s --`, for example `... | bash -s -- --claude-desktop`.
+**Options:** `--only claude|codex` (one app only; both CLIs are still required), `--claude-desktop`, `--dry-run` (show the commands without running them). To pass them:
 
-Restart Claude Code / Codex afterwards.
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.sh | bash -s -- --claude-desktop
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.ps1))) --claude-desktop
+```
+
+```bash
+npx -y github:hamza-aziz-ai/codex-claude-council install --claude-desktop
+```
+
+**Afterwards:**
+
+1. Fully quit and reopen Claude Code and Codex (and Claude Desktop), so they load the plugin.
+2. Check the setup: `npx -y github:hamza-aziz-ai/codex-claude-council doctor`. It checks Node.js, both CLIs, their sign-ins and your config.
+3. Try it in a project: *"Ask the council: what does this project do, and what would you improve first?"*
+
+### Update
+
+Run the installer again: it updates the marketplace and the plugin in both apps. Then fully quit and reopen Claude Code and Codex. `CHANGELOG.md` lists what changed.
+
+**On Windows, quit Codex and Claude first.** Close every Codex and Claude Code session, IDE extension, and the ChatGPT and Claude desktop apps, then run the installer. A running plugin from version 0.5.1 or earlier keeps its folder in use, and Codex then fails with *"failed to back up plugin cache entry: Access is denied. (os error 5)"*. From 0.5.2 the plugin no longer holds its folder, so later updates work while the apps are open.
+
+To update one app by hand:
+
+```bash
+claude plugin marketplace update codex-claude-council
+claude plugin update codex-claude-council@codex-claude-council
+
+codex plugin marketplace upgrade codex-claude-council
+codex plugin add codex-claude-council@codex-claude-council
+```
+
+In Claude Desktop, updates arrive through **Sync automatically**, or click **Sync** on the marketplace under **Settings → Plugins**. In the ChatGPT desktop app, update the plugin under **Settings → Plugins**.
 
 ### Or install per app
 
@@ -81,7 +119,7 @@ Restart Claude Code / Codex afterwards.
 
 ```bash
 claude plugin marketplace add hamza-aziz-ai/codex-claude-council
-claude plugin install codex-claude-council@codex-claude-council
+claude plugin install codex-claude-council@codex-claude-council --scope user
 ```
 
 **Codex** (CLI and IDE extension)
@@ -251,6 +289,8 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - **Tools don't appear**: fully quit and reopen the app after installing. In Claude Desktop or the ChatGPT desktop app, check the plugin is installed and enabled under **Settings → Plugins**.
 - **`node` not found by a desktop app on macOS**: GUI apps don't read your shell profile, so Node installed with nvm may be invisible to them. Install Node from nodejs.org or Homebrew.
 - **CLI not found**: set `codex.command` / `claude.command` to the full path.
+- **"unknown option" / "unexpected argument"**: a CLI is too old for the council. Update it: `claude update`, or `npm install -g @openai/codex@latest`.
+- **Windows: "Access is denied (os error 5)" when installing or updating**: a running Codex or Claude app still has the plugin's files open. Quit them all (CLI sessions, IDE extensions, the ChatGPT and Claude desktop apps), then run the installer again. See [Update](#update).
 
 ## Security and privacy
 
