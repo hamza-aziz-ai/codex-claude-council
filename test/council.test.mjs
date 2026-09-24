@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { realpathSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
 import { CLAUDE_ALLOWED, CLAUDE_DENIED, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt } from '../src/council.mjs';
@@ -63,7 +64,7 @@ test('each side keeps one session: later calls resume it in the same folder', as
 });
 
 test('with a workspace, both models run in the project folder and can read but not write it', async () => {
-  const workspace = fake.dir;
+  const workspace = realpathSync(fake.dir); // what the council passes (on macOS, /var is a link to /private/var)
   await askCodex('a', {}, { workspace });
   await askClaude('b', {}, { workspace });
   await askCodex('c', {}, { workspace });
@@ -147,17 +148,18 @@ test('the next question continues the same sessions', async () => {
 });
 
 test('a council with a workspace tells both models they can read the project, and runs every call there', async () => {
+  const workspace = realpathSync(fake.dir); // the council resolves links in the path it is given
   const text = await invoke('council_ask', 'Is src/ tidy?', { workspace: fake.dir });
   assert.match(text, /both agree/);
   const calls = fake.questionCalls();
   assert.equal(calls.length, 8);
-  for (const call of calls) assert.equal(call.cwd, fake.dir);
+  for (const call of calls) assert.equal(call.cwd, workspace);
   for (const cli of ['codex', 'claude']) {
-    assert.ok(callsOf(cli)[0].input.includes(accessNote(fake.dir)));
-    assert.match(accessNote(fake.dir), /can read the project at .*You cannot change anything/);
+    assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace)));
+    assert.match(accessNote(workspace), /can read the project at .*You cannot change anything/);
   }
   const result = JSON.parse(await invoke('debate', 'q', { workspace: fake.dir }));
-  assert.equal(result.settings.workspace, fake.dir);
+  assert.equal(result.settings.workspace, workspace);
 });
 
 test('an invalid workspace is rejected before any CLI runs', async () => {
