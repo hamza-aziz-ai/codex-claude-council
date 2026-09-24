@@ -1,5 +1,5 @@
 // Stand-in for the real `codex` and `claude` CLIs. Records every call to $FAKE_LOG (JSON lines).
-// Controls: FAKE_FAIL=codex|claude, FAKE_SLEEP_MS, FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
+// Controls: FAKE_FAIL=codex|claude, FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
 // Reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees on the n-th review (default 1, 0 = never);
 // FAKE_FAIL_REVIEW_AT=n fails the n-th review. Reviews are counted in the file $FAKE_STATE.
 // Sessions: codex --json reports a new thread (or the resumed one); claude echoes --session-id / --resume.
@@ -51,4 +51,4 @@ function claude() {
 
 const main = cli === 'codex' ? codex : claude;
 const isQuestion = !['--version', 'login', 'auth'].includes(args[0]);
-setTimeout(main, isQuestion ? Number(process.env.FAKE_SLEEP_MS || 0) : 0);
+setTimeout(main, isQuestion ? Number(process.env[`FAKE_SLEEP_MS_${cli.toUpperCase()}`] ?? process.env.FAKE_SLEEP_MS ?? 0) : 0);

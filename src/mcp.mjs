@@ -34,7 +34,7 @@ const synthesizerField = {
 const workspaceField = {
   type: 'string',
   description: 'Absolute path of the project folder you are working in. Both models can then read it (files, search, '
-    + 'read-only git commands such as log, diff, show and blame) but never change it. Pass it whenever the question is '
+    + 'git history, changes and blame) but never change it. Pass it whenever the question is '
     + 'about the code, a change, a fix, an error or logs in this project. Omit only for questions unrelated to any project.',
 };
 const councilFields = {
@@ -74,7 +74,14 @@ const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, deba
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes.';
 
-export function serve({ input = process.stdin, output = process.stdout } = {}) {
+const callCouncil = (name, { question, ...options }, context) => invoke(name, question, options, context);
+const COUNCIL = { name: NAME, title: 'Codex–Claude Council', tools: TOOLS, call: callCouncil, instructions: INSTRUCTIONS };
+
+/**
+ * Serve tools over stdio. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text,
+ * instructions }; the council's tools by default.
+ */
+export function serve({ input = process.stdin, output = process.stdout, server = COUNCIL } = {}) {
   const inFlight = new Map();
   const send = message => output.write(`${JSON.stringify(message)}\n`);
   const reply = (id, result) => send({ jsonrpc: '2.0', id, result });
@@ -89,8 +96,7 @@ export function serve({ input = process.stdin, output = process.stdout } = {}) {
       if (!controller.signal.aborted) send({ jsonrpc: '2.0', method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } });
     };
     try {
-      const { question, ...options } = params.arguments || {};
-      const text = await invoke(params.name, question, options, { signal: controller.signal, onProgress });
+      const text = await server.call(params.name, params.arguments || {}, { signal: controller.signal, onProgress });
       if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text }] });
     } catch (error) {
       if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text: error.message }], isError: true });
@@ -110,13 +116,13 @@ export function serve({ input = process.stdin, output = process.stdout } = {}) {
         return reply(id, {
           protocolVersion: params?.protocolVersion || '2025-06-18',
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: NAME, title: 'Codex–Claude Council', version: packageVersion() },
-          instructions: INSTRUCTIONS,
+          serverInfo: { name: server.name, title: server.title, version: packageVersion() },
+          instructions: server.instructions,
         });
       case 'ping':
         return reply(id, {});
       case 'tools/list':
-        return reply(id, { tools: TOOLS });
+        return reply(id, { tools: server.tools });
       case 'tools/call':
         return void callTool(id, params);
       default:

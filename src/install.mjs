@@ -82,6 +82,13 @@ export async function doctor() {
   return result.ok && !result.signIn.length ? 0 : 1;
 }
 
+/** What to do about a host command that failed because files are still in use (Windows). */
+export function failureHint(output) {
+  return /access is denied|os error 5\b|EBUSY|EPERM|resource busy|being used by another process/i.test(output)
+    ? ' Its files are still in use, usually by a running Codex or Claude Code session or app (CLI, IDE extension, ChatGPT or Claude desktop app). Quit them all, then run this again.'
+    : '';
+}
+
 /** Run one host command. Returns "already" when it reports the item already exists, else "done". */
 async function step(exe, args, { dryRun, tolerate } = {}) {
   const shown = [basename(exe).replace(/\.(exe|cmd|bat)$/i, ''), ...args].join(' ');
@@ -93,7 +100,7 @@ async function step(exe, args, { dryRun, tolerate } = {}) {
   if (/already/i.test(output) && (result.code === 0 || /already (added|exists|installed|on disk)/i.test(output))) return 'already';
   if (result.code === 0) return 'done';
   if (tolerate && tolerate.test(output)) return 'skipped';
-  throw new Error(`\`${shown}\` failed (exit code ${result.code})`);
+  throw new Error(`\`${shown}\` failed (exit code ${result.code}).${failureHint(output)}`);
 }
 
 function desktopConfigPaths() {

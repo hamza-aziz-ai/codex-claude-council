@@ -39,6 +39,14 @@ test('the terminal lets both models read the git repository you are in, unless t
   assert.match(cli(['codex', 'q', '--workspace', fake.dir, '--no-workspace']).stderr, /not both/);
 });
 
+test('an install step that fails because files are in use says what to do', async () => {
+  const { failureHint } = await import('../src/install.mjs');
+  const codexOnWindows = 'Error: failed to back up plugin cache entry: Access is denied. (os error 5)';
+  assert.match(failureHint(codexOnWindows), /still in use.*Quit them all, then run this again/);
+  assert.match(failureHint('EBUSY: resource busy or locked'), /still in use/);
+  assert.equal(failureHint('error: unknown plugin'), '');
+});
+
 test('wrong flags for a command are rejected', () => {
   const result = cli(['codex', 'q', '--codex-effort', 'low']);
   assert.equal(result.status, 1);
