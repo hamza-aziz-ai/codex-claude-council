@@ -78,7 +78,11 @@ test('with a workspace, both models run in the project folder and can read but n
   assert.deepEqual(listed('--allowedTools'), CLAUDE_ALLOWED);
   assert.deepEqual(listed('--disallowedTools'), CLAUDE_DENIED);
   assert.ok(CLAUDE_ALLOWED.every(rule => /^Bash\(git (log|diff|show|status|blame|ls-files|rev-parse|describe|shortlog)( \*)?\)$/.test(rule)), 'only read-only git commands');
-  for (const rule of ['Edit', 'Write', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)']) assert.ok(CLAUDE_DENIED.includes(rule), rule);
+  // Options that would make an allowed git command write a file or read one outside the project.
+  for (const rule of ['Edit', 'Write', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)', 'Bash(*--contents*)',
+    'Bash(*--ignore-revs-file*)', 'Bash(git blame*-S*)', 'Bash(*--exclude-from*)', 'Bash(git ls-files*-X*)', 'Bash(* -O*)']) {
+    assert.ok(CLAUDE_DENIED.includes(rule), rule);
+  }
 });
 
 test('council_ask: by default both models sign the final answer; overrides reach every call on their side only', async () => {
@@ -146,6 +150,17 @@ test('the next question continues the same sessions', async () => {
   assert.ok(!firstCodex.includes('resume'));
   assert.match(codexAnswer.input, /second question/);
 });
+
+test('two councils at once in the same sessions take turns instead of interleaving', () => withEnv({ FAKE_SLEEP_MS: '100' }, async () => {
+  const [first, second] = await Promise.all([invoke('debate', 'first question'), invoke('debate', 'second question')]);
+  assert.equal(JSON.parse(first).agreed, true);
+  assert.equal(JSON.parse(second).agreed, true);
+  for (const cli of ['codex', 'claude']) {
+    // Each council's four turns in a session are consecutive: answer, critique, reply, then draft or review.
+    const turns = callsOf(cli).map(c => (c.input.startsWith('You are ') ? 'answer' : 'turn'));
+    assert.deepEqual(turns, ['answer', 'turn', 'turn', 'turn', 'answer', 'turn', 'turn', 'turn'], cli);
+  }
+}));
 
 test('a council with a workspace tells both models they can read the project, and runs every call there', async () => {
   const workspace = realpathSync(fake.dir); // the council resolves links in the path it is given

@@ -19,10 +19,14 @@ function options(config, signal, cwd) {
 
 // Claude reads the project with its file tools (confined to the working folder by --restricted) and
 // these git commands; any other command is refused (--permission-mode dontAsk). The deny rules close
-// the options that make an allowed command write a file or read outside the project.
+// the options that make an allowed command write a file (--output), run a program (--ext-diff) or read
+// a file outside the project (--no-index, blame --contents / -S / --ignore-revs-file, ls-files -X /
+// --exclude-from, diff -O / --orderfile). Checked against the real CLI.
 const GIT_READ_COMMANDS = ['log', 'diff', 'show', 'status', 'blame', 'ls-files', 'rev-parse', 'describe', 'shortlog'];
 export const CLAUDE_ALLOWED = GIT_READ_COMMANDS.flatMap(command => [`Bash(git ${command})`, `Bash(git ${command} *)`]);
-export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)'];
+export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)',
+  'Bash(*--contents*)', 'Bash(*--ignore-revs-file*)', 'Bash(git blame*-S*)', 'Bash(*--exclude-from*)', 'Bash(git ls-files*-X*)',
+  'Bash(* -O*)', 'Bash(*--orderfile*)'];
 
 // One session per side, workspace and model. Calls to one session run one at a time.
 const sessions = new Map();
@@ -45,6 +49,19 @@ async function inSession(session, work) {
   } finally {
     release();
   }
+}
+
+/**
+ * Hold these sessions ({ side, workspace, model }) for the whole of work, so no other council or question
+ * takes a turn in them meanwhile: each prompt assumes the turns before it in the session are its own.
+ * Calls made inside pass { held: true }. Sessions are taken in a fixed order, so two councils cannot
+ * each hold one and wait for the other.
+ */
+export async function holdSessions(entries, work) {
+  const ordered = [...entries].sort((a, b) => a.side.localeCompare(b.side));
+  const hold = index => (index === ordered.length ? work()
+    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model), () => hold(index + 1)));
+  return hold(0);
 }
 
 // Without a workspace, a side works in an empty folder that lasts as long as its session.
@@ -132,11 +149,11 @@ function codexThreadId(stdout) {
  * workspace: the project folder the model may read (never write), or undefined for no file access.
  * Codex always runs in its read-only sandbox, enforced by the operating system.
  */
-export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace } = {}) {
+export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, held = false } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model);
-  return inSession(session, () => inTempDir('council-codex-out-', async outDir => {
+  const call = () => inTempDir('council-codex-out-', async outDir => {
     const cwd = workingDir(session, workspace, 'council-codex-');
     const opts = options(config, signal, cwd);
     const problem = await codexSignInProblem(exe, config, opts);
@@ -160,7 +177,8 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     try { answer = readFileSync(answerFile, 'utf8').trim(); } catch { /* empty */ }
     if (!answer) throw new Error('codex returned an empty answer');
     return answer;
-  }));
+  });
+  return held ? call() : inSession(session, call);
 }
 
 /**
@@ -168,11 +186,11 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
  * --restricted ignores user, project and local settings (so no hooks, plugins or allow rules from them)
  * and confines the file tools to the working folder; dontAsk refuses anything not allowed here.
  */
-export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace } = {}) {
+export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, held = false } = {}) {
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
   const session = sessionFor('claude', workspace, chosen.model);
-  return inSession(session, async () => {
+  const call = async () => {
     const cwd = workingDir(session, workspace, 'council-claude-');
     const opts = options(config, signal, cwd);
     const problem = await claudeSignInProblem(exe, config, opts);
@@ -193,5 +211,6 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
       throw new Error(`claude failed: ${withHint('claude', failureDetail(answer || result.stderr || result.stdout))}`);
     }
     return answer;
-  });
+  };
+  return held ? call() : inSession(session, call);
 }
