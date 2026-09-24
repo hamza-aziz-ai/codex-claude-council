@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- New `update` command: `npx -y github:hamza-aziz-ai/codex-claude-council update` refreshes the marketplace and updates the plugin in Claude Code and Codex (`--only`, `--dry-run`). If an update step fails because the plugin is not installed, it says to run `install`.
+- README: installation steps brought up to date (requirements with install commands, what the installer does, passing options on Windows, an Update section, Windows "Access is denied" guidance).
+
 ## 0.6.0 (2026-09-24)
 
 - **Both models can search the web.** Codex runs with its live web search (`-c web_search="live"`), which runs on OpenAI's side; its sandbox stays read-only, with no network for commands. Claude gets WebSearch and WebFetch. Their first prompt for each question says they can use the web for facts that change or that they are unsure of, prefer primary sources, and say where a fact came from. The critique and review prompts ask them to check claims against the web as well as the project. Checked against the real Claude Code CLI: both web tools work under `--restricted` and `dontAsk`, while the shell and Write stay unavailable.

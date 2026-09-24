@@ -4,13 +4,14 @@ import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
 import { invoke } from '../src/council.mjs';
-import { doctor, initConfig, install, uninstall } from '../src/install.mjs';
+import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
 Ask Codex (ChatGPT) and Claude through your own signed-in CLIs.
 
 Usage:
   ${NAME} install [options]        Check prerequisites, then add the plugin to Claude Code and Codex
+  ${NAME} update [options]         Update the plugin in Claude Code and Codex to the latest version
   ${NAME} uninstall [options]      Remove it again (your config file is kept)
   ${NAME} doctor                   Check Node.js, both CLIs, sign-ins and config
   ${NAME} config [--init]          Show the effective config, or create an editable config file
@@ -32,8 +33,8 @@ Model and effort (omit to use your config):
                    --no-web           no web search or web pages (default: on, "web_search" in the config)
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
-Install options:
-  --only <claude|codex>   Add the plugin to one host only (both CLIs are still required)
+Install / update / uninstall options:
+  --only <claude|codex>   One host only (both CLIs are still required)
   --claude-desktop        Also register the MCP server with Claude Desktop chat
   --source <repo|path>    Marketplace source (default: hamza-aziz-ai/${NAME})
   --dry-run               Show what would run without changing anything
@@ -95,6 +96,7 @@ async function main() {
   }
   const hostOptions = { only: values.only, claudeDesktop: values['claude-desktop'], dryRun: values['dry-run'] };
   if (commandName === 'install') return install({ ...hostOptions, source: values.source });
+  if (commandName === 'update') return update(hostOptions);
   if (commandName === 'uninstall') return uninstall(hostOptions);
 
   const tool = TOOLS[commandName];

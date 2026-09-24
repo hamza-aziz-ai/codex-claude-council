@@ -181,14 +181,19 @@ function hostsFrom(only) {
   return [only];
 }
 
+/** The prerequisite checks install and update share; null when something is missing (and reported). */
+async function prerequisites() {
+  const check = await preflight();
+  if (check.ok) return check;
+  say('', `${NAME} needs both the Claude Code CLI and the Codex CLI (and Node.js ${MIN_NODE}+). Install what is missing, then run this again:`, '');
+  if (check.missing.length) say(...check.missing.flatMap(side => [...INSTALL_HELP[side], '']));
+  return null;
+}
+
 export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = false, dryRun = false } = {}) {
   say(`Installing ${NAME}${dryRun ? ' (dry run)' : ''}`, '', 'Checking prerequisites:');
-  const check = await preflight();
-  if (!check.ok) {
-    say('', `${NAME} needs both the Claude Code CLI and the Codex CLI (and Node.js ${MIN_NODE}+). Install what is missing, then run this again:`, '');
-    if (check.missing.length) say(...check.missing.flatMap(side => [...INSTALL_HELP[side], '']));
-    return 1;
-  }
+  const check = await prerequisites();
+  if (!check) return 1;
   const hosts = hostsFrom(only);
   if (hosts.includes('claude')) {
     say('', 'Claude Code plugin:');
@@ -218,6 +223,36 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
     `  - ChatGPT desktop: Settings > Plugins > Add > + Add a marketplace > https://github.com/${DEFAULT_SOURCE}.git > Add marketplace, then install ${NAME}.`,
     `  - Optional defaults (model, effort, timeout): npx -y github:${DEFAULT_SOURCE} config --init, then edit ${userConfigPath()}`,
     '  - Try it: "Ask the council: <your question>"');
+  if (check.signIn.length) say('', 'Sign-in still needed before the council can answer:', ...check.signIn.map(p => `  - ${p}`));
+  return 0;
+}
+
+/**
+ * Update an installed plugin to the latest version: refresh the marketplace, then update the plugin, in
+ * Claude Code and in Codex. (`install` does the same when the plugin is already installed.)
+ */
+export async function update({ only, dryRun = false } = {}) {
+  say(`Updating ${NAME}${dryRun ? ' (dry run)' : ''}`, '', 'Checking prerequisites:');
+  const check = await prerequisites();
+  if (!check) return 1;
+  const notInstalled = error => new Error(`${error.message} If ${NAME} is not installed yet, run \`npx -y github:${DEFAULT_SOURCE} install\` instead.`);
+  const hosts = hostsFrom(only);
+  try {
+    if (hosts.includes('claude')) {
+      say('', 'Claude Code plugin:');
+      await step(check.exes.claude, ['plugin', 'marketplace', 'update', NAME], { dryRun });
+      await step(check.exes.claude, ['plugin', 'update', PLUGIN], { dryRun, tolerate: /latest|up to date/i });
+    }
+    if (hosts.includes('codex')) {
+      say('', 'Codex plugin:');
+      await step(check.exes.codex, ['plugin', 'marketplace', 'upgrade', NAME], { dryRun, tolerate: /local|not a git|nothing to upgrade/i });
+      await step(check.exes.codex, ['plugin', 'add', PLUGIN], { dryRun });
+    }
+  } catch (error) {
+    throw failureHint(error.message) ? error : notInstalled(error);
+  }
+  say('', 'Done. Fully quit and reopen Claude Code and Codex (and the desktop apps) to load the new version.',
+    'Claude Desktop and the ChatGPT desktop app update the plugin themselves under Settings > Plugins.');
   if (check.signIn.length) say('', 'Sign-in still needed before the council can answer:', ...check.signIn.map(p => `  - ${p}`));
   return 0;
 }

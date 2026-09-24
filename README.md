@@ -97,11 +97,25 @@ npx -y github:hamza-aziz-ai/codex-claude-council install --claude-desktop
 
 ### Update
 
-Run the installer again: it updates the marketplace and the plugin in both apps. Then fully quit and reopen Claude Code and Codex. `CHANGELOG.md` lists what changed.
+From the command line, on any OS:
 
-**On Windows, quit Codex and Claude first.** Close every Codex and Claude Code session, IDE extension, and the ChatGPT and Claude desktop apps, then run the installer. A running plugin from version 0.5.1 or earlier keeps its folder in use, and Codex then fails with *"failed to back up plugin cache entry: Access is denied. (os error 5)"*. From 0.5.2 the plugin no longer holds its folder, so later updates work while the apps are open.
+```bash
+npx -y github:hamza-aziz-ai/codex-claude-council update
+```
 
-To update one app by hand:
+It refreshes this repository's marketplace and updates the plugin to the latest version in Claude Code and in Codex. Then fully quit and reopen Claude Code and Codex. `CHANGELOG.md` lists what changed.
+
+```bash
+npx -y github:hamza-aziz-ai/codex-claude-council update --only claude   # or --only codex
+npx -y github:hamza-aziz-ai/codex-claude-council update --dry-run        # show the commands without running them
+codex-claude-council update                                             # if you installed the command globally
+```
+
+Running the installer again (the `curl`, `irm` or `npx … install` command above) also updates an installed plugin.
+
+**On Windows, quit Codex and Claude first.** Close every Codex and Claude Code session, IDE extension, and the ChatGPT and Claude desktop apps, then update. A running plugin from version 0.5.1 or earlier keeps its folder in use, and Codex then fails with *"failed to back up plugin cache entry: Access is denied. (os error 5)"*. From 0.5.2 the plugin no longer holds its folder, so later updates work while the apps are open.
+
+To update one app with its own CLI:
 
 ```bash
 claude plugin marketplace update codex-claude-council
@@ -290,7 +304,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - **`node` not found by a desktop app on macOS**: GUI apps don't read your shell profile, so Node installed with nvm may be invisible to them. Install Node from nodejs.org or Homebrew.
 - **CLI not found**: set `codex.command` / `claude.command` to the full path.
 - **"unknown option" / "unexpected argument"**: a CLI is too old for the council. Update it: `claude update`, or `npm install -g @openai/codex@latest`.
-- **Windows: "Access is denied (os error 5)" when installing or updating**: a running Codex or Claude app still has the plugin's files open. Quit them all (CLI sessions, IDE extensions, the ChatGPT and Claude desktop apps), then run the installer again. See [Update](#update).
+- **Windows: "Access is denied (os error 5)" when installing or updating**: a running Codex or Claude app still has the plugin's files open. Quit them all (CLI sessions, IDE extensions, the ChatGPT and Claude desktop apps), then run `npx -y github:hamza-aziz-ai/codex-claude-council update` (or the installer) again. See [Update](#update).
 
 ## Security and privacy
 

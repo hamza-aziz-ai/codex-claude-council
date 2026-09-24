@@ -43,6 +43,22 @@ test('the terminal lets both models read the git repository you are in, unless t
   assert.equal(call.args[call.args.indexOf('--tools') + 1], '', '--no-web leaves Claude no tools');
 });
 
+test('update refreshes the marketplace and the plugin in both apps', () => {
+  const result = cli(['update', '--dry-run']);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Updating codex-claude-council \(dry run\)/);
+  const commands = result.stdout.split('\n').filter(line => line.trim().startsWith('$ ')).map(line => line.trim().slice(2));
+  assert.deepEqual(commands, [
+    'claude plugin marketplace update codex-claude-council',
+    'claude plugin update codex-claude-council@codex-claude-council',
+    'codex plugin marketplace upgrade codex-claude-council',
+    'codex plugin add codex-claude-council@codex-claude-council',
+  ]);
+  assert.match(result.stdout, /Fully quit and reopen Claude Code and Codex/);
+  const codexOnly = cli(['update', '--dry-run', '--only', 'codex']).stdout;
+  assert.ok(codexOnly.includes('codex plugin add') && !codexOnly.includes('claude plugin'), codexOnly);
+});
+
 test('an install step that fails because files are in use says what to do', async () => {
   const { failureHint } = await import('../src/install.mjs');
   const codexOnWindows = 'Error: failed to back up plugin cache entry: Access is denied. (os error 5)';
