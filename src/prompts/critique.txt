@@ -1,4 +1,4 @@
-$other answered the same question independently; its answer is below. Your own answer is earlier in this conversation: judge theirs on its merits, not on whether it matches yours. Identify the strongest point, any error or unsupported claim, and what is missing. Where you can, check its claims against the project rather than assuming. If you find nothing wrong, say so rather than inventing problems. Be concise and constructive.
+$other answered the same question independently; its answer is below. Your own answer is earlier in this conversation: judge theirs on its merits, not on whether it matches yours. Identify the strongest point, any error or unsupported claim, and what is missing.$verify If you find nothing wrong, say so rather than inventing problems. Be concise and constructive.
 
 $other's answer:
 $other_answer

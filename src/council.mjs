@@ -56,6 +56,11 @@ export function accessNote(workspace) {
     : 'You have no tools and no access to files: answer from the text you are given.';
 }
 
+/** A sentence asking a model to check claims against the project, only when it can read one. */
+export function verifyNote(workspace) {
+  return workspace ? ' Where it matters, check claims against the project rather than assuming.' : '';
+}
+
 function checkOptions(tool, options) {
   const allowed = TOOL_OPTIONS[tool];
   const unknown = Object.keys(options).filter(key => !allowed.includes(key)).sort();
@@ -154,7 +159,8 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const access = accessNote(workspace);
     const answers = await bothSides((me, them) => prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }));
     progress('Each model is critiquing the other');
-    const critiques = await bothSides((me, them) => prompt('critique', { other: SPEAKER[them], other_answer: answers[them] }));
+    const verify = verifyNote(workspace);
+    const critiques = await bothSides((me, them) => prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify }));
     // The critiques are swapped: each model sees what the other said about its answer, and replies.
     progress('Each model is replying to the critique of its answer');
     const replies = await bothSides((me, them) => prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] }));
@@ -190,7 +196,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
         progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
         // The reviewer has not seen the drafter's reply yet; its own earlier objections are in its session.
         const context = round === 1 ? `${SPEAKER[drafter]}'s reply to your critique:\n${replies[drafter]}\n` : '';
-        const review = await ask(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes }));
+        const review = await ask(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify }));
         const agreed = readVerdict(review);
         rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
         progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);

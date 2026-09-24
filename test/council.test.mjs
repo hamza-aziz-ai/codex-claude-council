@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { realpathSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
 import { CLAUDE_ALLOWED, CLAUDE_DENIED, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
-import { accessNote, invoke, prompt } from '../src/council.mjs';
+import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
 let fake;
@@ -128,7 +128,7 @@ for (const synthesizer of ['claude', 'codex']) {
     for (const [me, them] of [['codex', 'claude'], ['claude', 'codex']]) {
       const [answer, critique, reply, ...rest] = callsOf(me);
       assert.equal(answer.input, prompt('answer', { question: 'q', access: accessNote(), self: NAME[me], other: NAME[them] }));
-      assert.equal(critique.input, prompt('critique', { other: NAME[them], other_answer: r[them] }), `${me} critiques ${them}'s answer`);
+      assert.equal(critique.input, prompt('critique', { other: NAME[them], other_answer: r[them], verify: '' }), `${me} critiques ${them}'s answer`);
       assert.equal(reply.input, prompt('reply', { other: NAME[them], other_critique: r[`${them}_critique`] }), `${me} replies to ${them}'s critique`);
       assert.deepEqual(rest.map(c => c.input), me === synthesizer ? [prompt('synthesize', { other: NAME[them], other_reply: r[`${them}_reply`] })] : []);
     }
@@ -173,6 +173,15 @@ test('a council with a workspace tells both models they can read the project, an
     assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace)));
     assert.match(accessNote(workspace), /can read the project at .*You cannot change anything/);
   }
+  // Only a model that can read the project is asked to check claims against it.
+  const kindOf = c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'review' : c.input.includes('answered the same question independently') ? 'critique' : 'other');
+  const checked = calls.filter(c => kindOf(c) !== 'other');
+  assert.equal(checked.length, 3, 'two critiques and one review');
+  for (const call of checked) assert.ok(call.input.includes(verifyNote(workspace)), kindOf(call));
+  fake.clearCalls();
+  await invoke('council_ask', 'q');
+  for (const call of fake.questionCalls()) assert.doesNotMatch(call.input, /project/, 'no workspace, so no mention of a project');
+  assert.equal(verifyNote(), '');
   const result = JSON.parse(await invoke('debate', 'q', { workspace: fake.dir }));
   assert.equal(result.settings.workspace, workspace);
 });
@@ -320,10 +329,10 @@ test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AG
   assert.deepEqual(kinds(calls).slice(6), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
   const [draft, review1, redraft, review2] = calls.slice(6).map(c => c.input);
   assert.equal(draft, prompt('draft', { other: 'Codex', other_reply: result.codex_reply }), 'the drafter gets the reply it has not seen');
-  assert.equal(review1, prompt('review', { other: 'Claude', context: `Claude's reply to your critique:\n${result.claude_reply}\n`, draft: result.rounds[0].draft, notes: 'none' }),
+  assert.equal(review1, prompt('review', { other: 'Claude', context: `Claude's reply to your critique:\n${result.claude_reply}\n`, draft: result.rounds[0].draft, notes: 'none', verify: '' }),
     'the reviewer gets the drafter\'s reply it has not seen, then the draft');
   assert.equal(redraft, prompt('redraft', { other: 'Codex', objections: result.rounds[0].review }), 'the redraft gets the objections');
-  assert.equal(review2, prompt('review', { other: 'Claude', context: '', draft: result.rounds[1].draft, notes: 'none' }),
+  assert.equal(review2, prompt('review', { other: 'Claude', context: '', draft: result.rounds[1].draft, notes: 'none', verify: '' }),
     'a later review gets only the new draft: the reviewer\'s earlier objections are in its session');
   assert.equal(result.settings.max_rounds, 5);
 }));
