@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 (2026-09-24)
 
 - New `update` command: `npx -y github:hamza-aziz-ai/codex-claude-council update` refreshes the marketplace and updates the plugin in Claude Code and Codex (`--only`, `--dry-run`). If an update step fails because the plugin is not installed, it says to run `install`.
 - README: installation steps brought up to date (requirements with install commands, what the installer does, passing options on Windows, an Update section, Windows "Access is denied" guidance).
