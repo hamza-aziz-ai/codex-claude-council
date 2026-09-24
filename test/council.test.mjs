@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { realpathSync } from 'node:fs';
+import { readFileSync as readFile, realpathSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
-import { CLAUDE_ALLOWED, CLAUDE_DENIED, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
+import { CLAUDE_ALLOWED, CLAUDE_DENIED, CLAUDE_TOOLS, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
@@ -73,16 +73,19 @@ test('with a workspace, both models run in the project folder and can read but n
   assert.equal(arg(codex1, '-C'), workspace);
   assert.equal(arg(codex1, '--sandbox'), 'read-only');
   assert.ok(configValues(codex2).includes('sandbox_mode="read-only"'));
-  assert.equal(arg(claude, '--tools'), 'Read,Grep,Glob,Bash');
+  // Claude has its file tools and the read-only git tools, and no shell.
+  assert.equal(arg(claude, '--tools'), CLAUDE_TOOLS);
+  assert.equal(CLAUDE_TOOLS, 'Read,Grep,Glob');
   const listed = flag => claude.args.slice(claude.args.indexOf(flag) + 1).filter((a, i, rest) => !rest.slice(0, i + 1).some(x => x.startsWith('--')));
-  assert.deepEqual(listed('--allowedTools'), CLAUDE_ALLOWED);
+  assert.deepEqual(listed('--allowedTools'), ['mcp__council-git']);
   assert.deepEqual(listed('--disallowedTools'), CLAUDE_DENIED);
-  assert.ok(CLAUDE_ALLOWED.every(rule => /^Bash\(git (log|diff|show|status|blame|ls-files|rev-parse|describe|shortlog)( \*)?\)$/.test(rule)), 'only read-only git commands');
-  // Options that would make an allowed git command write a file or read one outside the project.
-  for (const rule of ['Edit', 'Write', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)', 'Bash(*--contents*)',
-    'Bash(*--ignore-revs-file*)', 'Bash(git blame*-S*)', 'Bash(*--exclude-from*)', 'Bash(git ls-files*-X*)', 'Bash(* -O*)']) {
-    assert.ok(CLAUDE_DENIED.includes(rule), rule);
-  }
+  for (const tool of ['Bash', 'Edit', 'Write', 'NotebookEdit']) assert.ok(CLAUDE_DENIED.includes(tool), tool);
+  assert.deepEqual(CLAUDE_ALLOWED, ['mcp__council-git']);
+  const config = JSON.parse(readFile(arg(claude, '--mcp-config'), 'utf8'));
+  assert.deepEqual(Object.keys(config.mcpServers), ['council-git']);
+  assert.equal(config.mcpServers['council-git'].command, process.execPath);
+  assert.match(config.mcpServers['council-git'].args[0], /git-mcp\.mjs$/);
+  assert.equal(config.mcpServers['council-git'].args[1], workspace, 'the git tools are bound to this workspace');
 });
 
 test('council_ask: by default both models sign the final answer; overrides reach every call on their side only', async () => {
@@ -160,6 +163,24 @@ test('two councils at once in the same sessions take turns instead of interleavi
     const turns = callsOf(cli).map(c => (c.input.startsWith('You are ') ? 'answer' : 'turn'));
     assert.deepEqual(turns, ['answer', 'turn', 'turn', 'turn', 'answer', 'turn', 'turn', 'turn'], cli);
   }
+}));
+
+test('a council cancelled while it waits for a session lets go of the sessions it holds', () => withEnv({ FAKE_SLEEP_MS_CODEX: '3000' }, async () => {
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const slowCodex = askCodex('slow'); // holds the Codex session for about 3 s
+  await pause(300);
+  const controller = new AbortController();
+  // The council takes the Claude session, then waits for Codex.
+  const council = invoke('council_ask', 'q', {}, { signal: controller.signal });
+  await pause(300);
+  const cancelledAt = Date.now();
+  controller.abort();
+  await assert.rejects(council, /cancelled/);
+  assert.ok(Date.now() - cancelledAt < 1000, 'the council stops waiting at once');
+  assert.match(await askClaude('next'), /^claude/);
+  assert.ok(Date.now() - cancelledAt < 2000, 'the Claude session is free without waiting for the slow Codex call');
+  assert.match(await slowCodex, /^codex/);
+  assert.equal(fake.questionCalls().filter(c => c.input.startsWith('You are ')).length, 0, 'the council never sent a question');
 }));
 
 test('a council with a workspace tells both models they can read the project, and runs every call there', async () => {

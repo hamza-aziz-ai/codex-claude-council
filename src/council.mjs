@@ -52,7 +52,7 @@ export function checkWorkspace(value) {
 /** What a model is told about its access, in its first prompt for each question. */
 export function accessNote(workspace) {
   return workspace
-    ? `You can read the project at ${workspace}: open files, search, and run read-only git commands (log, diff, show, status, blame) to check facts before relying on them. You cannot change anything; writes are blocked. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
+    ? `You can read the project at ${workspace}: open files, search, and look at its git history, changes and blame (with your file and git tools) to check facts before relying on them. You cannot change anything; writes are blocked. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
     : 'You have no tools and no access to files: answer from the text you are given.';
 }
 
@@ -210,7 +210,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
       }
     }
     return { answer: draft, agreed: false, rounds_run: rounds.length, rounds, stopped_reason: stoppedReason, ...base };
-  });
+  }, { signal });
 }
 
 /** Plain-text answer for council_ask and the terminal. */

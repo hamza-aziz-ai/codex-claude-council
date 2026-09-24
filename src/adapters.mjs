@@ -2,7 +2,7 @@
 // Each side keeps one CLI session for as long as this process lives (for the MCP server, that is the
 // host's session), so a model remembers the discussion and what it has already read of the project.
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PACKAGE_ROOT, SIDES, loadConfig, resolveSide } from './config.mjs';
@@ -17,16 +17,13 @@ function options(config, signal, cwd) {
   return { cwd, env: { ...cleanEnv(config), ...READ_ONLY_ENV }, timeoutMs: Number(config.timeout_seconds) * 1000, signal };
 }
 
-// Claude reads the project with its file tools (confined to the working folder by --restricted) and
-// these git commands; any other command is refused (--permission-mode dontAsk). The deny rules close
-// the options that make an allowed command write a file (--output), run a program (--ext-diff) or read
-// a file outside the project (--no-index, blame --contents / -S / --ignore-revs-file, ls-files -X /
-// --exclude-from, diff -O / --orderfile). Checked against the real CLI.
-const GIT_READ_COMMANDS = ['log', 'diff', 'show', 'status', 'blame', 'ls-files', 'rev-parse', 'describe', 'shortlog'];
-export const CLAUDE_ALLOWED = GIT_READ_COMMANDS.flatMap(command => [`Bash(git ${command})`, `Bash(git ${command} *)`]);
-export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)',
-  'Bash(*--contents*)', 'Bash(*--ignore-revs-file*)', 'Bash(git blame*-S*)', 'Bash(*--exclude-from*)', 'Bash(git ls-files*-X*)',
-  'Bash(* -O*)', 'Bash(*--orderfile*)'];
+// Claude reads the project with its file tools (Read, Grep, Glob; confined to the working folder by
+// --restricted) and the read-only git tools of git-mcp.mjs, which check every path and revision. It has no
+// shell; anything else is refused (--permission-mode dontAsk).
+const GIT_SERVER = join(PACKAGE_ROOT, 'src', 'git-mcp.mjs');
+export const CLAUDE_TOOLS = 'Read,Grep,Glob';
+export const CLAUDE_ALLOWED = ['mcp__council-git'];
+export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash'];
 
 // One session per side, workspace and model. Calls to one session run one at a time.
 const sessions = new Map();
@@ -39,12 +36,30 @@ function sessionFor(side, workspace, model) {
   return sessions.get(key);
 }
 
-async function inSession(session, work) {
+// Wait for promise, or reject as soon as signal aborts.
+function untilDoneOrAborted(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new Error('cancelled'));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(() => { signal.removeEventListener('abort', onAbort); resolve(); });
+  });
+}
+
+// One call at a time per session. A caller cancelled while it waits leaves the queue at once; its place
+// passes on when the call before it finishes, so the calls behind it still never overlap.
+async function inSession(session, work, signal) {
   const previous = session.queue;
   let release;
   session.queue = new Promise(resolve => { release = resolve; });
   try {
-    await previous;
+    await untilDoneOrAborted(previous, signal);
+  } catch (error) {
+    previous.then(release);
+    throw error;
+  }
+  try {
     return await work();
   } finally {
     release();
@@ -57,10 +72,10 @@ async function inSession(session, work) {
  * Calls made inside pass { held: true }. Sessions are taken in a fixed order, so two councils cannot
  * each hold one and wait for the other.
  */
-export async function holdSessions(entries, work) {
+export async function holdSessions(entries, work, { signal } = {}) {
   const ordered = [...entries].sort((a, b) => a.side.localeCompare(b.side));
   const hold = index => (index === ordered.length ? work()
-    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model), () => hold(index + 1)));
+    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model), () => hold(index + 1), signal));
   return hold(0);
 }
 
@@ -69,6 +84,17 @@ function workingDir(session, workspace, prefix) {
   if (workspace) return workspace;
   if (!session.dir) keptDirs.add(session.dir = mkdtempSync(join(tmpdir(), prefix)));
   return session.dir;
+}
+
+// The MCP config that gives Claude the read-only git tools for one workspace, kept with its session.
+function gitToolsConfig(session, workspace) {
+  if (!session.mcpConfig) {
+    const dir = mkdtempSync(join(tmpdir(), 'council-claude-git-'));
+    keptDirs.add(dir);
+    session.mcpConfig = join(dir, 'mcp.json');
+    writeFileSync(session.mcpConfig, JSON.stringify({ mcpServers: { 'council-git': { type: 'stdio', command: process.execPath, args: [GIT_SERVER, workspace] } } }));
+  }
+  return session.mcpConfig;
 }
 
 /** Forget every session, so the next call to each side starts a new one. */
@@ -178,7 +204,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     if (!answer) throw new Error('codex returned an empty answer');
     return answer;
   });
-  return held ? call() : inSession(session, call);
+  return held ? call() : inSession(session, call, signal);
 }
 
 /**
@@ -197,8 +223,9 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
     if (problem) throw new Error(problem);
     const id = session.id ?? randomUUID();
     const args = ['-p', '--output-format', 'json', session.id ? '--resume' : '--session-id', id,
-      '--restricted', '--permission-mode', 'dontAsk', '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', EMPTY_MCP_CONFIG];
-    if (workspace) args.push('--tools', 'Read,Grep,Glob,Bash', '--allowedTools', ...CLAUDE_ALLOWED, '--disallowedTools', ...CLAUDE_DENIED);
+      '--restricted', '--permission-mode', 'dontAsk', '--disable-slash-commands', '--strict-mcp-config',
+      '--mcp-config', workspace ? gitToolsConfig(session, workspace) : EMPTY_MCP_CONFIG];
+    if (workspace) args.push('--tools', CLAUDE_TOOLS, '--allowedTools', ...CLAUDE_ALLOWED, '--disallowedTools', ...CLAUDE_DENIED);
     else args.push('--tools', '');
     if (chosen.model) args.push('--model', chosen.model);
     if (chosen.effort) args.push('--effort', chosen.effort);
@@ -212,5 +239,5 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
     }
     return answer;
   };
-  return held ? call() : inSession(session, call);
+  return held ? call() : inSession(session, call, signal);
 }

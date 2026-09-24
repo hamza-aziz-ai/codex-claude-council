@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 (2026-09-24)
+
+- **Security: Claude no longer runs git in a shell.** Denying risky git options by name could be bypassed: git accepts abbreviated options (`git blame --content /etc/passwd -- README.md` still read the file), and `git diff /etc/passwd README.md` compares an outside file without any option. Claude now has no shell at all. Instead, the plugin gives it read-only git tools (`src/git-mcp.mjs`: status, log, diff, show, a file at a revision, blame) that run git with a fixed argument list. Every path must be relative and stay inside the project, also through links, and always comes after `--`. Every revision is checked and can't start with `-`, so no argument can become an option or an outside file. External diff programs and textconv filters are off. Checked against the real Claude Code CLI: the git tools work, and outside paths, option-like revisions, the shell, Read outside the project and Write are all refused.
+- **A cancelled council lets go at once.** A council waiting for a session held by another call now stops waiting when it is cancelled, and releases any session it already holds, instead of holding it until the other call finishes.
+- **Windows: updating the Codex plugin no longer fails while Codex is running.** Codex starts the plugin's server with the plugin folder as its working folder, and Windows cannot move a folder that is in use, so `codex plugin add` failed with "Access is denied (os error 5)". The server now leaves that folder when it starts. The installer also explains this error if it still happens: quit the Codex and Claude apps, then run it again.
+
 ## 0.5.1 (2026-09-24)
 
 - Only a model that can read the project is asked to check claims against it. Without a workspace, the critique and review prompts no longer mention a project.
