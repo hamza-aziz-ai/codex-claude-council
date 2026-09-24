@@ -125,6 +125,30 @@ test('sign-in problems are reported with the fix', async () => {
   assert.equal(fake.questionCalls().length, 1, 'only the allowed call reached the model');
 });
 
+test('a council checks that both CLIs are signed in before sending anything', async () => {
+  const header = /needs both Codex and Claude Code signed in\. Nothing was sent to either model\./;
+  const cases = [
+    [{ FAKE_CODEX_AUTH: 'Not logged in' }, [/- Codex \(ChatGPT\): Codex is not signed in\. Run `codex login`/], /Claude Code:/],
+    [{ FAKE_CLAUDE_AUTH: '{"loggedIn":false}' }, [/- Claude Code: Claude Code is not signed in\. Run `claude auth login`/], /Codex \(ChatGPT\):/],
+    [{ FAKE_CODEX_AUTH: 'Not logged in', FAKE_CLAUDE_AUTH: '{"loggedIn":false}' }, [/codex login/, /claude auth login/], null],
+    [{ FAKE_CODEX_AUTH: 'Logged in using an API key - sk-proj-***' }, [/- Codex \(ChatGPT\): Codex is signed in with an API key/], /Claude Code:/],
+  ];
+  for (const [env, expected, absent] of cases) {
+    fake.clearCalls();
+    await withEnv(env, () => assert.rejects(invoke('debate', 'q', { max_rounds: 2 }), error => {
+      assert.match(error.message, header);
+      for (const pattern of expected) assert.match(error.message, pattern);
+      if (absent) assert.doesNotMatch(error.message, absent, 'only the side with a problem is named');
+      return true;
+    }));
+    assert.equal(fake.questionCalls().length, 0, `no model received the question (${JSON.stringify(env)})`);
+  }
+  fake.clearCalls();
+  fake.writeConfig({ claude: { command: `${fake.dir}/does-not-exist/claude` } });
+  await assert.rejects(invoke('council_ask', 'q'), /- Claude Code: claude CLI not found at/);
+  assert.equal(fake.questionCalls().length, 0, 'a missing CLI also stops the council before it starts');
+});
+
 test('API keys are removed from the CLI environment unless allowed', async () => {
   await withEnv({ OPENAI_API_KEY: 'sk-test', ANTHROPIC_API_KEY: 'sk-ant', CLAUDECODE: '1' }, async () => {
     const { cleanEnv } = await import('../src/process.mjs');

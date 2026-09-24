@@ -21,6 +21,15 @@ test('single-model and council commands with overrides', () => {
   assert.match(cli(['ask', 'Which?', '--codex-model', 'gpt-x', '--synthesizer', 'chatgpt']).stdout, /^codex\[gpt-x\|high\]/);
 });
 
+test('ask stops with a sign-in error when a CLI is signed out', () => {
+  const result = spawnSync(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'ask', 'Which?'], {
+    encoding: 'utf8', env: { ...process.env, ...fake.env, FAKE_CLAUDE_AUTH: '{"loggedIn":false}' },
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /needs both Codex and Claude Code signed in[\s\S]*- Claude Code: .*claude auth login/);
+  assert.equal(result.stdout, '');
+});
+
 test('wrong flags for a command are rejected', () => {
   const result = cli(['codex', 'q', '--codex-effort', 'low']);
   assert.equal(result.status, 1);

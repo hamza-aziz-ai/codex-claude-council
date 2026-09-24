@@ -37,7 +37,7 @@ The conversation goes both ways whoever writes the final answer, and from step 2
 | [Claude Code CLI](https://code.claude.com/docs/en/setup), signed in with a Claude Pro, Max, Team or Enterprise plan | `claude auth login` |
 | [Codex CLI](https://developers.openai.com/codex/cli), signed in with ChatGPT | `codex login` → *Sign in with ChatGPT* |
 
-Both CLIs are required. The installer checks for them first and stops, with install instructions, if either is missing.
+Both CLIs are required. The installer checks for them first and stops, with install instructions, if either is missing. Every council run also checks that both are signed in before it starts, and stops with the sign-in steps if either is not.
 
 ## Install
 
@@ -205,6 +205,7 @@ Run the doctor. It checks Node.js, both CLIs, their sign-ins and your effective 
 npx -y github:hamza-aziz-ai/codex-claude-council doctor
 ```
 
+- **"The council needs both Codex and Claude Code signed in"**: before every council run, both CLIs are checked, and nothing is sent to either model unless both are signed in. The message names each CLI with a problem and the fix: `codex login` (choose *Sign in with ChatGPT*) and/or `claude auth login`.
 - **"usage limit"**: your ChatGPT or Claude plan hit its limit. Wait for the reset or lower the effort.
 - **"timed out"**: raise `timeout_seconds` or lower the effort.
 - **Tools don't appear**: fully quit and reopen the app after installing. In Claude Desktop or the ChatGPT desktop app, check the plugin is installed and enabled under **Settings → Plugins**.

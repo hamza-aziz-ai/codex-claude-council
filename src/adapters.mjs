@@ -2,7 +2,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PACKAGE_ROOT, loadConfig, resolveSide } from './config.mjs';
+import { PACKAGE_ROOT, SIDES, loadConfig, resolveSide } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
 
 const EMPTY_MCP_CONFIG = join(PACKAGE_ROOT, 'src', 'empty-mcp.json');
@@ -42,6 +42,28 @@ export async function claudeSignInProblem(exe, config, opts = {}) {
     return 'Claude Code is using an API key. Run `claude auth login` with your Claude subscription, or set "allow_api_key_auth": true.';
   }
   return null;
+}
+
+const SIGN_IN_PROBLEM = { codex: codexSignInProblem, claude: claudeSignInProblem };
+const CLI_NAME = { codex: 'Codex (ChatGPT)', claude: 'Claude Code' };
+
+/**
+ * Before a council starts: check that both CLIs are installed and signed in, side by side.
+ * Throws one error naming every problem, so nothing is sent to either model until both are ready.
+ */
+export async function requireBothSignedIn(config = loadConfig(), { signal } = {}) {
+  const problems = await Promise.all(SIDES.map(async side => {
+    try {
+      return await SIGN_IN_PROBLEM[side](findExecutable(side, config[side].command), config, { signal });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      return error.message;
+    }
+  }));
+  const lines = SIDES.flatMap((side, i) => (problems[i] ? [`- ${CLI_NAME[side]}: ${problems[i]}`] : []));
+  if (lines.length) {
+    throw new Error(`The council needs both Codex and Claude Code signed in. Nothing was sent to either model.\n${lines.join('\n')}`);
+  }
 }
 
 export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal } = {}) {

@@ -38,5 +38,6 @@ Report whether they agreed (the tool says so at the end of its answer). If they 
 
 - A council run makes six CLI calls (answers, critiques, replies) plus two per agreement round: eight when the models agree on the first draft. At high effort it can take several minutes, and it counts against the user's ChatGPT and Claude plan limits.
 - Show the answer, not the mechanics. For `debate`, summarise the agreement and disagreements before quoting details.
+- `council_ask` and `debate` check that both CLIs are signed in before sending anything. If either is not, the tool fails with a message naming which one and its login command (`codex login` and choose "Sign in with ChatGPT", or `claude auth login`); relay those steps to the user and ask them to sign in, then try again.
 - If a tool reports a missing CLI, a sign-in problem or a usage limit, tell the user plainly and suggest `codex-claude-council doctor` (or `npx -y github:hamza-aziz-ai/codex-claude-council doctor`). Do not retry in a loop.
 - The server runs on the user's own computer. It does not work from cloud-only sessions without their machine.

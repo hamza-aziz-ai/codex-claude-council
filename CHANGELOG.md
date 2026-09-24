@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 (2026-09-24)
+
+- **Both sign-ins are checked before a council starts.** `council_ask` and `debate` (`ask` and `debate` in the terminal) first check, side by side, that the Codex CLI and the Claude Code CLI are installed and signed in. If either is not, the run stops before either model is sent anything, with one error naming each CLI that needs attention and how to sign in (`codex login`, `claude auth login`). Before, the two models started together, so the model that was signed in could already have been sent the question when the other one failed, and the error named only the first problem.
+
 ## 0.4.0 (2026-09-24)
 
 - **Each model now replies to the critique of its answer.** After the cross-critiques, the critiques are swapped: each model sees the other's critique of its own answer, accepts what is right and explains where it still disagrees. The final answer is written from the whole discussion (both answers, both critiques, both replies), in both directions whoever the synthesizer is.

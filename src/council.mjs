@@ -2,7 +2,7 @@
 // its answer, then either one synthesis (single pass) or a draft/review loop that runs until both agree.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { askClaude, askCodex } from './adapters.mjs';
+import { askClaude, askCodex, requireBothSignedIn } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 
 const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds'];
@@ -119,6 +119,9 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const [codexText, claudeText] = await together(signal, [task.codex(build('codex', 'claude')), task.claude(build('claude', 'codex'))]);
     return { codex: codexText, claude: claudeText };
   };
+
+  progress('Checking that Codex and Claude Code are both signed in');
+  await requireBothSignedIn(config, { signal });
 
   progress('Codex (ChatGPT) and Claude are answering independently');
   const answers = await bothSides(() => prompt('answer', { question }));
