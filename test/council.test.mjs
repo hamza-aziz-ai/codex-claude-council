@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync as readFile, realpathSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
-import { CLAUDE_ALLOWED, CLAUDE_DENIED, CLAUDE_TOOLS, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
+import { CLAUDE_ALLOWED, CLAUDE_DENIED, CLAUDE_TOOLS, CLAUDE_WEB, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
@@ -21,7 +21,7 @@ test('codex runs read-only, isolated from user config and rules, with model and 
   for (const flag of ['--json', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check']) assert.ok(call.args.includes(flag), flag);
   assert.ok(!call.args.includes('--ephemeral'), 'the session is kept so it can be resumed');
   assert.equal(arg(call, '--sandbox'), 'read-only');
-  assert.deepEqual(configValues(call), ['sandbox_mode="read-only"', 'approval_policy="never"', 'model_reasoning_effort=xhigh']);
+  assert.deepEqual(configValues(call), ['sandbox_mode="read-only"', 'approval_policy="never"', 'model_reasoning_effort=xhigh', 'web_search="live"']);
   assert.equal(arg(call, '-m'), 'gpt-test');
   assert.equal(call.args.at(-1), '-');
   assert.match(call.input, /こんにちは/);
@@ -31,7 +31,7 @@ test('claude runs restricted: no settings files, no MCP servers, nothing allowed
   const answer = await askClaude('Question?\nhello', { model: 'sonnet', effort: 'max' });
   assert.equal(answer, 'claude[sonnet|max] hello');
   const [call] = fake.questionCalls();
-  assert.equal(arg(call, '--tools'), '', 'no tools without a workspace; the empty value must survive quoting');
+  assert.equal(arg(call, '--tools'), 'WebSearch,WebFetch', 'without a workspace, only the web tools (on by default)');
   for (const flag of ['-p', '--restricted', '--disable-slash-commands', '--strict-mcp-config']) assert.ok(call.args.includes(flag), flag);
   assert.ok(!call.args.includes('--no-session-persistence'), 'the session is kept so it can be resumed');
   assert.equal(arg(call, '--permission-mode'), 'dontAsk');
@@ -73,11 +73,11 @@ test('with a workspace, both models run in the project folder and can read but n
   assert.equal(arg(codex1, '-C'), workspace);
   assert.equal(arg(codex1, '--sandbox'), 'read-only');
   assert.ok(configValues(codex2).includes('sandbox_mode="read-only"'));
-  // Claude has its file tools and the read-only git tools, and no shell.
-  assert.equal(arg(claude, '--tools'), CLAUDE_TOOLS);
+  // Claude has its file tools, the read-only git tools and the web tools, and no shell.
+  assert.equal(arg(claude, '--tools'), `${CLAUDE_TOOLS},WebSearch,WebFetch`);
   assert.equal(CLAUDE_TOOLS, 'Read,Grep,Glob');
   const listed = flag => claude.args.slice(claude.args.indexOf(flag) + 1).filter((a, i, rest) => !rest.slice(0, i + 1).some(x => x.startsWith('--')));
-  assert.deepEqual(listed('--allowedTools'), ['mcp__council-git']);
+  assert.deepEqual(listed('--allowedTools'), ['mcp__council-git', 'WebSearch', 'WebFetch']);
   assert.deepEqual(listed('--disallowedTools'), CLAUDE_DENIED);
   for (const tool of ['Bash', 'Edit', 'Write', 'NotebookEdit']) assert.ok(CLAUDE_DENIED.includes(tool), tool);
   assert.deepEqual(CLAUDE_ALLOWED, ['mcp__council-git']);
@@ -109,7 +109,7 @@ test('debate returns answers, critiques, replies, rounds and the settings used',
   assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
     'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null,
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true,
   });
   assert.equal(result.agreed, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);
@@ -130,8 +130,8 @@ for (const synthesizer of ['claude', 'codex']) {
     // Each model works in one session, so every prompt carries only what it has not seen yet.
     for (const [me, them] of [['codex', 'claude'], ['claude', 'codex']]) {
       const [answer, critique, reply, ...rest] = callsOf(me);
-      assert.equal(answer.input, prompt('answer', { question: 'q', access: accessNote(), self: NAME[me], other: NAME[them] }));
-      assert.equal(critique.input, prompt('critique', { other: NAME[them], other_answer: r[them], verify: '' }), `${me} critiques ${them}'s answer`);
+      assert.equal(answer.input, prompt('answer', { question: 'q', access: accessNote(undefined, true), self: NAME[me], other: NAME[them] }));
+      assert.equal(critique.input, prompt('critique', { other: NAME[them], other_answer: r[them], verify: verifyNote(undefined, true) }), `${me} critiques ${them}'s answer`);
       assert.equal(reply.input, prompt('reply', { other: NAME[them], other_critique: r[`${them}_critique`] }), `${me} replies to ${them}'s critique`);
       assert.deepEqual(rest.map(c => c.input), me === synthesizer ? [prompt('synthesize', { other: NAME[them], other_reply: r[`${them}_reply`] })] : []);
     }
@@ -191,20 +191,47 @@ test('a council with a workspace tells both models they can read the project, an
   assert.equal(calls.length, 8);
   for (const call of calls) assert.equal(call.cwd, workspace);
   for (const cli of ['codex', 'claude']) {
-    assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace)));
-    assert.match(accessNote(workspace), /can read the project at .*You cannot change anything/);
+    assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace, true)));
+    assert.match(accessNote(workspace, true), /can read the project at .*You cannot change anything/);
   }
   // Only a model that can read the project is asked to check claims against it.
   const kindOf = c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'review' : c.input.includes('answered the same question independently') ? 'critique' : 'other');
   const checked = calls.filter(c => kindOf(c) !== 'other');
   assert.equal(checked.length, 3, 'two critiques and one review');
-  for (const call of checked) assert.ok(call.input.includes(verifyNote(workspace)), kindOf(call));
+  for (const call of checked) assert.ok(call.input.includes(verifyNote(workspace, true)), kindOf(call));
   fake.clearCalls();
   await invoke('council_ask', 'q');
   for (const call of fake.questionCalls()) assert.doesNotMatch(call.input, /project/, 'no workspace, so no mention of a project');
   assert.equal(verifyNote(), '');
+  assert.equal(verifyNote(undefined, true), ' Where it matters, check claims against reliable sources on the web rather than assuming.');
   const result = JSON.parse(await invoke('debate', 'q', { workspace: fake.dir }));
   assert.equal(result.settings.workspace, workspace);
+});
+
+test('web access: on by default for both models, off per call or in the config', async () => {
+  const lastOf = cli => fake.questionCalls().filter(c => c.cli === cli).at(-1);
+  await invoke('council_ask', 'q');
+  assert.ok(configValues(lastOf('codex')).includes('web_search="live"'), 'Codex searches the web live');
+  assert.equal(arg(lastOf('claude'), '--tools'), 'WebSearch,WebFetch');
+  assert.match(fake.questionCalls().find(c => c.input.startsWith('You are ')).input, /You can also search the web/);
+  for (const turnOff of [() => invoke('council_ask', 'q', { web_search: false }), () => { fake.writeConfig({ web_search: false }); return invoke('council_ask', 'q'); }]) {
+    fake.clearCalls();
+    resetSessions();
+    await turnOff();
+    for (const call of fake.questionCalls().filter(c => c.cli === 'codex')) assert.ok(configValues(call).includes('web_search="disabled"'));
+    for (const call of fake.questionCalls().filter(c => c.cli === 'claude')) {
+      assert.equal(arg(call, '--tools'), '', 'no tools at all: the empty value must survive quoting');
+      assert.ok(!call.args.includes('--allowedTools'));
+      assert.ok(!call.args.some(a => CLAUDE_WEB.includes(a)));
+    }
+    assert.match(fake.questionCalls().find(c => c.input.startsWith('You are ')).input, /You have no internet access/);
+  }
+  fake.writeConfig();
+  assert.equal(JSON.parse(await invoke('debate', 'q', { web_search: false })).settings.web_search, false);
+  fake.clearCalls();
+  await invoke('ask_claude', 'q', { web_search: false });
+  assert.equal(arg(fake.questionCalls()[0], '--tools'), '');
+  await assert.rejects(invoke('council_ask', 'q', { web_search: 'yes' }), /web_search must be true or false/);
 });
 
 test('an invalid workspace is rejected before any CLI runs', async () => {
@@ -350,10 +377,10 @@ test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AG
   assert.deepEqual(kinds(calls).slice(6), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
   const [draft, review1, redraft, review2] = calls.slice(6).map(c => c.input);
   assert.equal(draft, prompt('draft', { other: 'Codex', other_reply: result.codex_reply }), 'the drafter gets the reply it has not seen');
-  assert.equal(review1, prompt('review', { other: 'Claude', context: `Claude's reply to your critique:\n${result.claude_reply}\n`, draft: result.rounds[0].draft, notes: 'none', verify: '' }),
+  assert.equal(review1, prompt('review', { other: 'Claude', context: `Claude's reply to your critique:\n${result.claude_reply}\n`, draft: result.rounds[0].draft, notes: 'none', verify: verifyNote(undefined, true) }),
     'the reviewer gets the drafter\'s reply it has not seen, then the draft');
   assert.equal(redraft, prompt('redraft', { other: 'Codex', objections: result.rounds[0].review }), 'the redraft gets the objections');
-  assert.equal(review2, prompt('review', { other: 'Claude', context: '', draft: result.rounds[1].draft, notes: 'none', verify: '' }),
+  assert.equal(review2, prompt('review', { other: 'Claude', context: '', draft: result.rounds[1].draft, notes: 'none', verify: verifyNote(undefined, true) }),
     'a later review gets only the new draft: the reviewer\'s earlier objections are in its session');
   assert.equal(result.settings.max_rounds, 5);
 }));

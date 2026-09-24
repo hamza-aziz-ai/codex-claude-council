@@ -6,10 +6,10 @@ import { isAbsolute, join } from 'node:path';
 import { askClaude, askCodex, holdSessions, requireBothSignedIn } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 
-const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace'];
+const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search'];
 export const TOOL_OPTIONS = Object.freeze({
-  ask_codex: ['model', 'effort', 'workspace'],
-  ask_claude: ['model', 'effort', 'workspace'],
+  ask_codex: ['model', 'effort', 'workspace', 'web_search'],
+  ask_claude: ['model', 'effort', 'workspace', 'web_search'],
   council_ask: COUNCIL_OPTIONS,
   debate: COUNCIL_OPTIONS,
 });
@@ -50,15 +50,20 @@ export function checkWorkspace(value) {
 }
 
 /** What a model is told about its access, in its first prompt for each question. */
-export function accessNote(workspace) {
-  return workspace
+export function accessNote(workspace, web = false) {
+  const files = workspace
     ? `You can read the project at ${workspace}: open files, search, and look at its git history, changes and blame (with your file and git tools) to check facts before relying on them. You cannot change anything; writes are blocked. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
-    : 'You have no tools and no access to files: answer from the text you are given.';
+    : 'You have no access to files: work from the text you are given.';
+  const internet = web
+    ? ' You can also search the web and read web pages: use them for facts that change or that you are unsure of (versions, APIs, docs, error messages), prefer primary sources such as official documentation, and say where a fact came from.'
+    : ' You have no internet access.';
+  return files + internet;
 }
 
-/** A sentence asking a model to check claims against the project, only when it can read one. */
-export function verifyNote(workspace) {
-  return workspace ? ' Where it matters, check claims against the project rather than assuming.' : '';
+/** A sentence asking a model to check claims against what it can reach: the project and/or the web. */
+export function verifyNote(workspace, web = false) {
+  const sources = [workspace && 'the project', web && 'reliable sources on the web'].filter(Boolean).join(' or ');
+  return sources ? ` Where it matters, check claims against ${sources} rather than assuming.` : '';
 }
 
 function checkOptions(tool, options) {
@@ -70,6 +75,12 @@ function checkOptions(tool, options) {
     if (key === 'max_rounds') {
       const rounds = parseMaxRounds(value);
       if (rounds !== undefined) clean.max_rounds = rounds;
+      continue;
+    }
+    if (key === 'web_search') {
+      if (value === undefined || value === null) continue;
+      if (typeof value !== 'boolean') throw new Error('web_search must be true or false');
+      clean.web_search = value;
       continue;
     }
     if (value === undefined || value === null) continue;
@@ -126,8 +137,9 @@ export function splitDraft(text) {
  * maxRounds: 0 for no limit, N for at most N draft/review rounds; default from config (null there = single pass).
  * synthesizer: "claude" or "codex" writes the final answer (drafts, in the loop); default from config.
  * workspace: the project folder both models may read (never write); omit for no file access.
+ * webSearch: whether both models may search the web; default from config.
  */
-export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace } = {}, { signal, onProgress } = {}) {
+export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
   workspace = workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace);
   const config = loadConfig();
@@ -135,9 +147,10 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   const writer = synthesizer === undefined ? config.synthesizer : sideName(synthesizer);
   if (!writer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
   const settings = { codex: resolveSide('codex', codex, config), claude: resolveSide('claude', claude, config) };
+  const web = webSearch ?? config.web_search;
   const task = {
-    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, held: true }),
-    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, held: true }),
+    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, held: true }),
+    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, held: true }),
   };
   // The council holds both sessions from start to finish (see holdSessions).
   const held = [{ side: 'codex', workspace, model: settings.codex.model }, { side: 'claude', workspace, model: settings.claude.model }];
@@ -156,10 +169,10 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
 
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
-    const access = accessNote(workspace);
+    const access = accessNote(workspace, web);
     const answers = await bothSides((me, them) => prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }));
     progress('Each model is critiquing the other');
-    const verify = verifyNote(workspace);
+    const verify = verifyNote(workspace, web);
     const critiques = await bothSides((me, them) => prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify }));
     // The critiques are swapped: each model sees what the other said about its answer, and replies.
     progress('Each model is replying to the critique of its answer');
@@ -167,7 +180,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const base = {
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
-      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null },
+      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web },
     };
 
     if (maxRounds === undefined) {
@@ -231,12 +244,13 @@ export async function invoke(tool, question, options = {}, { signal, onProgress 
   question = checkQuestion(question);
   const clean = checkOptions(tool, options || {});
   const { workspace } = clean;
-  const single = prompt('ask', { question, access: accessNote(workspace) });
-  if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, { signal, workspace });
-  if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, { signal, workspace });
+  const web = clean.web_search ?? loadConfig().web_search;
+  const single = prompt('ask', { question, access: accessNote(workspace, web) });
+  if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, { signal, workspace, web });
+  if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, { signal, workspace, web });
   const side = name => ({ model: clean[`${name}_model`], effort: clean[`${name}_effort`] });
   const result = await debate(question,
-    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace },
+    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search },
     { signal, onProgress });
   return tool === 'council_ask' ? councilText(result) : JSON.stringify(result, null, 2);
 }

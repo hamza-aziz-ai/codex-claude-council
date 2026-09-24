@@ -18,6 +18,7 @@ test('packaged defaults apply when there is no user config', () => withUserConfi
   assert.equal(config.timeout_seconds, 600);
   assert.equal(config.synthesizer, 'claude', 'Claude writes the final answer by default');
   assert.equal(config.max_rounds, 3, 'both models must agree by default, within 3 rounds');
+  assert.equal(config.web_search, true, 'both models may search the web by default');
   assert.deepEqual(resolveSide('codex', {}, config), { model: null, effort: 'high' });
   assert.deepEqual(resolveSide('claude', {}, config), { model: null, effort: 'high' });
 }));
@@ -52,6 +53,8 @@ test('broken config files give a clear error', () => {
   withUserConfig({ synthesizer: 'gemini' }, () => assert.throws(() => loadConfig(), /synthesizer/));
   withUserConfig({ synthesizer: 'ChatGPT' }, () => assert.equal(loadConfig().synthesizer, 'codex'));
   withUserConfig({ max_rounds: null }, () => assert.equal(loadConfig().max_rounds, null));
+  withUserConfig({ web_search: false }, () => assert.equal(loadConfig().web_search, false));
+  withUserConfig({ web_search: 'no' }, () => assert.throws(() => loadConfig(), /web_search must be true or false/));
   withUserConfig({ max_rounds: 0 }, () => assert.equal(loadConfig().max_rounds, 0));
   for (const bad of [-1, 1.5, '2', true]) withUserConfig({ max_rounds: bad }, () => assert.throws(() => loadConfig(), /config: max_rounds/));
   withUserConfig({ timeout_seconds: 0 }, () => assert.throws(() => loadConfig(), /timeout_seconds/));
