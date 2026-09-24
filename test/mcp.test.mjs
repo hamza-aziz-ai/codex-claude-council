@@ -47,11 +47,11 @@ test('initialize reports the server and tool capability', async () => {
 test('tools/list exposes four tools with per-tool model/effort inputs', async () => {
   const { result } = await request('tools/list', {});
   const tools = Object.fromEntries(result.tools.map(tool => [tool.name, tool.inputSchema]));
-  const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace'];
+  const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search'];
   assert.deepEqual(Object.keys(tools).sort(), ['ask_claude', 'ask_codex', 'council_ask', 'debate']);
   assert.deepEqual(Object.keys(tools.council_ask.properties), councilFields);
   assert.deepEqual(Object.keys(tools.debate.properties), councilFields);
-  assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort', 'workspace']);
+  assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort', 'workspace', 'web_search']);
   assert.deepEqual(tools.ask_codex.properties.effort.enum, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
   assert.deepEqual(tools.ask_claude.properties.effort.enum, ['low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual(tools.debate.properties.synthesizer.enum, ['claude', 'codex']);

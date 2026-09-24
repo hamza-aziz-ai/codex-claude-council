@@ -29,6 +29,7 @@ Model and effort (omit to use your config):
   all four:        --workspace <dir>  project folder both models can read (never change);
                                       default: the git repository you are in, if any
                    --no-workspace     no file access at all
+                   --no-web           no web search or web pages (default: on, "web_search" in the config)
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install options:
@@ -51,6 +52,7 @@ const OPTIONS = {
   'max-rounds': { type: 'string' },
   workspace: { type: 'string' },
   'no-workspace': { type: 'boolean' },
+  'no-web': { type: 'boolean' },
   synthesizer: { type: 'string' },
   only: { type: 'string' },
   source: { type: 'string' },
@@ -108,6 +110,7 @@ async function main() {
     : ['model', 'effort'].filter(key => values[key] !== undefined);
   if (wrong.length) throw new Error(`${commandName} does not take --${wrong.join(', --')} (see --help)`);
   if (values.workspace !== undefined && values['no-workspace']) throw new Error('use --workspace or --no-workspace, not both');
+  if (values['no-web']) pairs.web_search = false;
   pairs.workspace = values['no-workspace'] ? undefined : values.workspace !== undefined ? resolve(values.workspace) : gitRoot(process.cwd());
   const options = Object.fromEntries(Object.entries(pairs).filter(([, value]) => value !== undefined));
   const onProgress = message => process.stderr.write(`[council] ${message}\n`);

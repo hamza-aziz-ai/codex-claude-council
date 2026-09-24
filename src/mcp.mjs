@@ -37,10 +37,15 @@ const workspaceField = {
     + 'git history, changes and blame) but never change it. Pass it whenever the question is '
     + 'about the code, a change, a fix, an error or logs in this project. Omit only for questions unrelated to any project.',
 };
+const webField = {
+  type: 'boolean',
+  description: 'Optional: whether the models may search the web and read web pages. Omit to use the configured default (on unless the user changed it). '
+    + 'Pass false only when the user asks for no internet access.',
+};
 const councilFields = {
   codex_model: modelField('codex'), codex_effort: effortField('codex'),
   claude_model: modelField('claude'), claude_effort: effortField('claude'),
-  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField,
+  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField, web_search: webField,
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
@@ -58,12 +63,12 @@ export const TOOLS = [
   {
     name: 'ask_codex', title: 'Ask Codex (ChatGPT) only',
     description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField }), annotations,
+    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField }), annotations,
   },
   {
     name: 'ask_claude', title: 'Ask Claude only',
     description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField }), annotations,
+    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField }), annotations,
   },
 ];
 

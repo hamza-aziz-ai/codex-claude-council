@@ -17,6 +17,8 @@ This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign
 
 When you are working in a project, always pass `workspace`: the absolute path of the project folder (your working directory). Both models can then read it themselves: open files, search, and look at git history, changes and blame (log, diff, show, status, blame). Neither can change anything. So in `question`, point them at what matters (files, functions, the failing test, the error or log excerpt, the change you made) instead of pasting whole files. They cannot see this conversation, so state the task and any context that is not in the project, such as an error message or a log you saw.
 
+Both models can also search the web and read web pages (on by default), so they can check current versions, APIs and docs. Pass `web_search: false` only when the user asks for no internet access.
+
 Omit `workspace` only for questions unrelated to any project; the models then have no file access, so quote everything they need in `question`.
 
 Each model keeps one session for as long as this session runs: it remembers earlier council questions and what it has already read, so a follow-up question can refer to the earlier discussion.

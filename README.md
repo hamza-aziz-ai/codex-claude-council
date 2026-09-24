@@ -31,6 +31,8 @@ The conversation goes both ways whoever writes the final answer, and from step 2
 
 **Both models can read your project.** In a coding session, both models work in your project folder (the `workspace`). They can open files, search, and look at git history, changes and blame (`log`, `diff`, `show`, `status`, `blame`) to check facts about the code, a change, a fix or a log before relying on it. **Neither can change anything:** Codex runs in its read-only sandbox, enforced by the operating system, and Claude Code has only read tools and a read-only git tool, with no shell; everything else is refused.
 
+**Both models can search the web.** Codex uses its built-in live web search and Claude uses WebSearch and WebFetch, so they can check current versions, APIs, docs and error messages instead of relying on memory. It is on by default; pass `web_search: false` for one question, `--no-web` in the terminal, or set `"web_search": false` in your config to turn it off.
+
 **Each model keeps one session.** Each side keeps a single Codex / Claude Code session for as long as your host session runs, so it remembers earlier questions, the discussion and what it has already read, instead of reading the project again for every prompt. Each prompt carries only what that model has not seen yet. When you start a new Claude Code or Codex session, the council starts new sessions too.
 
 ## Requirements
@@ -148,8 +150,8 @@ For the old single pass (the synthesizer writes the final answer alone after the
 
 | Tool | Optional inputs |
 |---|---|
-| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace` |
-| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace` |
+| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace`, `web_search` |
+| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search` |
 
 `workspace` is the absolute path of the project folder both models may read. In Claude Code and Codex the plugin's skill tells the host to pass the folder you are working in.
 
@@ -170,6 +172,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --effort low
 npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet --effort max
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --workspace ~/code/app  # read this project
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no file access
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web                # no web search
 ```
 
 In the terminal, both models read the git repository you run the command from (if any) unless you pass `--workspace` or `--no-workspace`. Each command is a new pair of sessions that lasts for that run.
@@ -189,6 +192,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
   "timeout_seconds": 600,
   "synthesizer": "claude",
   "max_rounds": 3,
+  "web_search": true,
   "allow_api_key_auth": false,
   "codex":  { "command": null, "model": null, "effort": "high" },
   "claude": { "command": null, "model": null, "effort": "high" }
@@ -199,6 +203,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 |---|---|
 | `timeout_seconds` | limit for each CLI call |
 | `synthesizer` | which model writes the final answer: `claude` (default) or `codex` (ChatGPT) |
+| `web_search` | whether both models may search the web and read pages: `true` (default) or `false` |
 | `max_rounds` | default limit on draft/review rounds: `3` (default), `0` for no limit, `null` for a single pass without agreement |
 | `codex.model`, `claude.model` | default model; `null` uses the CLI's own default |
 | `codex.effort`, `claude.effort` | default effort |
@@ -227,6 +232,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - Everything runs on your computer. Your question goes to OpenAI and Anthropic through their official CLIs, under your own accounts.
 - **Neither model can change your files.** Codex runs `codex exec` in its **read-only sandbox**, enforced by the operating system, ignoring your `~/.codex/config.toml` and `.rules` files (so no plugins, hooks or MCP servers load). Claude Code runs with `--restricted` (no user, project or local settings, so no hooks, plugins or allow rules from them), no skills, no shell, and `--permission-mode dontAsk`, so it can use only its read tools (Read, Grep, Glob, confined to the project) and this plugin's read-only git tools (`src/git-mcp.mjs`: status, log, diff, show, a file at a revision, blame). Those run git with a fixed argument list and no shell; every path must stay inside the project (also through links) and every revision is checked, so no git option can write a file or read one outside the project.
 - **What they can read.** With a `workspace`, whatever either model chooses to read in that project is sent to OpenAI or Anthropic, as when you paste it. Claude's file tools are confined to the project folder. Codex's read-only sandbox lets it read other files on your computer too, as Codex itself does by default. Without a `workspace`, Claude has no tools and Codex runs in an empty folder.
+- **Web access.** With `web_search` on (the default), Codex's web search runs on OpenAI's side (its sandbox still has no network for commands), and Claude can search and fetch web pages. Your question and what the models read can shape their search queries and the pages they open. With a `workspace` as well, text in the project that tries to instruct the model (a prompt injection) could in principle get it to send project content to a website, for example in a URL it fetches. For sensitive projects, turn web access off with `web_search: false` or `"web_search": false` in your config.
 - **Sessions.** The councils' sessions are saved by the CLIs like any other session, so they appear in `claude --resume` and `codex resume` for that folder.
 - API-key environment variables are removed before the CLIs start, so calls use your subscriptions rather than per-token API billing. Codex must be signed in with ChatGPT and Claude Code with a Claude subscription unless you set `allow_api_key_auth`.
 - A plugin with a local MCP server runs with your user permissions. This one is about 1,000 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.

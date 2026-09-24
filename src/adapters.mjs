@@ -24,6 +24,8 @@ const GIT_SERVER = join(PACKAGE_ROOT, 'src', 'git-mcp.mjs');
 export const CLAUDE_TOOLS = 'Read,Grep,Glob';
 export const CLAUDE_ALLOWED = ['mcp__council-git'];
 export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash'];
+// With web access, Claude may also search the web and fetch pages.
+export const CLAUDE_WEB = ['WebSearch', 'WebFetch'];
 
 // One session per side, workspace and model. Calls to one session run one at a time.
 const sessions = new Map();
@@ -173,9 +175,10 @@ function codexThreadId(stdout) {
 
 /**
  * workspace: the project folder the model may read (never write), or undefined for no file access.
- * Codex always runs in its read-only sandbox, enforced by the operating system.
+ * web: whether it may search the web (default: the config's web_search). Codex's web search runs on
+ * OpenAI's side; its sandbox stays read-only with no network for commands.
  */
-export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, held = false } = {}) {
+export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, held = false } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model);
@@ -191,6 +194,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
       '-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="never"'];
     if (chosen.model) common.push('-m', chosen.model);
     if (chosen.effort) common.push('-c', `model_reasoning_effort=${chosen.effort}`);
+    common.push('-c', `web_search="${web ? 'live' : 'disabled'}"`);
     common.push('--output-last-message', answerFile);
     const args = session.id
       ? ['exec', 'resume', ...common, session.id, '-']
@@ -208,11 +212,12 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
 }
 
 /**
- * workspace: the project folder the model may read (never write), or undefined for no tools at all.
+ * workspace: the project folder the model may read (never write), or undefined for no file access.
+ * web: whether it may search the web and fetch pages (default: the config's web_search).
  * --restricted ignores user, project and local settings (so no hooks, plugins or allow rules from them)
  * and confines the file tools to the working folder; dontAsk refuses anything not allowed here.
  */
-export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, held = false } = {}) {
+export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, held = false } = {}) {
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
   const session = sessionFor('claude', workspace, chosen.model);
@@ -225,8 +230,11 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
     const args = ['-p', '--output-format', 'json', session.id ? '--resume' : '--session-id', id,
       '--restricted', '--permission-mode', 'dontAsk', '--disable-slash-commands', '--strict-mcp-config',
       '--mcp-config', workspace ? gitToolsConfig(session, workspace) : EMPTY_MCP_CONFIG];
-    if (workspace) args.push('--tools', CLAUDE_TOOLS, '--allowedTools', ...CLAUDE_ALLOWED, '--disallowedTools', ...CLAUDE_DENIED);
-    else args.push('--tools', '');
+    const tools = [...(workspace ? [CLAUDE_TOOLS] : []), ...(web ? CLAUDE_WEB : [])];
+    const allowed = [...(workspace ? CLAUDE_ALLOWED : []), ...(web ? CLAUDE_WEB : [])];
+    args.push('--tools', tools.join(','));
+    if (allowed.length) args.push('--allowedTools', ...allowed);
+    args.push('--disallowedTools', ...CLAUDE_DENIED);
     if (chosen.model) args.push('--model', chosen.model);
     if (chosen.effort) args.push('--effort', chosen.effort);
     const result = await run(exe, args, { ...opts, input: prompt });

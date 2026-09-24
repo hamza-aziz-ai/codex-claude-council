@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (2026-09-24)
+
+- **Both models can search the web.** Codex runs with its live web search (`-c web_search="live"`), which runs on OpenAI's side; its sandbox stays read-only, with no network for commands. Claude gets WebSearch and WebFetch. Their first prompt for each question says they can use the web for facts that change or that they are unsure of, prefer primary sources, and say where a fact came from. The critique and review prompts ask them to check claims against the web as well as the project. Checked against the real Claude Code CLI: both web tools work under `--restricted` and `dontAsk`, while the shell and Write stay unavailable.
+- On by default. Turn it off with `web_search: false` on any tool, `--no-web` in the terminal, or `"web_search": false` in the config. `debate` reports it in `settings`.
+- With web access and a workspace together, text in the project could in principle try to get a model to send project content to a website. See Security and privacy in the README; turn web access off for sensitive projects.
+
 ## 0.5.2 (2026-09-24)
 
 - **Security: Claude no longer runs git in a shell.** Denying risky git options by name could be bypassed: git accepts abbreviated options (`git blame --content /etc/passwd -- README.md` still read the file), and `git diff /etc/passwd README.md` compares an outside file without any option. Claude now has no shell at all. Instead, the plugin gives it read-only git tools (`src/git-mcp.mjs`: status, log, diff, show, a file at a revision, blame) that run git with a fixed argument list. Every path must be relative and stay inside the project, also through links, and always comes after `--`. Every revision is checked and can't start with `-`, so no argument can become an option or an outside file. External diff programs and textconv filters are off. Checked against the real Claude Code CLI: the git tools work, and outside paths, option-like revisions, the shell, Read outside the project and Write are all refused.

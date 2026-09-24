@@ -37,6 +37,10 @@ test('the terminal lets both models read the git repository you are in, unless t
   assert.equal(cwdOfLastCall(['claude', 'q', '--workspace', fake.dir]), realpathSync(fake.dir));
   assert.match(cwdOfLastCall(['codex', 'q', '--no-workspace']), /council-codex-/);
   assert.match(cli(['codex', 'q', '--workspace', fake.dir, '--no-workspace']).stderr, /not both/);
+  fake.clearCalls();
+  assert.equal(cli(['claude', 'q', '--no-web', '--no-workspace']).status, 0);
+  const call = fake.questionCalls().at(-1);
+  assert.equal(call.args[call.args.indexOf('--tools') + 1], '', '--no-web leaves Claude no tools');
 });
 
 test('an install step that fails because files are in use says what to do', async () => {
