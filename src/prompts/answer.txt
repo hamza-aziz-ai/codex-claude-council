@@ -1,4 +1,4 @@
-Answer this question independently and concisely. State uncertainty when it matters. Do not call tools.
+You are $self, and you are discussing a new question with another AI model, $other. First answer it independently and concisely; you will see $other's answer afterwards. State uncertainty when it matters. $access
 
 Question:
 $question

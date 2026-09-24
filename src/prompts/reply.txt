@@ -1,16 +1,4 @@
-You and another AI model answered the question below independently, then each critiqued the other's answer. Both critiques are shown below. Read the other model's critique of your answer with an open mind: the aim is for the two of you to reach the right answer together, not to defend your first one. Reply to it point by point: accept each point that is correct and say how your answer changes; where you still disagree, explain why, with reasons the other model can check. If the critique found nothing of substance, say so. If their answer or critique changes your view of your own critique, say so too. Finish with your revised answer, briefly. Do not call tools.
+$other reviewed your answer; its critique is below (your critique of its answer is earlier in this conversation). Read it with an open mind: the aim is for the two of you to reach the right answer together, not to defend your first one. Reply point by point: accept each point that is correct and say how your answer changes; where you still disagree, explain why, with reasons $other can check. If the critique found nothing of substance, say so. If its answer or critique changes your view of your own critique, say so too. Finish with your revised answer, briefly.
 
-Question:
-$question
-
-Your answer:
-$own_answer
-
-The other model's answer:
-$other_answer
-
-Your critique of the other model's answer:
-$own_critique
-
-The other model's critique of your answer:
+$other's critique of your answer:
 $other_critique

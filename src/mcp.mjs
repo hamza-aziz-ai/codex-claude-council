@@ -31,17 +31,23 @@ const synthesizerField = {
   description: 'Optional: which model writes the final answer ("codex" is ChatGPT). With max_rounds it drafts the joint answer '
     + 'and the other model reviews it. Omit to use the configured default (Claude unless the user changed it).',
 };
+const workspaceField = {
+  type: 'string',
+  description: 'Absolute path of the project folder you are working in. Both models can then read it (files, search, '
+    + 'read-only git commands such as log, diff, show and blame) but never change it. Pass it whenever the question is '
+    + 'about the code, a change, a fix, an error or logs in this project. Omit only for questions unrelated to any project.',
+};
 const councilFields = {
   codex_model: modelField('codex'), codex_effort: effortField('codex'),
   claude_model: modelField('claude'), claude_effort: effortField('claude'),
-  synthesizer: synthesizerField, max_rounds: roundsField,
+  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField,
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
 export const TOOLS = [
   {
     name: 'council_ask', title: 'Ask the Codex–Claude council',
-    description: 'Ask Codex (ChatGPT) and Claude independently; each critiques the other\'s answer, then replies to the critique of its own. They then draft and review one final answer until both agree with it. Takes minutes at high effort. Optional per-side model/effort overrides.',
+    description: 'Ask Codex (ChatGPT) and Claude independently; each critiques the other\'s answer, then replies to the critique of its own. They then draft and review one final answer until both agree with it. With workspace, both can read the project (never change it). Each model keeps its session between calls. Takes minutes at high effort. Optional per-side model/effort overrides.',
     inputSchema: schema(councilFields), annotations,
   },
   {
@@ -52,18 +58,20 @@ export const TOOLS = [
   {
     name: 'ask_codex', title: 'Ask Codex (ChatGPT) only',
     description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex') }), annotations,
+    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField }), annotations,
   },
   {
     name: 'ask_claude', title: 'Ask Claude only',
     description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude') }), annotations,
+    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField }), annotations,
   },
 ];
 
 const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
   + 'Pass max_rounds only when the user asks for a number of rounds (0 = until they agree, with no limit). '
+  + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they cannot change it. '
+  + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes.';
 
 export function serve({ input = process.stdin, output = process.stdout } = {}) {

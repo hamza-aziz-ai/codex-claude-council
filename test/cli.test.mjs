@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { ROOT, setup } from './helpers.mjs';
@@ -28,6 +29,14 @@ test('ask stops with a sign-in error when a CLI is signed out', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /needs both Codex and Claude Code signed in[\s\S]*- Claude Code: .*claude auth login/);
   assert.equal(result.stdout, '');
+});
+
+test('the terminal lets both models read the git repository you are in, unless told otherwise', () => {
+  const cwdOfLastCall = args => { fake.clearCalls(); assert.equal(cli(args).status, 0); return fake.questionCalls().at(-1).cwd; };
+  assert.equal(cwdOfLastCall(['codex', 'q']), realpathSync(ROOT), 'this test runs inside the repository');
+  assert.equal(cwdOfLastCall(['claude', 'q', '--workspace', fake.dir]), realpathSync(fake.dir));
+  assert.match(cwdOfLastCall(['codex', 'q', '--no-workspace']), /council-codex-/);
+  assert.match(cli(['codex', 'q', '--workspace', fake.dir, '--no-workspace']).stderr, /not both/);
 });
 
 test('wrong flags for a command are rejected', () => {

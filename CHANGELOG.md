@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 (2026-09-24)
+
+- **Both models can read your project.** New `workspace` option on all four tools (`--workspace` in the terminal, which defaults to the git repository you are in; `--no-workspace` for none). Both models then work in that folder: they can open files, search and run read-only git commands (log, diff, show, status, blame) to check facts about code, changes, fixes and logs. The skill tells the host to pass the project folder whenever it is working in one.
+- **Neither can change it.** Codex runs in its read-only sandbox (enforced by the operating system), now also set with `-c sandbox_mode="read-only"` so it holds when a session is resumed, and ignores `.rules` files. Claude Code runs with `--restricted` (no user, project or local settings, so no hooks, plugins or allow rules from them) and `--permission-mode dontAsk`, with only Read, Grep, Glob and a list of read-only git commands allowed; options that would make git write a file (`--output`) or run or read something else (`--ext-diff`, `--no-index`) are denied.
+- **Each model keeps one session.** Instead of a new, memoryless CLI session for every prompt, each side keeps one Codex / Claude Code session for as long as the MCP server runs, which is as long as your Claude Code or Codex session. It remembers earlier questions, the discussion and what it has already read, so it does not re-read the project for every prompt. Each prompt now carries only what that model has not seen yet (the other model's answer, critique or reply), rather than the whole discussion. A new host session starts new council sessions; in the terminal, each command is one pair of sessions.
+- `debate` reports the workspace in `settings`.
+- Needs a recent Claude Code (with `--restricted`) and Codex CLI (with `codex exec resume`); an "unknown option" error now says to update.
+
 ## 0.4.1 (2026-09-24)
 
 - **Both sign-ins are checked before a council starts.** `council_ask` and `debate` (`ask` and `debate` in the terminal) first check, side by side, that the Codex CLI and the Claude Code CLI are installed and signed in. If either is not, the run stops before either model is sent anything, with one error naming each CLI that needs attention and how to sign in (`codex login`, `claude auth login`). Before, the two models started together, so the model that was signed in could already have been sent the question when the other one failed, and the error named only the first problem.

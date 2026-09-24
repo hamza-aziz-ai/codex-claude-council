@@ -2,6 +2,8 @@
 // Controls: FAKE_FAIL=codex|claude, FAKE_SLEEP_MS, FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
 // Reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees on the n-th review (default 1, 0 = never);
 // FAKE_FAIL_REVIEW_AT=n fails the n-th review. Reviews are counted in the file $FAKE_STATE.
+// Sessions: codex --json reports a new thread (or the resumed one); claude echoes --session-id / --resume.
+import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const [cli, ...args] = process.argv.slice(2);
@@ -25,12 +27,14 @@ if (input.includes('VERDICT: AGREE or VERDICT: DISAGREE')) {
 function codex() {
   if (args[0] === '--version') return console.log('codex-cli 0.0.0-fake');
   if (args[0] === 'login') return console.error(process.env.FAKE_CODEX_AUTH || 'Logged in using ChatGPT');
-  const effort = (flag('-c') || '').replace('model_reasoning_effort=', '') || '-';
+  const effort = args.find(arg => arg.startsWith('model_reasoning_effort='))?.replace('model_reasoning_effort=', '') || '-';
   console.error(`model: ${flag('-m') || '-'}\nreasoning effort: ${effort}`);
   if (failing) {
     console.error("ERROR: You've hit your usage limit.");
     process.exit(1);
   }
+  const thread = args[1] === 'resume' ? args.at(-2) : randomUUID();
+  if (args.includes('--json')) console.log(JSON.stringify({ type: 'thread.started', thread_id: thread }));
   writeFileSync(flag('--output-last-message'), `codex[${flag('-m') || '-'}|${effort}] ${reply}`);
 }
 
@@ -41,7 +45,8 @@ function claude() {
     console.log(JSON.stringify({ is_error: true, result: 'fake claude failure' }));
     process.exit(1);
   }
-  console.log(JSON.stringify({ is_error: false, result: `claude[${flag('--model') || '-'}|${flag('--effort') || '-'}] ${reply}` }));
+  const session = flag('--resume') || flag('--session-id');
+  console.log(JSON.stringify({ is_error: false, session_id: session, result: `claude[${flag('--model') || '-'}|${flag('--effort') || '-'}] ${reply}` }));
 }
 
 const main = cli === 'codex' ? codex : claude;

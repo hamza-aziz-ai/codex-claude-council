@@ -1,18 +1,10 @@
-You are $self. You and $other answered the question below independently, critiqued each other's answers, then each replied to the critique of its own answer; the whole discussion is below. $other then drafted a final answer, and you must decide whether you agree with it. Agree only if you would give this answer yourself: its claims are correct, nothing important from the discussion is missing (including your own points, unless the drafter's notes give a good reason to drop them), and uncertainty is stated honestly. Differences of wording or style are not reasons to disagree. Do not agree just to end the discussion, and do not disagree over trivia. Do not call tools.
+$other has drafted a final answer to the question you have been discussing, and you must decide whether you agree with it. Agree only if you would give this answer yourself: its claims are correct (check them against the project where it matters), nothing important from the discussion is missing (including your own points, unless the drafter's notes give a good reason to drop them), and uncertainty is stated honestly. If this is a revised draft, check that your earlier objections were answered. Differences of wording or style are not reasons to disagree. Do not agree just to end the discussion, and do not disagree over trivia.
 
 If you disagree, list each objection specifically and say what should change.
 
 End your reply with exactly one final line: VERDICT: AGREE or VERDICT: DISAGREE
 
-Question:
-$question
-
-Discussion:
-$discussion
-
-Your objections to the previous draft:
-$previous_review
-
+$context
 Draft answer:
 $draft
 
