@@ -1,10 +1,4 @@
-Review the other model's answer to the question below. Your own answer is included for reference: judge theirs on its merits, not on whether it matches yours. Identify the strongest point, any error or unsupported claim, and what is missing. If you find nothing wrong, say so rather than inventing problems. Be concise and constructive. Do not call tools.
+$other answered the same question independently; its answer is below. Your own answer is earlier in this conversation: judge theirs on its merits, not on whether it matches yours. Identify the strongest point, any error or unsupported claim, and what is missing. Where you can, check its claims against the project rather than assuming. If you find nothing wrong, say so rather than inventing problems. Be concise and constructive.
 
-Question:
-$question
-
-Your answer:
-$own_answer
-
-Other model's answer:
+$other's answer:
 $other_answer

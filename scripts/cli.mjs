@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
 import { invoke } from '../src/council.mjs';
@@ -24,6 +26,9 @@ Model and effort (omit to use your config):
                    --synthesizer <claude|codex>   who writes the final answer (default: claude; chatgpt = codex)
                    --max-rounds <n>   draft/review until both agree: n = at most n rounds, 0 = no limit
                                       (default: 3; "max_rounds": null in the config for a single pass)
+  all four:        --workspace <dir>  project folder both models can read (never change);
+                                      default: the git repository you are in, if any
+                   --no-workspace     no file access at all
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install options:
@@ -44,6 +49,8 @@ const OPTIONS = {
   'claude-model': { type: 'string' },
   'claude-effort': { type: 'string' },
   'max-rounds': { type: 'string' },
+  workspace: { type: 'string' },
+  'no-workspace': { type: 'boolean' },
   synthesizer: { type: 'string' },
   only: { type: 'string' },
   source: { type: 'string' },
@@ -52,6 +59,14 @@ const OPTIONS = {
   init: { type: 'boolean' },
 };
 const TOOLS = { ask: 'council_ask', debate: 'debate', codex: 'ask_codex', claude: 'ask_claude' };
+
+/** The git repository containing dir (the nearest folder with a .git entry), if any. */
+function gitRoot(dir) {
+  for (let current = resolve(dir); ; current = dirname(current)) {
+    if (existsSync(join(current, '.git'))) return current;
+    if (dirname(current) === current) return undefined;
+  }
+}
 
 async function readStdin() {
   if (process.stdin.isTTY) return '';
@@ -92,6 +107,8 @@ async function main() {
     ? ['codex-model', 'codex-effort', 'claude-model', 'claude-effort', 'max-rounds', 'synthesizer'].filter(key => values[key] !== undefined)
     : ['model', 'effort'].filter(key => values[key] !== undefined);
   if (wrong.length) throw new Error(`${commandName} does not take --${wrong.join(', --')} (see --help)`);
+  if (values.workspace !== undefined && values['no-workspace']) throw new Error('use --workspace or --no-workspace, not both');
+  pairs.workspace = values['no-workspace'] ? undefined : values.workspace !== undefined ? resolve(values.workspace) : gitRoot(process.cwd());
   const options = Object.fromEntries(Object.entries(pairs).filter(([, value]) => value !== undefined));
   const onProgress = message => process.stderr.write(`[council] ${message}\n`);
   // Ctrl+C stops the codex/claude processes too, not just this one.

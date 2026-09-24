@@ -1,7 +1,4 @@
-Give the user a final answer to the question. Codex and Claude answered it independently, critiqued each other's answers, then each replied to the critique of its own answer; use the whole discussion below. Resolve disagreements where evidence allows, noting what each model conceded or defended in its reply; otherwise say what remains uncertain. Do not mention a council unless useful. Do not call tools.
+Give the user a final answer to the question you have been discussing. $other has replied to your critique; its reply is below, so you now have the whole discussion: both answers, both critiques and both replies. Resolve disagreements where evidence allows, noting what each of you conceded or defended; otherwise say what remains uncertain. Do not mention a council unless useful.
 
-Question:
-$question
-
-Discussion:
-$discussion
+$other's reply to your critique:
+$other_reply

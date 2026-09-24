@@ -13,13 +13,19 @@ This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign
 - `debate`: the same run, returned as JSON with both answers, both critiques, both replies, every draft/review round and the model/effort settings used. Use when the user wants to see where the models agree or disagree.
 - `ask_codex` / `ask_claude`: one model only, for a quick second opinion.
 
-Put everything the models need into `question`: they run in an empty folder with no tools and cannot see this conversation, the user's files or earlier messages. Quote the relevant code, text or numbers.
+## Let them read the project: `workspace`
+
+When you are working in a project, always pass `workspace`: the absolute path of the project folder (your working directory). Both models can then read it themselves: open files, search, and run read-only git commands (log, diff, show, status, blame). Neither can change anything. So in `question`, point them at what matters (files, functions, the failing test, the error or log excerpt, the change you made) instead of pasting whole files. They cannot see this conversation, so state the task and any context that is not in the project, such as an error message or a log you saw.
+
+Omit `workspace` only for questions unrelated to any project; the models then have no file access, so quote everything they need in `question`.
+
+Each model keeps one session for as long as this session runs: it remembers earlier council questions and what it has already read, so a follow-up question can refer to the earlier discussion.
 
 ## Model and effort
 
 Leave model and effort out unless the user asks for them; the defaults come from the user's config file (`codex-claude-council config`).
 
-- `ask_codex` / `ask_claude`: `model`, `effort`
+- `ask_codex` / `ask_claude`: `model`, `effort` (and `workspace`, as above)
 - `council_ask` / `debate`: `codex_model`, `codex_effort`, `claude_model`, `claude_effort` (each side can be set on its own)
 - Codex effort: none, minimal, low, medium, high, xhigh. Claude effort: low, medium, high, xhigh, max. Claude models accept aliases such as opus, sonnet or fable.
 - "ChatGPT" means the Codex side.
@@ -36,7 +42,9 @@ Report whether they agreed (the tool says so at the end of its answer). If they 
 
 ## Expectations
 
+- With a `workspace`, the models may take longer on their first question in a session while they read the project; later questions reuse what they read.
 - A council run makes six CLI calls (answers, critiques, replies) plus two per agreement round: eight when the models agree on the first draft. At high effort it can take several minutes, and it counts against the user's ChatGPT and Claude plan limits.
 - Show the answer, not the mechanics. For `debate`, summarise the agreement and disagreements before quoting details.
+- `council_ask` and `debate` check that both CLIs are signed in before sending anything. If either is not, the tool fails with a message naming which one and its login command (`codex login` and choose "Sign in with ChatGPT", or `claude auth login`); relay those steps to the user and ask them to sign in, then try again.
 - If a tool reports a missing CLI, a sign-in problem or a usage limit, tell the user plainly and suggest `codex-claude-council doctor` (or `npx -y github:hamza-aziz-ai/codex-claude-council doctor`). Do not retry in a loop.
 - The server runs on the user's own computer. It does not work from cloud-only sessions without their machine.

@@ -1,43 +1,84 @@
 import assert from 'node:assert/strict';
+import { realpathSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
-import { askClaude, askCodex } from '../src/adapters.mjs';
-import { invoke, prompt } from '../src/council.mjs';
+import { CLAUDE_ALLOWED, CLAUDE_DENIED, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
+import { accessNote, invoke, prompt } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
 let fake;
 before(() => { fake = setup({ codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'high' } }); });
 after(() => fake.cleanup());
-beforeEach(() => { fake.clearCalls(); fake.writeConfig(); });
+beforeEach(() => { fake.clearCalls(); fake.writeConfig(); resetSessions(); });
 
-test('codex gets model and effort as explicit flags, isolated from user config', async () => {
+const arg = (call, flag) => call.args[call.args.indexOf(flag) + 1];
+const configValues = call => call.args.flatMap((a, i) => (a === '-c' ? [call.args[i + 1]] : []));
+
+test('codex runs read-only, isolated from user config and rules, with model and effort as explicit flags', async () => {
   const answer = await askCodex('Question?\nこんにちは — ✓ "quoted" & <tag> 100% $HOME');
   assert.equal(answer, 'codex[gpt-test|xhigh] こんにちは — ✓ "quoted" & <tag> 100% $HOME');
   const [call] = fake.questionCalls();
-  assert.deepEqual(call.args.slice(0, 6), ['exec', '--ignore-user-config', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only']);
-  assert.ok(call.args.includes('-m') && call.args[call.args.indexOf('-m') + 1] === 'gpt-test');
-  assert.equal(call.args[call.args.indexOf('-c') + 1], 'model_reasoning_effort=xhigh');
+  assert.equal(call.args[0], 'exec');
+  for (const flag of ['--json', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check']) assert.ok(call.args.includes(flag), flag);
+  assert.ok(!call.args.includes('--ephemeral'), 'the session is kept so it can be resumed');
+  assert.equal(arg(call, '--sandbox'), 'read-only');
+  assert.deepEqual(configValues(call), ['sandbox_mode="read-only"', 'approval_policy="never"', 'model_reasoning_effort=xhigh']);
+  assert.equal(arg(call, '-m'), 'gpt-test');
   assert.equal(call.args.at(-1), '-');
   assert.match(call.input, /こんにちは/);
 });
 
-test('claude gets no tools, no settings sources beyond project, and model/effort flags', async () => {
+test('claude runs restricted: no settings files, no MCP servers, nothing allowed beyond what is listed', async () => {
   const answer = await askClaude('Question?\nhello', { model: 'sonnet', effort: 'max' });
   assert.equal(answer, 'claude[sonnet|max] hello');
   const [call] = fake.questionCalls();
-  assert.equal(call.args[call.args.indexOf('--tools') + 1], '', 'empty --tools value must survive quoting');
-  for (const flag of ['-p', '--disable-slash-commands', '--no-session-persistence', '--strict-mcp-config']) assert.ok(call.args.includes(flag), flag);
-  assert.equal(call.args[call.args.indexOf('--setting-sources') + 1], 'project');
-  assert.equal(call.args[call.args.indexOf('--model') + 1], 'sonnet');
-  assert.equal(call.args[call.args.indexOf('--effort') + 1], 'max');
+  assert.equal(arg(call, '--tools'), '', 'no tools without a workspace; the empty value must survive quoting');
+  for (const flag of ['-p', '--restricted', '--disable-slash-commands', '--strict-mcp-config']) assert.ok(call.args.includes(flag), flag);
+  assert.ok(!call.args.includes('--no-session-persistence'), 'the session is kept so it can be resumed');
+  assert.equal(arg(call, '--permission-mode'), 'dontAsk');
+  assert.match(arg(call, '--session-id'), /^[0-9a-f-]{36}$/);
+  assert.equal(arg(call, '--model'), 'sonnet');
+  assert.equal(arg(call, '--effort'), 'max');
 });
 
-test('each call runs in its own empty temporary folder', async () => {
+test('each side keeps one session: later calls resume it in the same folder', async () => {
   await askCodex('a');
   await askClaude('b');
-  const [codexCall, claudeCall] = fake.questionCalls();
-  assert.notEqual(codexCall.cwd, claudeCall.cwd);
-  assert.match(codexCall.cwd, /council-codex-/);
-  assert.match(claudeCall.cwd, /council-claude-/);
+  await askCodex('c');
+  await askClaude('d');
+  const [codex1, claude1, codex2, claude2] = fake.questionCalls();
+  assert.notEqual(codex1.cwd, claude1.cwd);
+  assert.match(codex1.cwd, /council-codex-/);
+  assert.match(claude1.cwd, /council-claude-/);
+  assert.equal(codex2.cwd, codex1.cwd, 'the same folder, so the session can be found again');
+  assert.equal(claude2.cwd, claude1.cwd);
+  assert.deepEqual(codex2.args.slice(0, 2), ['exec', 'resume']);
+  assert.match(codex2.args.at(-2), /^[0-9a-f-]{36}$/, 'resumes the thread codex reported');
+  assert.ok(configValues(codex2).includes('sandbox_mode="read-only"'), 'resume has no --sandbox flag, so the -c setting keeps it read-only');
+  assert.equal(arg(claude2, '--resume'), arg(claude1, '--session-id'));
+  assert.ok(!claude2.args.includes('--session-id'));
+  await askClaude('e', { model: 'haiku' });
+  assert.ok(fake.questionCalls().at(-1).args.includes('--session-id'), 'another model gets a session of its own');
+  resetSessions();
+  await askCodex('f');
+  assert.notEqual(fake.questionCalls().at(-1).args[1], 'resume', 'after a reset, a new session starts');
+});
+
+test('with a workspace, both models run in the project folder and can read but not write it', async () => {
+  const workspace = realpathSync(fake.dir); // what the council passes (on macOS, /var is a link to /private/var)
+  await askCodex('a', {}, { workspace });
+  await askClaude('b', {}, { workspace });
+  await askCodex('c', {}, { workspace });
+  const [codex1, claude, codex2] = fake.questionCalls();
+  for (const call of [codex1, claude, codex2]) assert.equal(call.cwd, workspace);
+  assert.equal(arg(codex1, '-C'), workspace);
+  assert.equal(arg(codex1, '--sandbox'), 'read-only');
+  assert.ok(configValues(codex2).includes('sandbox_mode="read-only"'));
+  assert.equal(arg(claude, '--tools'), 'Read,Grep,Glob,Bash');
+  const listed = flag => claude.args.slice(claude.args.indexOf(flag) + 1).filter((a, i, rest) => !rest.slice(0, i + 1).some(x => x.startsWith('--')));
+  assert.deepEqual(listed('--allowedTools'), CLAUDE_ALLOWED);
+  assert.deepEqual(listed('--disallowedTools'), CLAUDE_DENIED);
+  assert.ok(CLAUDE_ALLOWED.every(rule => /^Bash\(git (log|diff|show|status|blame|ls-files|rev-parse|describe|shortlog)( \*)?\)$/.test(rule)), 'only read-only git commands');
+  for (const rule of ['Edit', 'Write', 'Bash(*--output*)', 'Bash(*--ext-diff*)', 'Bash(*--no-index*)']) assert.ok(CLAUDE_DENIED.includes(rule), rule);
 });
 
 test('council_ask: by default both models sign the final answer; overrides reach every call on their side only', async () => {
@@ -49,7 +90,7 @@ test('council_ask: by default both models sign the final answer; overrides reach
   const claudeCalls = calls.filter(c => c.cli === 'claude');
   assert.equal(codexCalls.length, 4, 'answer, critique, reply, review');
   assert.equal(claudeCalls.length, 4, 'answer, critique, reply, draft');
-  for (const c of codexCalls) assert.equal(c.args[c.args.indexOf('-c') + 1], 'model_reasoning_effort=low');
+  for (const c of codexCalls) assert.ok(configValues(c).includes('model_reasoning_effort=low'));
   for (const c of claudeCalls) {
     assert.equal(c.args[c.args.indexOf('--model') + 1], 'sonnet');
     assert.equal(c.args[c.args.indexOf('--effort') + 1], 'high');
@@ -61,7 +102,7 @@ test('debate returns answers, critiques, replies, rounds and the settings used',
   assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
     'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3,
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null,
   });
   assert.equal(result.agreed, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);
@@ -69,12 +110,8 @@ test('debate returns answers, critiques, replies, rounds and the settings used',
   assert.equal(fake.questionCalls().filter(c => c.cli === 'claude').length, 4);
 });
 
-// The discussion every later step sees, rebuilt from a debate result.
-const discussionOf = r => prompt('discussion', {
-  codex_answer: r.codex, claude_answer: r.claude, codex_critique: r.codex_critique,
-  claude_critique: r.claude_critique, codex_reply: r.codex_reply, claude_reply: r.claude_reply,
-}).trimEnd();
-const callOf = (cli, start) => fake.questionCalls().find(c => c.cli === cli && c.input.startsWith(start));
+const NAME = { codex: 'Codex', claude: 'Claude' };
+const callsOf = cli => fake.questionCalls().filter(c => c.cli === cli);
 
 for (const synthesizer of ['claude', 'codex']) {
   test(`critiques are swapped and each model replies to the critique of its answer (single pass, ${synthesizer} synthesizes)`, async () => {
@@ -83,17 +120,54 @@ for (const synthesizer of ['claude', 'codex']) {
     // Each text came from the model it is filed under.
     for (const key of ['codex', 'codex_critique', 'codex_reply']) assert.match(r[key], /^codex\[/, key);
     for (const key of ['claude', 'claude_critique', 'claude_reply']) assert.match(r[key], /^claude\[/, key);
+    // Each model works in one session, so every prompt carries only what it has not seen yet.
     for (const [me, them] of [['codex', 'claude'], ['claude', 'codex']]) {
-      assert.equal(callOf(me, 'Review the other').input,
-        prompt('critique', { question: 'q', own_answer: r[me], other_answer: r[them] }), `${me} critiques ${them}`);
-      assert.equal(callOf(me, 'You and another AI model answered the question below independently, then each critiqued').input,
-        prompt('reply', { question: 'q', own_answer: r[me], other_answer: r[them], own_critique: r[`${me}_critique`], other_critique: r[`${them}_critique`] }),
-        `${me} replies to ${them}'s critique`);
+      const [answer, critique, reply, ...rest] = callsOf(me);
+      assert.equal(answer.input, prompt('answer', { question: 'q', access: accessNote(), self: NAME[me], other: NAME[them] }));
+      assert.equal(critique.input, prompt('critique', { other: NAME[them], other_answer: r[them] }), `${me} critiques ${them}'s answer`);
+      assert.equal(reply.input, prompt('reply', { other: NAME[them], other_critique: r[`${them}_critique`] }), `${me} replies to ${them}'s critique`);
+      assert.deepEqual(rest.map(c => c.input), me === synthesizer ? [prompt('synthesize', { other: NAME[them], other_reply: r[`${them}_reply`] })] : []);
     }
-    assert.equal(callOf(synthesizer, 'Give the user').input, prompt('synthesize', { question: 'q', discussion: discussionOf(r) }));
-    assert.match(discussionOf(r), /Codex's reply to Claude's critique:\ncodex\[.*\n\nClaude's reply to Codex's critique:\nclaude\[/);
+    for (const call of fake.questionCalls().slice(2)) {
+      assert.ok(call.cli === 'codex' ? call.args[1] === 'resume' : call.args.includes('--resume'), 'every step after the answers resumes its session');
+    }
   });
 }
+
+test('the next question continues the same sessions', async () => {
+  await invoke('council_ask', 'first question');
+  const firstCodex = callsOf('codex')[0].args;
+  fake.clearCalls();
+  await invoke('council_ask', 'second question');
+  const [codexAnswer] = callsOf('codex');
+  const [claudeAnswer] = callsOf('claude');
+  assert.deepEqual(codexAnswer.args.slice(0, 2), ['exec', 'resume'], 'Codex answers the new question in its existing session');
+  assert.ok(claudeAnswer.args.includes('--resume'), 'so does Claude');
+  assert.ok(!firstCodex.includes('resume'));
+  assert.match(codexAnswer.input, /second question/);
+});
+
+test('a council with a workspace tells both models they can read the project, and runs every call there', async () => {
+  const workspace = realpathSync(fake.dir); // the council resolves links in the path it is given
+  const text = await invoke('council_ask', 'Is src/ tidy?', { workspace: fake.dir });
+  assert.match(text, /both agree/);
+  const calls = fake.questionCalls();
+  assert.equal(calls.length, 8);
+  for (const call of calls) assert.equal(call.cwd, workspace);
+  for (const cli of ['codex', 'claude']) {
+    assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace)));
+    assert.match(accessNote(workspace), /can read the project at .*You cannot change anything/);
+  }
+  const result = JSON.parse(await invoke('debate', 'q', { workspace: fake.dir }));
+  assert.equal(result.settings.workspace, workspace);
+});
+
+test('an invalid workspace is rejected before any CLI runs', async () => {
+  await assert.rejects(invoke('council_ask', 'q', { workspace: 'relative/path' }), /workspace must be an absolute path/);
+  await assert.rejects(invoke('ask_codex', 'q', { workspace: `${fake.dir}/missing` }), /workspace not found/);
+  await assert.rejects(invoke('ask_claude', 'q', { workspace: `${fake.dir}/calls.jsonl` }), /workspace is not a folder/);
+  assert.equal(fake.calls().length, 0);
+});
 
 test('bad input is rejected before any CLI runs', async () => {
   await assert.rejects(invoke('ask_codex', 'q', { effort: 'max' }), /codex effort must be one of/);
@@ -123,6 +197,30 @@ test('sign-in problems are reported with the fix', async () => {
     assert.match(await askClaude('q'), /^claude/);
   });
   assert.equal(fake.questionCalls().length, 1, 'only the allowed call reached the model');
+});
+
+test('a council checks that both CLIs are signed in before sending anything', async () => {
+  const header = /needs both Codex and Claude Code signed in\. Nothing was sent to either model\./;
+  const cases = [
+    [{ FAKE_CODEX_AUTH: 'Not logged in' }, [/- Codex \(ChatGPT\): Codex is not signed in\. Run `codex login`/], /Claude Code:/],
+    [{ FAKE_CLAUDE_AUTH: '{"loggedIn":false}' }, [/- Claude Code: Claude Code is not signed in\. Run `claude auth login`/], /Codex \(ChatGPT\):/],
+    [{ FAKE_CODEX_AUTH: 'Not logged in', FAKE_CLAUDE_AUTH: '{"loggedIn":false}' }, [/codex login/, /claude auth login/], null],
+    [{ FAKE_CODEX_AUTH: 'Logged in using an API key - sk-proj-***' }, [/- Codex \(ChatGPT\): Codex is signed in with an API key/], /Claude Code:/],
+  ];
+  for (const [env, expected, absent] of cases) {
+    fake.clearCalls();
+    await withEnv(env, () => assert.rejects(invoke('debate', 'q', { max_rounds: 2 }), error => {
+      assert.match(error.message, header);
+      for (const pattern of expected) assert.match(error.message, pattern);
+      if (absent) assert.doesNotMatch(error.message, absent, 'only the side with a problem is named');
+      return true;
+    }));
+    assert.equal(fake.questionCalls().length, 0, `no model received the question (${JSON.stringify(env)})`);
+  }
+  fake.clearCalls();
+  fake.writeConfig({ claude: { command: `${fake.dir}/does-not-exist/claude` } });
+  await assert.rejects(invoke('council_ask', 'q'), /- Claude Code: claude CLI not found at/);
+  assert.equal(fake.questionCalls().length, 0, 'a missing CLI also stops the council before it starts');
 });
 
 test('API keys are removed from the CLI environment unless allowed', async () => {
@@ -156,7 +254,7 @@ import { readVerdict, splitDraft } from '../src/council.mjs';
 
 const loopEnv = extra => ({ FAKE_STATE: joinPath(mkTemp(joinPath(tmp(), 'council-state-')), 'reviews'), ...extra });
 const kinds = calls => calls.map(c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? `review:${c.cli}`
-  : c.input.includes('reviewed your previous draft and did not agree') ? `redraft:${c.cli}`
+  : c.input.includes('reviewed your draft and did not agree') ? `redraft:${c.cli}`
     : c.input.includes('Write one final answer that both of you could sign') ? `draft:${c.cli}`
       : c.input.startsWith('Give the user a final answer') ? `synthesize:${c.cli}` : `other:${c.cli}`));
 
@@ -206,14 +304,12 @@ test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AG
   const calls = fake.questionCalls();
   assert.deepEqual(kinds(calls).slice(6), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
   const [draft, review1, redraft, review2] = calls.slice(6).map(c => c.input);
-  const discussion = discussionOf(result);
-  const asReviewer = { question: 'q', discussion, self: 'Codex', other: 'Claude' };
-  assert.equal(draft, prompt('draft', { question: 'q', discussion, self: 'Claude', other: 'Codex' }), 'the drafter sees the whole discussion');
-  assert.equal(review1, prompt('review', { ...asReviewer, draft: result.rounds[0].draft, notes: 'none', previous_review: 'none (this is the first draft)' }),
-    'the reviewer sees the whole discussion');
-  assert.ok(redraft.includes(discussion) && /The reviewer's response:\n.*review 1: objection 1/.test(redraft), 'the redraft sees the discussion and the objections');
-  assert.equal(review2, prompt('review', { ...asReviewer, draft: result.rounds[1].draft, notes: 'none', previous_review: 'codex[gpt-test|xhigh] review 1: objection 1' }),
-    'the reviewer sees its own previous objections, without the verdict line');
+  assert.equal(draft, prompt('draft', { other: 'Codex', other_reply: result.codex_reply }), 'the drafter gets the reply it has not seen');
+  assert.equal(review1, prompt('review', { other: 'Claude', context: `Claude's reply to your critique:\n${result.claude_reply}\n`, draft: result.rounds[0].draft, notes: 'none' }),
+    'the reviewer gets the drafter\'s reply it has not seen, then the draft');
+  assert.equal(redraft, prompt('redraft', { other: 'Codex', objections: result.rounds[0].review }), 'the redraft gets the objections');
+  assert.equal(review2, prompt('review', { other: 'Claude', context: '', draft: result.rounds[1].draft, notes: 'none' }),
+    'a later review gets only the new draft: the reviewer\'s earlier objections are in its session');
   assert.equal(result.settings.max_rounds, 5);
 }));
 

@@ -29,6 +29,10 @@ flowchart LR
 
 The conversation goes both ways whoever writes the final answer, and from step 2 on each model sees the whole discussion so far.
 
+**Both models can read your project.** In a coding session, both models work in your project folder (the `workspace`). They can open files, search, and run read-only git commands (`log`, `diff`, `show`, `status`, `blame`) to check facts about the code, a change, a fix or a log before relying on it. **Neither can change anything:** Codex runs in its read-only sandbox, enforced by the operating system, and Claude Code has only read tools and those git commands; everything else is refused.
+
+**Each model keeps one session.** Each side keeps a single Codex / Claude Code session for as long as your host session runs, so it remembers earlier questions, the discussion and what it has already read, instead of reading the project again for every prompt. Each prompt carries only what that model has not seen yet. When you start a new Claude Code or Codex session, the council starts new sessions too.
+
 ## Requirements
 
 | | |
@@ -37,7 +41,7 @@ The conversation goes both ways whoever writes the final answer, and from step 2
 | [Claude Code CLI](https://code.claude.com/docs/en/setup), signed in with a Claude Pro, Max, Team or Enterprise plan | `claude auth login` |
 | [Codex CLI](https://developers.openai.com/codex/cli), signed in with ChatGPT | `codex login` → *Sign in with ChatGPT* |
 
-Both CLIs are required. The installer checks for them first and stops, with install instructions, if either is missing.
+Both CLIs are required. The installer checks for them first and stops, with install instructions, if either is missing. Every council run also checks that both are signed in before it starts, and stops with the sign-in steps if either is not.
 
 ## Install
 
@@ -120,7 +124,7 @@ Just ask in plain language:
 | "Council debate, **at most 3 rounds** to reach agreement: …" | `debate` with `max_rounds: 3` |
 | "Ask the council, and let **ChatGPT write the final answer**: …" | `council_ask` with `synthesizer: "codex"` |
 
-The models run in an empty folder with no tools, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
+With a `workspace`, the models read what they need from the project themselves; without one, they have no file access, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
 
 ### Who writes the final answer: `synthesizer`
 
@@ -144,8 +148,10 @@ For the old single pass (the synthesizer writes the final answer alone after the
 
 | Tool | Optional inputs |
 |---|---|
-| `ask_codex`, `ask_claude` | `model`, `effort` |
-| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds` |
+| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace` |
+| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace` |
+
+`workspace` is the absolute path of the project folder both models may read. In Claude Code and Codex the plugin's skill tells the host to pass the folder you are working in.
 
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`
 - Claude effort: `low`, `medium`, `high`, `xhigh`, `max`
@@ -162,7 +168,11 @@ npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --max-rounds 0      #
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --synthesizer codex  # ChatGPT writes the final answer
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --effort low
 npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet --effort max
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --workspace ~/code/app  # read this project
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no file access
 ```
+
+In the terminal, both models read the git repository you run the command from (if any) unless you pass `--workspace` or `--no-workspace`. Each command is a new pair of sessions that lasts for that run.
 
 For a shorter command, install it globally with `npm install -g github:hamza-aziz-ai/codex-claude-council` and use `codex-claude-council ask "..."`. Questions can also be piped on stdin.
 
@@ -205,6 +215,7 @@ Run the doctor. It checks Node.js, both CLIs, their sign-ins and your effective 
 npx -y github:hamza-aziz-ai/codex-claude-council doctor
 ```
 
+- **"The council needs both Codex and Claude Code signed in"**: before every council run, both CLIs are checked, and nothing is sent to either model unless both are signed in. The message names each CLI with a problem and the fix: `codex login` (choose *Sign in with ChatGPT*) and/or `claude auth login`.
 - **"usage limit"**: your ChatGPT or Claude plan hit its limit. Wait for the reset or lower the effort.
 - **"timed out"**: raise `timeout_seconds` or lower the effort.
 - **Tools don't appear**: fully quit and reopen the app after installing. In Claude Desktop or the ChatGPT desktop app, check the plugin is installed and enabled under **Settings → Plugins**.
@@ -214,9 +225,11 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 ## Security and privacy
 
 - Everything runs on your computer. Your question goes to OpenAI and Anthropic through their official CLIs, under your own accounts.
-- Codex runs `codex exec` in a **read-only sandbox** in an empty temporary folder, ignoring your `~/.codex/config.toml` (so no plugins, hooks or MCP servers load). Claude runs with **all tools disabled**, no MCP servers, no skills and no user settings. Neither model can read or change your files.
+- **Neither model can change your files.** Codex runs `codex exec` in its **read-only sandbox**, enforced by the operating system, ignoring your `~/.codex/config.toml` and `.rules` files (so no plugins, hooks or MCP servers load). Claude Code runs with `--restricted` (no user, project or local settings, so no hooks, plugins or allow rules from them), no MCP servers and no skills, and with `--permission-mode dontAsk`, so it can use only its read tools (Read, Grep, Glob) and a list of read-only git commands; anything else, including `--output` and similar options that would make git write a file, is refused.
+- **What they can read.** With a `workspace`, whatever either model chooses to read in that project is sent to OpenAI or Anthropic, as when you paste it. Claude's file tools are confined to the project folder. Codex's read-only sandbox lets it read other files on your computer too, as Codex itself does by default. Without a `workspace`, Claude has no tools and Codex runs in an empty folder.
+- **Sessions.** The councils' sessions are saved by the CLIs like any other session, so they appear in `claude --resume` and `codex resume` for that folder.
 - API-key environment variables are removed before the CLIs start, so calls use your subscriptions rather than per-token API billing. Codex must be signed in with ChatGPT and Claude Code with a Claude subscription unless you set `allow_api_key_auth`.
-- A plugin with a local MCP server runs with your user permissions. This one is about 900 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.
+- A plugin with a local MCP server runs with your user permissions. This one is about 1,000 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.
 
 ## Uninstall
 
