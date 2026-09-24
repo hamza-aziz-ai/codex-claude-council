@@ -84,17 +84,21 @@ function command(file, args) {
   return { file: process.env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`], verbatim: true };
 }
 
+/** Kill a process and its children; resolves once the kill has been carried out (taskkill is a separate process). */
 function killTree(child) {
-  if (child.exitCode !== null || child.signalCode !== null || !child.pid) return;
+  if (child.exitCode !== null || child.signalCode !== null || !child.pid) return Promise.resolve();
   if (IS_WINDOWS) {
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => {});
-    return;
+    return new Promise(resolve => {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        .on('error', resolve).on('exit', resolve);
+    });
   }
   try {
     process.kill(-child.pid, 'SIGKILL');
   } catch {
     child.kill('SIGKILL');
   }
+  return Promise.resolve();
 }
 
 /** Run a CLI with stdin input; resolves { code, stdout, stderr } and rejects on timeout or abort. */
@@ -108,6 +112,8 @@ export function run(file, args, { input = '', cwd, env = process.env, timeoutMs 
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let stopped = null; // the error to report once a killed process has exited
+    const closed = new Promise(resolve => child.once('close', resolve));
     const finish = (settle, value) => {
       if (settled) return;
       settled = true;
@@ -115,20 +121,22 @@ export function run(file, args, { input = '', cwd, env = process.env, timeoutMs 
       signal?.removeEventListener('abort', onAbort);
       settle(value);
     };
-    const timer = setTimeout(() => {
-      killTree(child);
-      finish(reject, new Error(`${basename(file)} timed out after ${Math.round(timeoutMs / 1000)}s`));
-    }, timeoutMs);
-    const onAbort = () => {
-      killTree(child);
-      finish(reject, new Error('cancelled'));
+    // Settle only after the process has exited, so it cannot outlive the call; stop waiting after 5s.
+    const stop = error => {
+      if (settled || stopped) return;
+      stopped = error;
+      clearTimeout(timer);
+      Promise.all([killTree(child), closed]).then(() => finish(reject, error));
+      setTimeout(() => finish(reject, error), 5000).unref();
     };
+    const timer = setTimeout(() => stop(new Error(`${basename(file)} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+    const onAbort = () => stop(new Error('cancelled'));
     if (signal?.aborted) onAbort();
     else signal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
-    child.on('error', error => finish(reject, new Error(`could not start ${basename(file)}: ${error.message}`)));
-    child.on('close', code => finish(resolve, { code, stdout, stderr }));
+    child.on('error', error => finish(reject, stopped || new Error(`could not start ${basename(file)}: ${error.message}`)));
+    child.on('close', code => { if (!stopped) finish(resolve, { code, stdout, stderr }); });
     child.stdin.on('error', () => {});
     child.stdin.end(input, 'utf8');
   });

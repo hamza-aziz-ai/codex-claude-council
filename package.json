@@ -1,7 +1,7 @@
 {
   "name": "codex-claude-council",
-  "version": "0.3.2",
-  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs; they cross-critique and one answer comes back. MCP server + plugin for Claude Code, Claude Cowork and Codex.",
+  "version": "0.4.0",
+  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs; they critique each other, reply, and agree on one answer. MCP server + plugin for Claude Code, Claude Cowork and Codex.",
   "type": "module",
   "bin": {
     "codex-claude-council": "scripts/cli.mjs"

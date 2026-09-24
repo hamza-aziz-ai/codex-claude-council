@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
 import { askClaude, askCodex } from '../src/adapters.mjs';
-import { invoke } from '../src/council.mjs';
+import { invoke, prompt } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
 let fake;
@@ -40,14 +40,15 @@ test('each call runs in its own empty temporary folder', async () => {
   assert.match(claudeCall.cwd, /council-claude-/);
 });
 
-test('council_ask: five calls, overrides reach every call on their side only', async () => {
+test('council_ask: by default both models sign the final answer; overrides reach every call on their side only', async () => {
   const answer = await invoke('council_ask', 'Which is better?', { codex_effort: 'low', claude_model: 'sonnet' });
   assert.match(answer, /^claude\[sonnet\|high\]/, 'Claude writes the final answer by default');
+  assert.match(answer, /Codex \(ChatGPT\) and Claude both agree with this answer \(1 round\)\.$/);
   const calls = fake.questionCalls();
   const codexCalls = calls.filter(c => c.cli === 'codex');
   const claudeCalls = calls.filter(c => c.cli === 'claude');
-  assert.equal(codexCalls.length, 2);
-  assert.equal(claudeCalls.length, 3);
+  assert.equal(codexCalls.length, 4, 'answer, critique, reply, review');
+  assert.equal(claudeCalls.length, 4, 'answer, critique, reply, draft');
   for (const c of codexCalls) assert.equal(c.args[c.args.indexOf('-c') + 1], 'model_reasoning_effort=low');
   for (const c of claudeCalls) {
     assert.equal(c.args[c.args.indexOf('--model') + 1], 'sonnet');
@@ -55,16 +56,44 @@ test('council_ask: five calls, overrides reach every call on their side only', a
   }
 });
 
-test('debate returns answers, critiques and the settings used', async () => {
+test('debate returns answers, critiques, replies, rounds and the settings used', async () => {
   const result = JSON.parse(await invoke('debate', 'Pick one', { claude_effort: 'max' }));
-  assert.deepEqual(Object.keys(result).sort(), ['answer', 'claude', 'claude_critique', 'codex', 'codex_critique', 'settings']);
+  assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
+    'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: null,
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3,
   });
+  assert.equal(result.agreed, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);
   assert.match(result.codex_critique, /^codex.*claude\[opus\|max\] Pick one$/, 'codex critiques claude\'s answer');
-  assert.equal(fake.questionCalls().filter(c => c.cli === 'claude').length, 3);
+  assert.equal(fake.questionCalls().filter(c => c.cli === 'claude').length, 4);
 });
+
+// The discussion every later step sees, rebuilt from a debate result.
+const discussionOf = r => prompt('discussion', {
+  codex_answer: r.codex, claude_answer: r.claude, codex_critique: r.codex_critique,
+  claude_critique: r.claude_critique, codex_reply: r.codex_reply, claude_reply: r.claude_reply,
+}).trimEnd();
+const callOf = (cli, start) => fake.questionCalls().find(c => c.cli === cli && c.input.startsWith(start));
+
+for (const synthesizer of ['claude', 'codex']) {
+  test(`critiques are swapped and each model replies to the critique of its answer (single pass, ${synthesizer} synthesizes)`, async () => {
+    fake.writeConfig({ max_rounds: null });
+    const r = JSON.parse(await invoke('debate', 'q', { synthesizer }));
+    // Each text came from the model it is filed under.
+    for (const key of ['codex', 'codex_critique', 'codex_reply']) assert.match(r[key], /^codex\[/, key);
+    for (const key of ['claude', 'claude_critique', 'claude_reply']) assert.match(r[key], /^claude\[/, key);
+    for (const [me, them] of [['codex', 'claude'], ['claude', 'codex']]) {
+      assert.equal(callOf(me, 'Review the other').input,
+        prompt('critique', { question: 'q', own_answer: r[me], other_answer: r[them] }), `${me} critiques ${them}`);
+      assert.equal(callOf(me, 'You and another AI model answered the question below independently, then each critiqued').input,
+        prompt('reply', { question: 'q', own_answer: r[me], other_answer: r[them], own_critique: r[`${me}_critique`], other_critique: r[`${them}_critique`] }),
+        `${me} replies to ${them}'s critique`);
+    }
+    assert.equal(callOf(synthesizer, 'Give the user').input, prompt('synthesize', { question: 'q', discussion: discussionOf(r) }));
+    assert.match(discussionOf(r), /Codex's reply to Claude's critique:\ncodex\[.*\n\nClaude's reply to Codex's critique:\nclaude\[/);
+  });
+}
 
 test('bad input is rejected before any CLI runs', async () => {
   await assert.rejects(invoke('ask_codex', 'q', { effort: 'max' }), /codex effort must be one of/);
@@ -79,6 +108,9 @@ test('bad input is rejected before any CLI runs', async () => {
 
 test('a failing side stops the council with that side\'s error', () => withEnv({ FAKE_FAIL: 'codex' }, async () => {
   await assert.rejects(invoke('council_ask', 'q'), /codex failed: ERROR: You've hit your usage limit\./);
+  for (const { cli, pid } of fake.questionCalls()) {
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, `the stopped ${cli} process is gone when the council returns`);
+  }
 }));
 
 test('sign-in problems are reported with the fix', async () => {
@@ -117,14 +149,14 @@ test('a missing CLI gives install guidance', async () => {
 });
 
 // ---- Agreement loop (max_rounds) ----
-import { mkdtempSync as mkTemp } from 'node:fs';
+import { mkdtempSync as mkTemp, readFileSync } from 'node:fs';
 import { tmpdir as tmp } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { readVerdict, splitDraft } from '../src/council.mjs';
 
 const loopEnv = extra => ({ FAKE_STATE: joinPath(mkTemp(joinPath(tmp(), 'council-state-')), 'reviews'), ...extra });
 const kinds = calls => calls.map(c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? `review:${c.cli}`
-  : c.input.startsWith('You are writing a final answer') ? `redraft:${c.cli}`
+  : c.input.includes('reviewed your previous draft and did not agree') ? `redraft:${c.cli}`
     : c.input.includes('Write one final answer that both of you could sign') ? `draft:${c.cli}`
       : c.input.startsWith('Give the user a final answer') ? `synthesize:${c.cli}` : `other:${c.cli}`));
 
@@ -137,10 +169,20 @@ test('verdict and notes parsing', () => {
   assert.deepEqual(splitDraft('Only an answer'), { answer: 'Only an answer', notes: 'none' });
 });
 
-test('without max_rounds the council is a single pass with one synthesis', async () => {
-  const result = JSON.parse(await invoke('debate', 'q'));
-  assert.equal(result.agreed, undefined);
+test('both models must agree by default; the config can change the rounds or ask for a single pass', async () => {
+  const agreed = JSON.parse(await invoke('debate', 'q'));
+  assert.equal(agreed.agreed, true);
+  assert.equal(agreed.settings.max_rounds, 3);
+  assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['draft:claude', 'review:codex']);
+  fake.clearCalls();
+  fake.writeConfig({ max_rounds: null });
+  const single = JSON.parse(await invoke('debate', 'q'));
+  assert.equal(single.agreed, undefined);
+  assert.equal(single.settings.max_rounds, null);
   assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['synthesize:claude']);
+  fake.writeConfig({ max_rounds: 5 });
+  assert.equal(JSON.parse(await invoke('debate', 'q')).settings.max_rounds, 5);
+  assert.equal(JSON.parse(await invoke('debate', 'q', { max_rounds: 1 })).settings.max_rounds, 1, 'a per-call value wins');
 });
 
 test('who writes the final answer: config default, then per-call override (ChatGPT = codex)', async () => {
@@ -161,8 +203,17 @@ test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AG
   assert.equal(result.rounds_run, 2);
   assert.deepEqual(result.rounds.map(r => r.verdict), ['disagree', 'agree']);
   assert.deepEqual(result.rounds.map(r => [r.drafter, r.reviewer]), [['claude', 'codex'], ['claude', 'codex']]);
-  assert.deepEqual(kinds(fake.questionCalls()).slice(4), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
-  assert.match(fake.questionCalls()[6].input, /review 1: objection 1/, 'the redraft sees the objections');
+  const calls = fake.questionCalls();
+  assert.deepEqual(kinds(calls).slice(6), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
+  const [draft, review1, redraft, review2] = calls.slice(6).map(c => c.input);
+  const discussion = discussionOf(result);
+  const asReviewer = { question: 'q', discussion, self: 'Codex', other: 'Claude' };
+  assert.equal(draft, prompt('draft', { question: 'q', discussion, self: 'Claude', other: 'Codex' }), 'the drafter sees the whole discussion');
+  assert.equal(review1, prompt('review', { ...asReviewer, draft: result.rounds[0].draft, notes: 'none', previous_review: 'none (this is the first draft)' }),
+    'the reviewer sees the whole discussion');
+  assert.ok(redraft.includes(discussion) && /The reviewer's response:\n.*review 1: objection 1/.test(redraft), 'the redraft sees the discussion and the objections');
+  assert.equal(review2, prompt('review', { ...asReviewer, draft: result.rounds[1].draft, notes: 'none', previous_review: 'codex[gpt-test|xhigh] review 1: objection 1' }),
+    'the reviewer sees its own previous objections, without the verdict line');
   assert.equal(result.settings.max_rounds, 5);
 }));
 
@@ -198,4 +249,18 @@ test('max_rounds is validated and only offered on council tools', async () => {
   for (const bad of [-1, 1.5, 'two', true]) await assert.rejects(invoke('council_ask', 'q', { max_rounds: bad }), /max_rounds must be a whole number/);
   await assert.rejects(invoke('ask_codex', 'q', { max_rounds: 2 }), /does not accept: max_rounds/);
   assert.equal(fake.calls().length, 0);
+});
+
+test('a cancelled call settles only once its process has exited', async () => {
+  const { run } = await import('../src/process.mjs');
+  const dir = mkTemp(joinPath(tmp(), 'council-kill-'));
+  const pidFile = joinPath(dir, 'pid');
+  const controller = new AbortController();
+  const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  const running = run(process.execPath, ['-e', script], { signal: controller.signal });
+  let pid;
+  while (!pid) { await new Promise(resolve => setTimeout(resolve, 20)); try { pid = Number(readFileSync(pidFile, 'utf8')); } catch { /* not yet */ } }
+  controller.abort();
+  await assert.rejects(running, /cancelled/);
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'the process is gone when the call settles');
 });

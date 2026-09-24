@@ -1,7 +1,7 @@
 {
   "name": "codex-claude-council",
-  "version": "0.3.2",
-  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, critique each other, and you get one synthesized answer.",
+  "version": "0.4.0",
+  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, critique each other, reply to the critiques, and agree on one answer.",
   "author": {
     "name": "Hamza Aziz",
     "url": "https://github.com/hamza-aziz-ai"
@@ -32,7 +32,7 @@
   "interface": {
     "displayName": "Codex–Claude Council",
     "shortDescription": "A second opinion from Codex and Claude",
-    "longDescription": "Ask Codex and Claude independently, have each critique the other, and get one synthesized answer, all through your own ChatGPT and Claude subscriptions. Choose the model and effort per question.",
+    "longDescription": "Ask Codex and Claude independently, have each critique the other and reply to the critique of its own answer, and get one answer both agree with, all through your own ChatGPT and Claude subscriptions. Choose the model and effort per question.",
     "developerName": "Hamza Aziz",
     "category": "Productivity",
     "capabilities": [],

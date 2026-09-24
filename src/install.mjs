@@ -76,7 +76,8 @@ export async function doctor() {
     const { model, effort } = resolveSide(side, {}, config);
     say(`  ${side}: model=${model || '(CLI default)'} effort=${effort || '(CLI default)'}`);
   }
-  say(`  timeout=${config.timeout_seconds}s per call, synthesizer=${config.synthesizer}`);
+  const rounds = config.max_rounds === null ? 'single pass' : config.max_rounds === 0 ? 'until both agree' : `at most ${config.max_rounds}`;
+  say(`  timeout=${config.timeout_seconds}s per call, synthesizer=${config.synthesizer}, agreement rounds=${rounds}`);
   if (result.missing.length) say('', ...result.missing.flatMap(side => INSTALL_HELP[side]));
   return result.ok && !result.signIn.length ? 0 : 1;
 }

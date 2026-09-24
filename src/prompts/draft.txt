@@ -1,18 +1,9 @@
-You and another AI model answered the question below independently, then critiqued each other. Write one final answer that both of you could sign: keep what is correct in either answer, fix what the critiques showed was wrong, and state genuine uncertainty. The other model will review your draft and must agree with it. Do not call tools.
+You are $self. You and $other answered the question below independently, critiqued each other's answers, then each replied to the critique of its own answer; the whole discussion is below. Write one final answer that both of you could sign: keep what is correct in either answer, fix what the discussion showed was wrong, and state genuine uncertainty. $other will review your draft and must agree with it. Do not call tools.
 
 After the answer, write a line containing only ---NOTES--- and then briefly tell the reviewer anything it should know, such as a point you deliberately left out and why. Write "none" if there is nothing.
 
 Question:
 $question
 
-Codex answer:
-$codex_answer
-
-Claude answer:
-$claude_answer
-
-Codex critique of Claude:
-$codex_critique
-
-Claude critique of Codex:
-$claude_critique
+Discussion:
+$discussion

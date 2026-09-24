@@ -17,6 +17,7 @@ test('packaged defaults apply when there is no user config', () => withUserConfi
   const config = loadConfig();
   assert.equal(config.timeout_seconds, 600);
   assert.equal(config.synthesizer, 'claude', 'Claude writes the final answer by default');
+  assert.equal(config.max_rounds, 3, 'both models must agree by default, within 3 rounds');
   assert.deepEqual(resolveSide('codex', {}, config), { model: null, effort: 'high' });
   assert.deepEqual(resolveSide('claude', {}, config), { model: null, effort: 'high' });
 }));
@@ -50,5 +51,8 @@ test('broken config files give a clear error', () => {
   withUserConfig('{not json', () => assert.throws(() => loadConfig(), /not valid JSON/));
   withUserConfig({ synthesizer: 'gemini' }, () => assert.throws(() => loadConfig(), /synthesizer/));
   withUserConfig({ synthesizer: 'ChatGPT' }, () => assert.equal(loadConfig().synthesizer, 'codex'));
+  withUserConfig({ max_rounds: null }, () => assert.equal(loadConfig().max_rounds, null));
+  withUserConfig({ max_rounds: 0 }, () => assert.equal(loadConfig().max_rounds, 0));
+  for (const bad of [-1, 1.5, '2', true]) withUserConfig({ max_rounds: bad }, () => assert.throws(() => loadConfig(), /config: max_rounds/));
   withUserConfig({ timeout_seconds: 0 }, () => assert.throws(() => loadConfig(), /timeout_seconds/));
 });

@@ -12,8 +12,8 @@ Usage:
   ${NAME} uninstall [options]      Remove it again (your config file is kept)
   ${NAME} doctor                   Check Node.js, both CLIs, sign-ins and config
   ${NAME} config [--init]          Show the effective config, or create an editable config file
-  ${NAME} ask "question"           Both answer, cross-critique, one final answer
-  ${NAME} debate "question"        Same, printing answers, critiques and settings as JSON
+  ${NAME} ask "question"           Both answer, critique each other, reply, then agree on one final answer
+  ${NAME} debate "question"        Same, printing answers, critiques, replies, rounds and settings as JSON
   ${NAME} codex "question"         Codex (ChatGPT) only
   ${NAME} claude "question"        Claude only
   ${NAME} mcp                      Run the MCP server on stdio
@@ -23,6 +23,7 @@ Model and effort (omit to use your config):
   ask, debate:     --codex-model <name>  --codex-effort <level>  --claude-model <name>  --claude-effort <level>
                    --synthesizer <claude|codex>   who writes the final answer (default: claude; chatgpt = codex)
                    --max-rounds <n>   draft/review until both agree: n = at most n rounds, 0 = no limit
+                                      (default: 3; "max_rounds": null in the config for a single pass)
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install options:
