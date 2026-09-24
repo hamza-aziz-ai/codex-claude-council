@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "codex-claude-council",
-      "description": "Ask Codex (ChatGPT) and Claude, let them cross-critique, and get one answer. Uses your local Codex and Claude Code CLI sign-ins; no API keys.",
+      "description": "Ask Codex (ChatGPT) and Claude, let them critique each other and reply, and get one answer both agree with. Uses your local Codex and Claude Code CLI sign-ins; no API keys.",
       "source": "./",
       "category": "productivity"
     }

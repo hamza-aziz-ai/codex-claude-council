@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/node-20%2B-brightgreen)
 
-Ask **ChatGPT (through Codex)** and **Claude** the same question. They answer independently, critique each other, and you get one answer back, using the subscriptions you already have. No API keys.
+Ask **ChatGPT (through Codex)** and **Claude** the same question. Each gives its own answer, hears the other's critique of it and replies, and together they settle on one answer that both agree with, using the subscriptions you already have. No API keys.
 
 Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **ChatGPT desktop app** and your **terminal**, on Windows, macOS and Linux. You can pick the model and effort for each side, per question.
 
@@ -12,16 +12,22 @@ Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **Chat
 flowchart LR
     Q[Your question] --> CA[Codex answers]
     Q --> LA[Claude answers]
-    LA --> CC[Codex critiques Claude]
-    CA --> LC[Claude critiques Codex]
-    CA & LA & CC & LC --> S[Synthesis: one final answer]
-    CA & LA & CC & LC -. max_rounds .-> D[Draft joint answer]
+    LA --> CC[Codex critiques Claude's answer]
+    CA --> LC[Claude critiques Codex's answer]
+    CC --> LRe[Claude replies to Codex's critique]
+    LC --> CRe[Codex replies to Claude's critique]
+    CRe & LRe --> D[Draft one joint answer]
     D --> R{Other model reviews}
     R -- disagrees --> D
     R -- agrees --> A[Answer both agree with]
 ```
 
-By default the council makes one pass. Set `max_rounds` and the two models keep drafting and reviewing one joint answer until they both agree with it.
+1. **Answer**: both models answer on their own, without seeing each other.
+2. **Critique**: each reviews the other's answer.
+3. **Reply**: the critiques are swapped. Each model reads what the other said about its answer and replies: it accepts the points that are right and explains where it still disagrees.
+4. **Agree**: one model drafts a joint answer from the whole discussion and the other reviews it. They repeat until both agree (at most 3 rounds by default).
+
+The conversation goes both ways whoever writes the final answer, and from step 2 on each model sees the whole discussion so far.
 
 ## Requirements
 
@@ -105,8 +111,8 @@ Just ask in plain language:
 
 | You say | What runs |
 |---|---|
-| "Ask the council: should I use Postgres or MongoDB for this?" | `council_ask`: both answer, cross-critique, one final answer |
-| "Run a council **debate** on this migration plan." | `debate`: final answer plus both answers, both critiques and the settings used |
+| "Ask the council: should I use Postgres or MongoDB for this?" | `council_ask`: both answer, critique, reply, then agree on one final answer |
+| "Run a council **debate** on this migration plan." | `debate`: final answer plus both answers, critiques and replies, every draft/review round and the settings used |
 | "Get **Codex's** second opinion on this function." | `ask_codex` |
 | "Ask **Claude** only, with **sonnet** at **low** effort: …" | `ask_claude` with overrides |
 | "Council this with **ChatGPT on gpt-5.6-sol at xhigh** and **Claude on opus at max**: …" | `council_ask` with per-side overrides |
@@ -114,21 +120,23 @@ Just ask in plain language:
 | "Council debate, **at most 3 rounds** to reach agreement: …" | `debate` with `max_rounds: 3` |
 | "Ask the council, and let **ChatGPT write the final answer**: …" | `council_ask` with `synthesizer: "codex"` |
 
-The models run in an empty folder with no tools, so include the code or text you want reviewed in the question. A single-pass council run is five CLI calls. At high effort that can take several minutes, and it counts against both plans' usage limits.
+The models run in an empty folder with no tools, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
 
 ### Who writes the final answer: `synthesizer`
 
-**Claude** writes the final answer by default. Pass `synthesizer: "codex"` (ChatGPT) or `"claude"` for one question, or change the default in your config. In the agreement loop the synthesizer drafts the joint answer and the other model reviews it.
+**Claude** drafts the final answer by default and Codex (ChatGPT) reviews it. Pass `synthesizer: "codex"` or `"claude"` for one question, or change the default in your config. Either way both models answer, critique and reply to each other first.
 
 ### Until they agree: `max_rounds`
 
 | `max_rounds` | What happens |
 |---|---|
-| omitted | single pass: answers, critiques, one synthesis (5 calls) |
-| `N` (1 or more) | after the critiques, the synthesizer drafts one joint answer and the other model reviews it; repeat for **at most N rounds**, stopping as soon as both agree (4 + 2 per round calls) |
+| omitted | the configured default: **at most 3 rounds** unless you changed it |
+| `N` (1 or more) | the synthesizer drafts one joint answer and the other model reviews it; repeat for **at most N rounds**, stopping as soon as both agree (6 + 2 per round calls) |
 | `0` | the same loop with **no round limit**: it runs until both agree |
 
-The drafter endorses its own draft, so the reviewer's `AGREE` means both models agree with the exact final text. `council_ask` ends with a line saying whether they agreed; `debate` includes every draft and review. If the limit is reached, you get the latest draft and the reviewer's remaining objections. If a call fails partway through (for example a usage limit), you get the latest draft and the reason.
+The drafter endorses its own draft, so the reviewer's `AGREE` means both models agree with the exact final text. The reviewer sees the whole discussion and its own previous objections, so it can check that its points were answered. `council_ask` ends with a line saying whether they agreed; `debate` includes every draft and review. If the limit is reached, you get the latest draft and the reviewer's remaining objections. If a call fails partway through (for example a usage limit), you get the latest draft and the reason.
+
+For the old single pass (the synthesizer writes the final answer alone after the replies, 7 calls, no sign-off from the other model), set `"max_rounds": null` in your config.
 
 `max_rounds: 0` can run for a long time and use a lot of both plans on questions where reasonable people disagree. You can stop it at any time (Esc / cancel in the app, Ctrl+C in the terminal).
 
@@ -170,6 +178,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 {
   "timeout_seconds": 600,
   "synthesizer": "claude",
+  "max_rounds": 3,
   "allow_api_key_auth": false,
   "codex":  { "command": null, "model": null, "effort": "high" },
   "claude": { "command": null, "model": null, "effort": "high" }
@@ -180,6 +189,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 |---|---|
 | `timeout_seconds` | limit for each CLI call |
 | `synthesizer` | which model writes the final answer: `claude` (default) or `codex` (ChatGPT) |
+| `max_rounds` | default limit on draft/review rounds: `3` (default), `0` for no limit, `null` for a single pass without agreement |
 | `codex.model`, `claude.model` | default model; `null` uses the CLI's own default |
 | `codex.effort`, `claude.effort` | default effort |
 | `codex.command`, `claude.command` | full path to a CLI if it isn't found automatically |
@@ -206,7 +216,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - Everything runs on your computer. Your question goes to OpenAI and Anthropic through their official CLIs, under your own accounts.
 - Codex runs `codex exec` in a **read-only sandbox** in an empty temporary folder, ignoring your `~/.codex/config.toml` (so no plugins, hooks or MCP servers load). Claude runs with **all tools disabled**, no MCP servers, no skills and no user settings. Neither model can read or change your files.
 - API-key environment variables are removed before the CLIs start, so calls use your subscriptions rather than per-token API billing. Codex must be signed in with ChatGPT and Claude Code with a Claude subscription unless you set `allow_api_key_auth`.
-- A plugin with a local MCP server runs with your user permissions. This one is about 750 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.
+- A plugin with a local MCP server runs with your user permissions. This one is about 900 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.
 
 ## Uninstall
 

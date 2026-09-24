@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 (2026-09-24)
+
+- **Each model now replies to the critique of its answer.** After the cross-critiques, the critiques are swapped: each model sees the other's critique of its own answer, accepts what is right and explains where it still disagrees. The final answer is written from the whole discussion (both answers, both critiques, both replies), in both directions whoever the synthesizer is.
+- **Both models agree on the final answer by default.** The draft/review loop now runs by default, for at most 3 rounds. Set `"max_rounds"` in the config to change the default: `0` for no limit, or `null` for the previous single pass. A per-call `max_rounds` still wins.
+- Each critic sees its own answer as well as the other model's, and in the agreement loop both the drafter and the reviewer see the whole discussion. The reviewer also sees its own previous objections, so it can check that they were answered.
+- `debate` includes `codex_reply` and `claude_reply`.
+- A run now makes six calls before the agreement loop (was four), plus two per round: eight when the models agree on the first draft. The single pass is seven calls (was five).
+
 ## 0.3.2 (2026-09-23)
 
 - Moved the command-line entry point from `bin/` to `scripts/`: claude.ai rejects a plugin that has a top-level `bin/` directory, which made "Add marketplace" in Claude Desktop fail with "Marketplace sync failed". The command itself is unchanged.

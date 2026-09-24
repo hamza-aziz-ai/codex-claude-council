@@ -51,6 +51,10 @@ export function loadConfig() {
   if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');
   config.synthesizer = sideName(config.synthesizer);
   if (!config.synthesizer) throw new Error('config: synthesizer must be "claude" or "codex" (ChatGPT)');
+  config.max_rounds ??= null;
+  if (config.max_rounds !== null && !(Number.isInteger(config.max_rounds) && config.max_rounds >= 0)) {
+    throw new Error('config: max_rounds must be a whole number (0 = until both agree), or null for a single pass');
+  }
   return config;
 }
 

@@ -1,8 +1,8 @@
 {
   "name": "codex-claude-council",
   "displayName": "Codex–Claude Council",
-  "version": "0.3.2",
-  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, critique each other, and you get one synthesized answer. Per-call model and effort control.",
+  "version": "0.4.0",
+  "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, critique each other, reply to the critiques, and agree on one answer. Per-call model and effort control.",
   "author": {
     "name": "Hamza Aziz",
     "url": "https://github.com/hamza-aziz-ai"

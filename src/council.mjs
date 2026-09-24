@@ -1,5 +1,5 @@
-// The council: two independent answers, two cross-critiques, then either one synthesis
-// (single pass) or a draft/review loop that runs until both models agree.
+// The council: two independent answers, two cross-critiques, each model's reply to the critique of
+// its answer, then either one synthesis (single pass) or a draft/review loop that runs until both agree.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { askClaude, askCodex } from './adapters.mjs';
@@ -14,6 +14,7 @@ export const TOOL_OPTIONS = Object.freeze({
 });
 export const MAX_QUESTION_LENGTH = 12_000;
 const LABEL = { codex: 'Codex (ChatGPT)', claude: 'Claude' };
+const SPEAKER = { codex: 'Codex', claude: 'Claude' }; // names used inside prompts
 const OTHER = { codex: 'claude', claude: 'codex' };
 
 export function prompt(name, values) {
@@ -28,12 +29,12 @@ function checkQuestion(question) {
   return question.trim();
 }
 
-/** undefined = single pass; 0 = until both agree (no limit); N = at most N draft/review rounds. */
+/** undefined = not given (use the config); 0 = until both agree (no limit); N = at most N draft/review rounds. */
 export function parseMaxRounds(value) {
   if (value === undefined || value === null || value === '') return undefined;
   const number = typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value;
   if (!Number.isInteger(number) || number < 0) {
-    throw new Error('max_rounds must be a whole number: 0 = until both agree, N = at most N rounds (omit for a single pass)');
+    throw new Error('max_rounds must be a whole number: 0 = until both agree, N = at most N rounds (omit for the configured default)');
   }
   return number;
 }
@@ -94,13 +95,13 @@ export function splitDraft(text) {
 
 /**
  * codex / claude: optional { model, effort } overrides for that side.
- * maxRounds: undefined for a single pass, 0 for no limit, N for at most N draft/review rounds.
+ * maxRounds: 0 for no limit, N for at most N draft/review rounds; default from config (null there = single pass).
  * synthesizer: "claude" or "codex" writes the final answer (drafts, in the loop); default from config.
  */
 export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
-  maxRounds = parseMaxRounds(maxRounds);
   const config = loadConfig();
+  maxRounds = parseMaxRounds(maxRounds) ?? config.max_rounds ?? undefined;
   const writer = synthesizer === undefined ? config.synthesizer : sideName(synthesizer);
   if (!writer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
   const settings = { codex: resolveSide('codex', codex, config), claude: resolveSide('claude', claude, config) };
@@ -111,32 +112,44 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   const ask = async (side, text) => (await together(signal, [task[side](text)]))[0];
   const progress = message => onProgress?.(message);
 
+  // Both models at once; build(me, them) writes each side's prompt. Results come back by side.
+  const bothSides = async build => {
+    const [codexText, claudeText] = await together(signal, [task.codex(build('codex', 'claude')), task.claude(build('claude', 'codex'))]);
+    return { codex: codexText, claude: claudeText };
+  };
+
   progress('Codex (ChatGPT) and Claude are answering independently');
-  const first = prompt('answer', { question });
-  const [codexAnswer, claudeAnswer] = await together(signal, [task.codex(first), task.claude(first)]);
+  const answers = await bothSides(() => prompt('answer', { question }));
   progress('Each model is critiquing the other');
-  const [codexCritique, claudeCritique] = await together(signal, [
-    task.codex(prompt('critique', { question, other_answer: claudeAnswer })),
-    task.claude(prompt('critique', { question, other_answer: codexAnswer })),
-  ]);
+  const critiques = await bothSides((me, them) => prompt('critique', { question, own_answer: answers[me], other_answer: answers[them] }));
+  // The critiques are swapped: each model sees what the other said about its answer, and replies.
+  progress('Each model is replying to the critique of its answer');
+  const replies = await bothSides((me, them) => prompt('reply', {
+    question, own_answer: answers[me], other_answer: answers[them], own_critique: critiques[me], other_critique: critiques[them],
+  }));
   const base = {
-    codex: codexAnswer, claude: claudeAnswer, codex_critique: codexCritique, claude_critique: claudeCritique,
+    codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
+    codex_reply: replies.codex, claude_reply: replies.claude,
     settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null },
   };
-  const material = {
-    question, codex_answer: codexAnswer, claude_answer: claudeAnswer,
-    codex_critique: codexCritique, claude_critique: claudeCritique,
-  };
+  const discussion = prompt('discussion', {
+    codex_answer: answers.codex, claude_answer: answers.claude,
+    codex_critique: critiques.codex, claude_critique: critiques.claude,
+    codex_reply: replies.codex, claude_reply: replies.claude,
+  }).trimEnd();
 
   if (maxRounds === undefined) {
     progress(`${LABEL[writer]} is writing the final answer`);
-    return { answer: await ask(writer, prompt('synthesize', material)), ...base };
+    return { answer: await ask(writer, prompt('synthesize', { question, discussion })), ...base };
   }
 
-  // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
+  // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it. Both see the
+  // whole discussion; the reviewer also sees its own previous objections, to check they were answered.
   // The drafter endorses its own draft, so the reviewer's AGREE means both agree.
   const drafter = writer;
   const reviewer = OTHER[drafter];
+  const asDrafter = { question, discussion, self: SPEAKER[drafter], other: SPEAKER[reviewer] };
+  const asReviewer = { question, discussion, self: SPEAKER[reviewer], other: SPEAKER[drafter] };
   const rounds = [];
   let draft = null;
   let notes = 'none';
@@ -146,10 +159,11 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const limit = maxRounds === 0 ? '' : ` of ${maxRounds}`;
     try {
       progress(`Round ${round}${limit}: ${LABEL[drafter]} is drafting the joint answer`);
-      const text = await ask(drafter, round === 1 ? prompt('draft', material) : prompt('redraft', { question, draft, notes, objections }));
+      const text = await ask(drafter, round === 1 ? prompt('draft', asDrafter) : prompt('redraft', { ...asDrafter, draft, notes, objections }));
       ({ answer: draft, notes } = splitDraft(text));
       progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
-      const review = await ask(reviewer, prompt('review', { question, draft, notes }));
+      const previous = objections ? withoutVerdict(objections) : 'none (this is the first draft)';
+      const review = await ask(reviewer, prompt('review', { ...asReviewer, draft, notes, previous_review: previous }));
       const agreed = readVerdict(review);
       rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
       progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);

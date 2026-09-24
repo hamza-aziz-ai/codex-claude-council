@@ -1,7 +1,10 @@
-Review the other model's answer to the question below. Identify the strongest point, any error or unsupported claim, and what is missing. Be concise and constructive. Do not call tools.
+Review the other model's answer to the question below. Your own answer is included for reference: judge theirs on its merits, not on whether it matches yours. Identify the strongest point, any error or unsupported claim, and what is missing. If you find nothing wrong, say so rather than inventing problems. Be concise and constructive. Do not call tools.
 
 Question:
 $question
+
+Your answer:
+$own_answer
 
 Other model's answer:
 $other_answer

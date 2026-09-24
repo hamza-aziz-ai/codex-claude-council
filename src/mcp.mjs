@@ -20,10 +20,10 @@ const schema = extra => ({
 const roundsField = {
   type: 'integer',
   minimum: 0,
-  description: 'Optional agreement loop. Omit for a single pass (answers, critiques, one synthesis). '
-    + 'N (1 or more): after the critiques, the synthesizer drafts one joint answer and the other model reviews it; '
-    + 'repeat for at most N rounds, stopping as soon as both agree. 0: repeat until both agree, with no round limit '
-    + '(can take a long time and use a lot of both plans\' usage). Set only when the user asks for agreement, consensus or a number of rounds.',
+  description: 'Optional limit on the agreement loop. After the answers, critiques and replies, the synthesizer drafts one joint answer '
+    + 'and the other model reviews it, until both agree. N (1 or more): at most N rounds. 0: no round limit '
+    + '(can take a long time and use a lot of both plans\' usage). Omit to use the configured default (3 rounds unless the user changed it). '
+    + 'Set only when the user asks for a number of rounds or for agreement without a limit.',
 };
 const synthesizerField = {
   type: 'string',
@@ -41,12 +41,12 @@ const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint
 export const TOOLS = [
   {
     name: 'council_ask', title: 'Ask the Codex–Claude council',
-    description: 'Ask Codex (ChatGPT) and Claude independently, have each critique the other, then return one final answer. With max_rounds, they keep drafting and reviewing until both agree. Takes minutes at high effort. Optional per-side model/effort overrides.',
+    description: 'Ask Codex (ChatGPT) and Claude independently; each critiques the other\'s answer, then replies to the critique of its own. They then draft and review one final answer until both agree with it. Takes minutes at high effort. Optional per-side model/effort overrides.',
     inputSchema: schema(councilFields), annotations,
   },
   {
     name: 'debate', title: 'Codex–Claude debate transcript',
-    description: 'Run the council and return JSON with the final answer, both answers, both critiques, every draft/review round (with max_rounds) and the settings used. Optional per-side model/effort overrides.',
+    description: 'Run the council and return JSON with the final answer, whether both models agree with it, both answers, both critiques, both replies, every draft/review round and the settings used. Optional per-side model/effort overrides.',
     inputSchema: schema(councilFields), annotations,
   },
   {
@@ -63,7 +63,7 @@ export const TOOLS = [
 
 const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
-  + 'Pass max_rounds only when the user wants the models to agree (0 = until they agree). '
+  + 'Pass max_rounds only when the user asks for a number of rounds (0 = until they agree, with no limit). '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes.';
 
 export function serve({ input = process.stdin, output = process.stdout } = {}) {

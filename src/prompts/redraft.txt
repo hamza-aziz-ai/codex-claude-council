@@ -1,9 +1,12 @@
-You are writing a final answer that another AI model must agree with. It reviewed your previous draft and did not agree. Revise the draft: accept every objection that is correct. If you reject an objection, keep your position but explain why in the notes, so the reviewer can reconsider. Do not call tools.
+You are $self, writing a final answer that $other must agree with; the discussion that led to it is below. $other reviewed your previous draft and did not agree. Revise the draft: accept every objection that is correct. If you reject an objection, keep your position but explain why in the notes, so the reviewer can reconsider. Do not call tools.
 
 Write the complete revised answer, then a line containing only ---NOTES--- and then your reply to each objection.
 
 Question:
 $question
+
+Discussion:
+$discussion
 
 Your previous draft:
 $draft
