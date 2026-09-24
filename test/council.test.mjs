@@ -108,6 +108,9 @@ test('bad input is rejected before any CLI runs', async () => {
 
 test('a failing side stops the council with that side\'s error', () => withEnv({ FAKE_FAIL: 'codex' }, async () => {
   await assert.rejects(invoke('council_ask', 'q'), /codex failed: ERROR: You've hit your usage limit\./);
+  for (const { cli, pid } of fake.questionCalls()) {
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, `the stopped ${cli} process is gone when the council returns`);
+  }
 }));
 
 test('sign-in problems are reported with the fix', async () => {
@@ -146,7 +149,7 @@ test('a missing CLI gives install guidance', async () => {
 });
 
 // ---- Agreement loop (max_rounds) ----
-import { mkdtempSync as mkTemp } from 'node:fs';
+import { mkdtempSync as mkTemp, readFileSync } from 'node:fs';
 import { tmpdir as tmp } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { readVerdict, splitDraft } from '../src/council.mjs';
@@ -246,4 +249,18 @@ test('max_rounds is validated and only offered on council tools', async () => {
   for (const bad of [-1, 1.5, 'two', true]) await assert.rejects(invoke('council_ask', 'q', { max_rounds: bad }), /max_rounds must be a whole number/);
   await assert.rejects(invoke('ask_codex', 'q', { max_rounds: 2 }), /does not accept: max_rounds/);
   assert.equal(fake.calls().length, 0);
+});
+
+test('a cancelled call settles only once its process has exited', async () => {
+  const { run } = await import('../src/process.mjs');
+  const dir = mkTemp(joinPath(tmp(), 'council-kill-'));
+  const pidFile = joinPath(dir, 'pid');
+  const controller = new AbortController();
+  const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+  const running = run(process.execPath, ['-e', script], { signal: controller.signal });
+  let pid;
+  while (!pid) { await new Promise(resolve => setTimeout(resolve, 20)); try { pid = Number(readFileSync(pidFile, 'utf8')); } catch { /* not yet */ } }
+  controller.abort();
+  await assert.rejects(running, /cancelled/);
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'the process is gone when the call settles');
 });

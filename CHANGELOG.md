@@ -6,6 +6,7 @@
 - **Both models agree on the final answer by default.** The draft/review loop now runs by default, for at most 3 rounds. Set `"max_rounds"` in the config to change the default: `0` for no limit, or `null` for the previous single pass. A per-call `max_rounds` still wins.
 - Each critic sees its own answer as well as the other model's, and in the agreement loop both the drafter and the reviewer see the whole discussion. The reviewer also sees its own previous objections, so it can check that they were answered.
 - `debate` includes `codex_reply` and `claude_reply`.
+- A cancelled or timed-out call now finishes only once its CLI process has exited, and when one side fails the council waits for the other side's stopped call before returning. On Windows, where the kill runs asynchronously, a stopped process could briefly outlive the call.
 - A run now makes six calls before the agreement loop (was four), plus two per round: eight when the models agree on the first draft. The single pass is seven calls (was five).
 
 ## 0.3.2 (2026-09-23)

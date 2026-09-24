@@ -63,16 +63,18 @@ function checkOptions(tool, options) {
   return clean;
 }
 
-// Run tasks together; if one fails, stop the others instead of waiting for them.
+// Run tasks together; if one fails, stop the others instead of waiting for their answers.
 async function together(signal, tasks) {
   const controller = new AbortController();
   const stop = () => controller.abort();
   if (signal?.aborted) stop();
   else signal?.addEventListener('abort', stop, { once: true });
+  const running = tasks.map(task => task(controller.signal));
   try {
-    return await Promise.all(tasks.map(task => task(controller.signal)));
+    return await Promise.all(running);
   } catch (error) {
     controller.abort();
+    await Promise.allSettled(running); // let the stopped calls finish exiting, so no process outlives the council
     throw error;
   } finally {
     signal?.removeEventListener('abort', stop);
