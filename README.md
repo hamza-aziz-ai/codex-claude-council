@@ -125,8 +125,30 @@ Just ask in plain language:
 | "Ask the council and **keep going until they agree**: …" | `council_ask` with `max_rounds: 0` |
 | "Council debate, **at most 3 rounds** to reach agreement: …" | `debate` with `max_rounds: 3` |
 | "Ask the council, and let **ChatGPT write the final answer**: …" | `council_ask` with `synthesizer: "codex"` |
+| "Ask the council: is **the latest** Next.js release safe to upgrade to for our app?" | `council_ask`: both search the web for the release notes and read the project |
+| "Get **Codex's** take on this error, and check the library's **current docs**: …" | `ask_codex` with web search (on by default) |
+| "Ask the council **without internet access**: …" | `council_ask` with `web_search: false` |
 
 With a `workspace`, the models read what they need from the project themselves; without one, they have no file access, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
+
+### Web search
+
+Both models can search the web and read web pages (on by default), so questions about anything that changes over time get checked instead of answered from memory. They are asked to prefer primary sources such as official docs, release notes and changelogs, and to say where a fact came from. In the critique and review steps they check each other's claims against those sources too.
+
+Questions where it helps:
+
+- **Current versions and releases:** "Which Python version should a new service target today, and when does 3.11 reach end of life?"
+- **APIs and docs that change:** "Is `datetime.utcnow()` deprecated? What should we use instead?"
+- **Error messages:** "What causes `ERR_REQUIRE_ESM` after upgrading this package, and what is the fix?"
+- **Comparisons and decisions:** "Postgres or DynamoDB for this workload, given current pricing and limits?"
+
+With a `workspace` as well, they combine the two: they read your code, then check it against the current docs.
+
+- "Is our use of the Stripe API in `src/billing` still correct for the current API version?"
+- "Our CI started failing after the `actions/checkout` update. Look at `.github/workflows` and the release notes, and tell us why."
+- "Which of our dependencies in `package.json` have known security advisories?"
+
+To turn it off: pass `web_search: false` for one question ("ask the council without internet access"), use `--no-web` in the terminal, or set `"web_search": false` in your config. Without web access, both models answer from what they know and from the project, and they are told they have no internet. See [Security and privacy](#security-and-privacy) before using web access together with a sensitive project.
 
 ### Who writes the final answer: `synthesizer`
 
@@ -173,6 +195,9 @@ npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet --e
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --workspace ~/code/app  # read this project
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no file access
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web                # no web search
+npx -y github:hamza-aziz-ai/codex-claude-council ask "What changed in the latest Node.js LTS that affects this repo?"  # reads the repo and searches the web
+npx -y github:hamza-aziz-ai/codex-claude-council codex "Is datetime.utcnow() deprecated? Check the current Python docs."  # Codex only, with web search
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web --no-workspace  # neither files nor internet
 ```
 
 In the terminal, both models read the git repository you run the command from (if any) unless you pass `--workspace` or `--no-workspace`. Each command is a new pair of sessions that lasts for that run.
