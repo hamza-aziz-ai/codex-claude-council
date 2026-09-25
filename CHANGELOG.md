@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2 (2026-09-25)
+
+- A Codex session the user passes that is still open in the Codex CLI or app (Codex: `already has an active writer`) now gets a message saying to close it and try again, or to leave out the session id. One Codex has not saved yet (`no rollout found`) gets a message saying to send it a first message or check the id with `codex resume`. Every other Codex failure keeps its message.
+
 ## 0.8.1 (2026-09-25)
 
 - **Sessions by name.** Wherever a session id is taken (`claude_session_id`, `codex_session_id`, `session_id`, `other_session_id`, and `--claude-session`, `--codex-session`, `--session`), the name the user gave the session with `/rename` works too, spaces included. Claude Code names are read from the session's own transcript (its latest `custom-title` entry), Codex names from `~/.codex/session_index.jsonl`. The most recently used session with that name is taken, an exact match before one that differs only in case, and it is resumed by its id in its own folder. Checked with a real Claude Code session renamed with `/rename`. Codex also resolves simple names itself, so a Codex name not found in the index is passed on.
