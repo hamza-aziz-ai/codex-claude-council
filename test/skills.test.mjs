@@ -9,8 +9,8 @@ let dir;
 const saved = {};
 before(() => {
   dir = mkdtempSync(join(tmpdir(), 'council-skills-'));
-  // Empty Codex and user homes, so skills installed natively on this machine do not leak in.
-  const env = { COUNCIL_CONFIG: join(dir, 'config.json'), CODEX_HOME: join(dir, 'codex-home'), HOME: join(dir, 'home'), USERPROFILE: join(dir, 'home') };
+  // Empty Claude Code, Codex and user homes, so skills installed natively on this machine do not leak in.
+  const env = { COUNCIL_CONFIG: join(dir, 'config.json'), CLAUDE_CONFIG_DIR: join(dir, 'claude-home'), CODEX_HOME: join(dir, 'codex-home'), HOME: join(dir, 'home'), USERPROFILE: join(dir, 'home') };
   for (const [key, value] of Object.entries(env)) { saved[key] = process.env[key]; process.env[key] = value; }
 });
 after(() => {
