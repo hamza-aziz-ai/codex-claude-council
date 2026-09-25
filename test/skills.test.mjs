@@ -6,14 +6,15 @@ import { after, before, test } from 'node:test';
 import { addSkill, findSkills, listSkills, loadSkill, nativeSkills, parseGitHubUrl, parseSkill, rawSkillUrl, removeSkill, resolveRef, skillNote, skillsDir } from '../src/skills.mjs';
 
 let dir;
-let saved;
+const saved = {};
 before(() => {
   dir = mkdtempSync(join(tmpdir(), 'council-skills-'));
-  saved = process.env.COUNCIL_CONFIG;
-  process.env.COUNCIL_CONFIG = join(dir, 'config.json');
+  // Empty Codex and user homes, so skills installed natively on this machine do not leak in.
+  const env = { COUNCIL_CONFIG: join(dir, 'config.json'), CODEX_HOME: join(dir, 'codex-home'), HOME: join(dir, 'home'), USERPROFILE: join(dir, 'home') };
+  for (const [key, value] of Object.entries(env)) { saved[key] = process.env[key]; process.env[key] = value; }
 });
 after(() => {
-  if (saved === undefined) delete process.env.COUNCIL_CONFIG; else process.env.COUNCIL_CONFIG = saved;
+  for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   rmSync(dir, { recursive: true, force: true });
 });
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -34,7 +35,8 @@ before(() => {
   fake = setup({ codex: { effort: 'high' }, claude: { effort: 'high' } });
   server = start({ FAKE_SLEEP_MS: '300' });
 });
-after(() => { server.kill(); fake.cleanup(); });
+// Wait for the server to exit: on Windows, its folder (the test home) cannot be removed while it runs.
+after(async () => { if (server.exitCode === null) { server.kill(); await once(server, 'exit'); } fake.cleanup(); });
 
 test('initialize reports the server and tool capability', async () => {
   const { result } = await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });

@@ -1,6 +1,6 @@
 // Test setup: fake `codex` / `claude` executables in a folder whose name contains a space.
 // On Windows they are .cmd shims like npm creates, which exercises the cmd.exe quoting path.
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,8 +28,11 @@ export function setup(config = {}) {
     claude: { command: commands.claude, ...(config.claude || {}), ...(extra.claude || {}) },
   }));
   write();
-  // Empty Claude Code and Codex homes: no natively installed skills or saved sessions of the machine leak in.
-  const env = { COUNCIL_CONFIG: configPath, FAKE_LOG: log, CLAUDE_CONFIG_DIR: join(dir, 'claude-home'), CODEX_HOME: join(dir, 'codex-home') };
+  // Empty Claude Code, Codex and user homes (os.homedir() reads HOME, or USERPROFILE on Windows): no natively
+  // installed skills (~/.agents/skills too) or saved sessions of the machine leak in.
+  const home = join(dir, 'home');
+  mkdirSync(home); // the MCP server starts in the user's home
+  const env = { COUNCIL_CONFIG: configPath, FAKE_LOG: log, CLAUDE_CONFIG_DIR: join(dir, 'claude-home'), CODEX_HOME: join(dir, 'codex-home'), HOME: home, USERPROFILE: home };
   const saved = {};
   for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
   return {
