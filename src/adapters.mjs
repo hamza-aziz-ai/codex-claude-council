@@ -13,8 +13,10 @@ const EMPTY_MCP_CONFIG = join(PACKAGE_ROOT, 'src', 'empty-mcp.json');
 // GIT_OPTIONAL_LOCKS=0 stops read-only git commands (git status) from refreshing the index.
 const READ_ONLY_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' };
 
-function options(config, signal, cwd) {
-  return { cwd, env: { ...cleanEnv(config), ...READ_ONLY_ENV }, timeoutMs: Number(config.timeout_seconds) * 1000, signal };
+// A step that uses a skill runs its sub-agents too, so it gets the longer skill_timeout_seconds.
+function options(config, signal, cwd, skill) {
+  const seconds = skill ? Math.max(Number(config.timeout_seconds), Number(config.skill_timeout_seconds)) : Number(config.timeout_seconds);
+  return { cwd, env: { ...cleanEnv(config), ...READ_ONLY_ENV }, timeoutMs: seconds * 1000, signal };
 }
 
 // Claude reads the project with its file tools (Read, Grep, Glob; confined to the working folder by
@@ -26,6 +28,8 @@ export const CLAUDE_ALLOWED = ['mcp__council-git'];
 export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash'];
 // With web access, Claude may also search the web and fetch pages.
 export const CLAUDE_WEB = ['WebSearch', 'WebFetch'];
+// With a skill, Claude may spawn sub-agents. They get no more tools than Claude itself (checked with the real CLI).
+export const CLAUDE_SUBAGENTS = ['Agent'];
 
 // One session per side, workspace and model. Calls to one session run one at a time.
 const sessions = new Map();
@@ -178,13 +182,13 @@ function codexThreadId(stdout) {
  * web: whether it may search the web (default: the config's web_search). Codex's web search runs on
  * OpenAI's side; its sandbox stays read-only with no network for commands.
  */
-export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, held = false } = {}) {
+export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, held = false } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model);
   const call = () => inTempDir('council-codex-out-', async outDir => {
     const cwd = workingDir(session, workspace, 'council-codex-');
-    const opts = options(config, signal, cwd);
+    const opts = options(config, signal, cwd, skill);
     const problem = await codexSignInProblem(exe, config, opts);
     if (problem) throw new Error(problem);
     const answerFile = join(outDir, 'answer.txt');
@@ -195,6 +199,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     if (chosen.model) common.push('-m', chosen.model);
     if (chosen.effort) common.push('-c', `model_reasoning_effort=${chosen.effort}`);
     common.push('-c', `web_search="${web ? 'live' : 'disabled'}"`);
+    if (skill) common.push('--enable', 'multi_agent'); // sub-agents, for skills that call for them
     common.push('--output-last-message', answerFile);
     const args = session.id
       ? ['exec', 'resume', ...common, session.id, '-']
@@ -212,36 +217,56 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
 }
 
 /**
+ * Claude's answer from `--output-format stream-json`: the main agent's text after its last tool result,
+ * within its final turn. A model that writes a verdict and then closes with "see above" keeps the verdict;
+ * sub-agents' messages and "still waiting for the sub-agents" turns (each ends with its own result event)
+ * are left out. Falls back to the last result event's text.
+ */
+export function claudeAnswer(stdout) {
+  const events = String(stdout).split(/\r?\n/).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+  const results = events.flatMap((event, i) => (event?.type === 'result' ? [i] : []));
+  const end = results.length ? results.at(-1) : events.length;
+  let start = results.length > 1 ? results.at(-2) : -1;
+  const main = event => event?.parent_tool_use_id === null || event?.parent_tool_use_id === undefined;
+  const blocks = event => (Array.isArray(event?.message?.content) ? event.message.content : []);
+  events.forEach((event, i) => {
+    if (i < end && event?.type === 'user' && main(event) && blocks(event).some(block => block.type === 'tool_result')) start = Math.max(start, i);
+  });
+  const text = events.slice(start + 1, end).filter(event => event?.type === 'assistant' && main(event))
+    .flatMap(event => blocks(event).filter(block => block.type === 'text').map(block => String(block.text).trim())).filter(Boolean).join('\n\n');
+  const last = results.length ? events[end] : null;
+  return { data: last, text: text || (typeof last?.result === 'string' ? last.result.trim() : '') };
+}
+
+/**
  * workspace: the project folder the model may read (never write), or undefined for no file access.
  * web: whether it may search the web and fetch pages (default: the config's web_search).
  * --restricted ignores user, project and local settings (so no hooks, plugins or allow rules from them)
  * and confines the file tools to the working folder; dontAsk refuses anything not allowed here.
  */
-export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, held = false } = {}) {
+export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, held = false } = {}) {
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
   const session = sessionFor('claude', workspace, chosen.model);
   const call = async () => {
     const cwd = workingDir(session, workspace, 'council-claude-');
-    const opts = options(config, signal, cwd);
+    const opts = options(config, signal, cwd, skill);
     const problem = await claudeSignInProblem(exe, config, opts);
     if (problem) throw new Error(problem);
     const id = session.id ?? randomUUID();
-    const args = ['-p', '--output-format', 'json', session.id ? '--resume' : '--session-id', id,
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', session.id ? '--resume' : '--session-id', id,
       '--restricted', '--permission-mode', 'dontAsk', '--disable-slash-commands', '--strict-mcp-config',
       '--mcp-config', workspace ? gitToolsConfig(session, workspace) : EMPTY_MCP_CONFIG];
-    const tools = [...(workspace ? [CLAUDE_TOOLS] : []), ...(web ? CLAUDE_WEB : [])];
-    const allowed = [...(workspace ? CLAUDE_ALLOWED : []), ...(web ? CLAUDE_WEB : [])];
+    const tools = [...(workspace ? [CLAUDE_TOOLS] : []), ...(web ? CLAUDE_WEB : []), ...(skill ? CLAUDE_SUBAGENTS : [])];
+    const allowed = [...(workspace ? CLAUDE_ALLOWED : []), ...(web ? CLAUDE_WEB : []), ...(skill ? CLAUDE_SUBAGENTS : [])];
     args.push('--tools', tools.join(','));
     if (allowed.length) args.push('--allowedTools', ...allowed);
     args.push('--disallowedTools', ...CLAUDE_DENIED);
     if (chosen.model) args.push('--model', chosen.model);
     if (chosen.effort) args.push('--effort', chosen.effort);
     const result = await run(exe, args, { ...opts, input: prompt });
-    let data;
-    try { data = JSON.parse(result.stdout); } catch { /* reported below */ }
+    const { data, text: answer } = claudeAnswer(result.stdout);
     if (typeof data?.session_id === 'string') session.id = data.session_id;
-    const answer = typeof data?.result === 'string' ? data.result.trim() : '';
     if (result.code !== 0 || !data || data.is_error || !answer) {
       throw new Error(`claude failed: ${withHint('claude', failureDetail(answer || result.stderr || result.stdout))}`);
     }

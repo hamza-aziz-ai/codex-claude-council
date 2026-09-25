@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 (2026-09-25)
+
+- **Skills for the council.** Install a skill (a `SKILL.md`) once with `codex-claude-council skill add <GitHub URL | SKILL.md | folder>`, for example `skill add https://github.com/aiwithremy/claude-skills-llm-council`; `skill list` and `skill remove <name>` manage them. Skills live in `~/.codex-claude-council/skills/<name>/`; none ship with the plugin.
+- Every tool takes `skill` (`--skill <name>` in the terminal), passed only when the user asks for that skill. Both models get its full instructions with the question and decide at which steps it is needed (for example a real decision, trade-off or disagreement, by the skill's own guidance); other steps are answered directly. When they use it, they follow it fully, including sub-agents: Claude gets its Agent tool and Codex its multi-agent feature, with the same read-only access as the model. The discussion's rules win over the skill's: no files are written, and each step returns the format it asks for. `debate` reports the skill in `settings`.
+- Calls with a skill may run up to `skill_timeout_seconds` (new, default 1800) instead of `timeout_seconds`.
+- Claude's answer is now read from its `stream-json` output: the text of its final turn after its last tool call. With `--output-format json` only the last message came back, so a skill that ends with "the verdict above is your answer" lost the verdict.
+
 ## 0.6.2 (2026-09-25)
 
 - **Councils no longer die at a host's 60-second tool limit.** Some apps end any tool call after about 60 seconds (Claude Desktop's bridge), and a council takes minutes, so `debate` and `council_ask` were cut off. Now every tool starts its work in the background and waits up to `tool_wait_seconds` (default 50). It returns the answer if it is ready, and otherwise "still working", the current step and a `job_id`. The new `council_result` tool waits again (up to the same window) and returns the answer as soon as it is ready; `council_cancel` stops a job. No single call outlasts the limit, and the council keeps running between calls. The skill and the server instructions tell the host to keep calling `council_result` and not to restart the question. Set `"tool_wait_seconds": 0` to wait for the answer in one call.

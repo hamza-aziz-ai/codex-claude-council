@@ -5,11 +5,12 @@ import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { askClaude, askCodex, holdSessions, requireBothSignedIn } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
+import { loadSkill, skillNote } from './skills.mjs';
 
-const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search'];
+const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill'];
 export const TOOL_OPTIONS = Object.freeze({
-  ask_codex: ['model', 'effort', 'workspace', 'web_search'],
-  ask_claude: ['model', 'effort', 'workspace', 'web_search'],
+  ask_codex: ['model', 'effort', 'workspace', 'web_search', 'skill'],
+  ask_claude: ['model', 'effort', 'workspace', 'web_search', 'skill'],
   council_ask: COUNCIL_OPTIONS,
   debate: COUNCIL_OPTIONS,
 });
@@ -90,6 +91,10 @@ function checkOptions(tool, options) {
       clean.workspace = checkWorkspace(value.trim());
       continue;
     }
+    if (key === 'skill') {
+      clean.skill = loadSkill(value).name;
+      continue;
+    }
     if (key === 'synthesizer') {
       clean.synthesizer = sideName(value);
       if (!clean.synthesizer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
@@ -138,8 +143,9 @@ export function splitDraft(text) {
  * synthesizer: "claude" or "codex" writes the final answer (drafts, in the loop); default from config.
  * workspace: the project folder both models may read (never write); omit for no file access.
  * webSearch: whether both models may search the web; default from config.
+ * skill: the name of an installed skill both models may use at the steps that need it, or undefined for none.
  */
-export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch } = {}, { signal, onProgress } = {}) {
+export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
   workspace = workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace);
   const config = loadConfig();
@@ -148,9 +154,12 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   if (!writer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
   const settings = { codex: resolveSide('codex', codex, config), claude: resolveSide('claude', claude, config) };
   const web = webSearch ?? config.web_search;
+  const skill = skillName ? loadSkill(skillName) : null;
+  // With a skill, the first prompt of the question carries its instructions and each later step says it is still available.
+  const withSkill = (text, first = false) => skillNote(skill, first) + text;
   const task = {
-    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, held: true }),
-    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, held: true }),
+    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, skill: Boolean(skill), held: true }),
+    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill: Boolean(skill), held: true }),
   };
   // The council holds both sessions from start to finish (see holdSessions).
   const held = [{ side: 'codex', workspace, model: settings.codex.model }, { side: 'claude', workspace, model: settings.claude.model }];
@@ -170,23 +179,23 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
     const access = accessNote(workspace, web);
-    const answers = await bothSides((me, them) => prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }));
+    const answers = await bothSides((me, them) => withSkill(prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }), true));
     progress('Each model is critiquing the other');
     const verify = verifyNote(workspace, web);
-    const critiques = await bothSides((me, them) => prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify }));
+    const critiques = await bothSides((me, them) => withSkill(prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify })));
     // The critiques are swapped: each model sees what the other said about its answer, and replies.
     progress('Each model is replying to the critique of its answer');
-    const replies = await bothSides((me, them) => prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] }));
+    const replies = await bothSides((me, them) => withSkill(prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] })));
     const base = {
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
-      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web },
+      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, skill: skill?.name ?? null },
     };
 
     if (maxRounds === undefined) {
       progress(`${LABEL[writer]} is writing the final answer`);
       const other = OTHER[writer];
-      return { answer: await ask(writer, prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] })), ...base };
+      return { answer: await ask(writer, withSkill(prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] }))), ...base };
     }
 
     // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
@@ -202,14 +211,14 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
       const limit = maxRounds === 0 ? '' : ` of ${maxRounds}`;
       try {
         progress(`Round ${round}${limit}: ${LABEL[drafter]} is drafting the joint answer`);
-        const text = await ask(drafter, round === 1
+        const text = await ask(drafter, withSkill(round === 1
           ? prompt('draft', { other: SPEAKER[reviewer], other_reply: replies[reviewer] })
-          : prompt('redraft', { other: SPEAKER[reviewer], objections }));
+          : prompt('redraft', { other: SPEAKER[reviewer], objections })));
         ({ answer: draft, notes } = splitDraft(text));
         progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
         // The reviewer has not seen the drafter's reply yet; its own earlier objections are in its session.
         const context = round === 1 ? `${SPEAKER[drafter]}'s reply to your critique:\n${replies[drafter]}\n` : '';
-        const review = await ask(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify }));
+        const review = await ask(reviewer, withSkill(prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify })));
         const agreed = readVerdict(review);
         rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
         progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);
@@ -245,12 +254,14 @@ export async function invoke(tool, question, options = {}, { signal, onProgress 
   const clean = checkOptions(tool, options || {});
   const { workspace } = clean;
   const web = clean.web_search ?? loadConfig().web_search;
-  const single = prompt('ask', { question, access: accessNote(workspace, web) });
-  if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, { signal, workspace, web });
-  if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, { signal, workspace, web });
+  const skill = clean.skill ? loadSkill(clean.skill) : null;
+  const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) });
+  const singleOptions = { signal, workspace, web, skill: Boolean(skill) };
+  if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, singleOptions);
+  if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, singleOptions);
   const side = name => ({ model: clean[`${name}_model`], effort: clean[`${name}_effort`] });
   const result = await debate(question,
-    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search },
+    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search, skill: clean.skill },
     { signal, onProgress });
   return tool === 'council_ask' ? councilText(result) : JSON.stringify(result, null, 2);
 }

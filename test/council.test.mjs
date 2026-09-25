@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync as readFile, realpathSync } from 'node:fs';
+import { mkdirSync, readFileSync as readFile, realpathSync, writeFileSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
-import { CLAUDE_ALLOWED, CLAUDE_DENIED, CLAUDE_TOOLS, CLAUDE_WEB, askClaude, askCodex, resetSessions } from '../src/adapters.mjs';
+import { CLAUDE_ALLOWED, CLAUDE_DENIED, CLAUDE_SUBAGENTS, CLAUDE_TOOLS, CLAUDE_WEB, askClaude, askCodex, claudeAnswer, resetSessions } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
@@ -36,8 +36,31 @@ test('claude runs restricted: no settings files, no MCP servers, nothing allowed
   assert.ok(!call.args.includes('--no-session-persistence'), 'the session is kept so it can be resumed');
   assert.equal(arg(call, '--permission-mode'), 'dontAsk');
   assert.match(arg(call, '--session-id'), /^[0-9a-f-]{36}$/);
+  assert.equal(arg(call, '--output-format'), 'stream-json', 'the whole event stream, so the answer is not only the last message');
+  assert.ok(call.args.includes('--verbose'), 'stream-json needs --verbose in print mode');
   assert.equal(arg(call, '--model'), 'sonnet');
   assert.equal(arg(call, '--effort'), 'max');
+});
+
+test('Claude\'s answer is all its final text after its last tool use, not only its last message', () => {
+  const stream = (...events) => events.map(event => JSON.stringify(event)).join('\n');
+  const say = (text, parent = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { content: [{ type: 'text', text }] } });
+  const use = (parent = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { content: [{ type: 'tool_use', name: 'Agent' }] } });
+  const got = (parent = null) => ({ type: 'user', parent_tool_use_id: parent, message: { content: [{ type: 'tool_result' }] } });
+  const result = text => ({ type: 'result', is_error: false, session_id: 's1', result: text });
+  // A verdict, then a closing line that points back at it (seen with the llm-council skill).
+  const verdict = claudeAnswer(stream({ type: 'system', subtype: 'init' }, say('Spawning advisors.'), use(), got(), say('Sub-agent notes', 'toolu_1'),
+    say('## Council Verdict\nUse Postgres.'), say('Council complete. The verdict above is your answer.'), result('Council complete. The verdict above is your answer.')));
+  assert.equal(verdict.text, '## Council Verdict\nUse Postgres.\n\nCouncil complete. The verdict above is your answer.');
+  assert.equal(verdict.data.session_id, 's1');
+  // Sub-agents in the background: an early result while waiting, then the real final turn.
+  const background = claudeAnswer(stream(use(), got(), say('Agent is running in the background. Waiting for it to complete.'), result('Agent is running in the background.'),
+    say('reading', 'toolu_2'), { type: 'system', subtype: 'init' }, say('VERDICT TEXT: version is 0.4.1'), say('done, see above'), result('done, see above')));
+  assert.equal(background.text, 'VERDICT TEXT: version is 0.4.1\n\ndone, see above');
+  // No tools: the plain answer; no text events: the result's text.
+  assert.equal(claudeAnswer(stream(say('Plain answer.'), result('Plain answer.'))).text, 'Plain answer.');
+  assert.equal(claudeAnswer(stream(result('Only a result.'))).text, 'Only a result.');
+  assert.equal(claudeAnswer('not json').data, null);
 });
 
 test('each side keeps one session: later calls resume it in the same folder', async () => {
@@ -109,7 +132,7 @@ test('debate returns answers, critiques, replies, rounds and the settings used',
   assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
     'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true,
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true, skill: null,
   });
   assert.equal(result.agreed, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);
@@ -232,6 +255,39 @@ test('web access: on by default for both models, off per call or in the config',
   await invoke('ask_claude', 'q', { web_search: false });
   assert.equal(arg(fake.questionCalls()[0], '--tools'), '');
   await assert.rejects(invoke('council_ask', 'q', { web_search: 'yes' }), /web_search must be true or false/);
+});
+
+test('with a skill, both models get its instructions first, use it where a step needs it, and may use sub-agents', async () => {
+  mkdirSync(`${fake.dir}/skills/test-skill`, { recursive: true });
+  writeFileSync(`${fake.dir}/skills/test-skill/SKILL.md`, '---\nname: test-skill\ndescription: "A test skill."\n---\n\n# Test skill\nConsult five advisors.\n');
+  const result = JSON.parse(await invoke('debate', 'q', { skill: 'test-skill', max_rounds: 1 }));
+  assert.equal(result.settings.skill, 'test-skill');
+  for (const cli of ['codex', 'claude']) {
+    const [first, ...later] = callsOf(cli);
+    assert.match(first.input, /^For this question, the "test-skill" skill is available; its instructions are below\. The user asked for this skill, so use it at the steps where it fits/);
+    assert.match(first.input, /<skill name="test-skill">\n# Test skill\nConsult five advisors\.\n<\/skill>\n\nYou are /, 'the skill comes before the step prompt');
+    assert.equal(later.length, 3, 'critique, reply, and draft or review');
+    for (const call of later) assert.match(call.input, /^The "test-skill" skill is still available .*; use it for this step only if the step needs it\./);
+    for (const call of later) assert.doesNotMatch(call.input, /Consult five advisors/, 'later steps do not resend the instructions');
+  }
+  assert.match(callsOf('codex').at(-1).input, /VERDICT: AGREE or VERDICT: DISAGREE/, 'the review keeps its verdict line');
+  for (const call of callsOf('claude')) {
+    assert.ok(arg(call, '--tools').split(',').includes('Agent'), 'Claude may spawn sub-agents');
+    assert.ok(call.args.includes(CLAUDE_SUBAGENTS[0]));
+  }
+  for (const call of callsOf('codex')) assert.equal(arg(call, '--enable'), 'multi_agent');
+  fake.clearCalls();
+  resetSessions();
+  await invoke('council_ask', 'q');
+  for (const call of callsOf('claude')) assert.ok(!arg(call, '--tools').split(',').includes('Agent'), 'no sub-agents without a skill');
+  for (const call of callsOf('codex')) assert.ok(!call.args.includes('--enable'));
+  assert.ok(!fake.questionCalls().some(c => c.input.includes('skill')), 'no skill text without a skill');
+  fake.clearCalls();
+  await invoke('ask_claude', 'q', { skill: 'test-skill' });
+  assert.match(fake.questionCalls()[0].input, /^For this question, the "test-skill" skill is available[\s\S]*Consult five advisors[\s\S]*Answer this question concisely/);
+  fake.clearCalls();
+  await assert.rejects(invoke('council_ask', 'q', { skill: 'no-such-skill' }), /skill "no-such-skill" is not installed \(installed: test-skill\)/);
+  assert.equal(fake.calls().length, 0, 'an unknown skill is rejected before any CLI runs');
 });
 
 test('an invalid workspace is rejected before any CLI runs', async () => {

@@ -42,6 +42,10 @@ By default the synthesizer drafts one joint answer and the other model reviews i
 
 Report whether they agreed (the tool says so at the end of its answer). If they did not, give the final draft and summarise the remaining objections. Mention that no-limit runs can take a long time.
 
+## Installed skills: `skill`
+
+Every tool takes an optional `skill`: the name of a skill the user installed for the council (the tool descriptions list them). Pass it only when the user asks to use that skill, by name or by a phrase the skill says triggers it (for example "use the llm-council skill", "council this with llm-council"). Never add it on your own. Both models then get the skill's instructions and use it, including its sub-agents, at the steps where they judge it is needed; other steps are answered directly. Such runs take longer and use more of both plans, so expect several "still working" results. If the tool says the skill is not installed, tell the user the install command it gives.
+
 ## Long runs: `job_id` and `council_result`
 
 A council usually takes longer than a single tool call may last in some apps (Claude Desktop ends tool calls after about 60 seconds). So every tool returns within about 50 seconds: with the answer if it is ready, or with "still working", the current step and a `job_id`. When that happens:

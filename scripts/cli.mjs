@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
 import { invoke } from '../src/council.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
+import { addSkill, listSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
 Ask Codex (ChatGPT) and Claude through your own signed-in CLIs.
@@ -14,6 +15,9 @@ Usage:
   ${NAME} update [options]         Update the plugin in Claude Code and Codex to the latest version
   ${NAME} uninstall [options]      Remove it again (your config file is kept)
   ${NAME} doctor                   Check Node.js, both CLIs, sign-ins and config
+  ${NAME} skill add <url|path>     Install a skill (a SKILL.md) from a GitHub repository or a local file/folder
+  ${NAME} skill list               List installed skills
+  ${NAME} skill remove <name>      Remove an installed skill
   ${NAME} config [--init]          Show the effective config, or create an editable config file
   ${NAME} ask "question"           Both answer, critique each other, reply, then agree on one final answer
   ${NAME} debate "question"        Same, printing answers, critiques, replies, rounds and settings as JSON
@@ -31,6 +35,7 @@ Model and effort (omit to use your config):
                                       default: the git repository you are in, if any
                    --no-workspace     no file access at all
                    --no-web           no web search or web pages (default: on, "web_search" in the config)
+                   --skill <name>     both models may use this installed skill where a step needs it
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install / update / uninstall options:
@@ -54,6 +59,7 @@ const OPTIONS = {
   workspace: { type: 'string' },
   'no-workspace': { type: 'boolean' },
   'no-web': { type: 'boolean' },
+  skill: { type: 'string' },
   synthesizer: { type: 'string' },
   only: { type: 'string' },
   source: { type: 'string' },
@@ -89,6 +95,21 @@ async function main() {
     return null;
   }
   if (commandName === 'doctor') return doctor();
+  if (commandName === 'skill') {
+    const [action, target] = rest;
+    if (action === 'add' && target) {
+      const skill = await addSkill(target);
+      console.log(`Installed skill "${skill.name}" at ${skill.path}\nUse it with: --skill ${skill.name} (terminal) or skill: "${skill.name}" (any council tool). Restart Claude Code / Codex to see it listed.`);
+      return 0;
+    }
+    if (action === 'list') {
+      const skills = listSkills();
+      console.log(skills.length ? skills.map(s => `${s.name}\n  ${s.description.slice(0, 160)}${s.description.length > 160 ? '…' : ''}`).join('\n') : `No skills installed (folder: ${skillsDir()}).`);
+      return 0;
+    }
+    if (action === 'remove' && target) return console.log(`Removed skill "${removeSkill(target).name}".`), 0;
+    throw new Error('usage: skill add <GitHub URL | SKILL.md path | folder>, skill list, skill remove <name>');
+  }
   if (commandName === 'config') {
     if (values.init) return initConfig();
     console.log(`# ${userConfigPath()}\n${JSON.stringify(loadConfig(), null, 2)}`);
@@ -113,6 +134,7 @@ async function main() {
   if (wrong.length) throw new Error(`${commandName} does not take --${wrong.join(', --')} (see --help)`);
   if (values.workspace !== undefined && values['no-workspace']) throw new Error('use --workspace or --no-workspace, not both');
   if (values['no-web']) pairs.web_search = false;
+  if (values.skill !== undefined) pairs.skill = values.skill;
   pairs.workspace = values['no-workspace'] ? undefined : values.workspace !== undefined ? resolve(values.workspace) : gitRoot(process.cwd());
   const options = Object.fromEntries(Object.entries(pairs).filter(([, value]) => value !== undefined));
   const onProgress = message => process.stderr.write(`[council] ${message}\n`);

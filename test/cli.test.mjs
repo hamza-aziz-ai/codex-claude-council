@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { ROOT, setup } from './helpers.mjs';
@@ -65,6 +65,23 @@ test('an install step that fails because files are in use says what to do', asyn
   assert.match(failureHint(codexOnWindows), /still in use.*Quit them all, then run this again/);
   assert.match(failureHint('EBUSY: resource busy or locked'), /still in use/);
   assert.equal(failureHint('error: unknown plugin'), '');
+});
+
+test('skills from the terminal: add, list, use with --skill, remove', () => {
+  const file = join(fake.dir, 'my-skill.md');
+  writeFileSync(file, '---\nname: my-skill\ndescription: "Mine."\n---\nDo it well.\n');
+  const added = cli(['skill', 'add', file]);
+  assert.equal(added.status, 0, added.stderr);
+  assert.match(added.stdout, /Installed skill "my-skill" at .*SKILL\.md\nUse it with: --skill my-skill/);
+  assert.match(cli(['skill', 'list']).stdout, /^my-skill\n  Mine\.$/m);
+  fake.clearCalls();
+  assert.equal(cli(['claude', 'q', '--skill', 'my-skill', '--no-workspace']).status, 0);
+  const call = fake.questionCalls().at(-1);
+  assert.ok(call.input.includes('<skill name="my-skill">\nDo it well.\n</skill>'));
+  assert.ok(call.args[call.args.indexOf('--tools') + 1].split(',').includes('Agent'));
+  assert.match(cli(['skill', 'remove', 'my-skill']).stdout, /Removed skill "my-skill"/);
+  assert.match(cli(['claude', 'q', '--skill', 'my-skill']).stderr, /skill "my-skill" is not installed/);
+  assert.match(cli(['skill', 'frobnicate']).stderr, /usage: skill add/);
 });
 
 test('wrong flags for a command are rejected', () => {

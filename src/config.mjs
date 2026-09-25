@@ -51,6 +51,7 @@ export function loadConfig() {
   if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');
   config.synthesizer = sideName(config.synthesizer);
   if (!config.synthesizer) throw new Error('config: synthesizer must be "claude" or "codex" (ChatGPT)');
+  if (!(Number(config.skill_timeout_seconds) > 0)) throw new Error('config: skill_timeout_seconds must be a positive number');
   if (!(Number(config.tool_wait_seconds) >= 0)) throw new Error('config: tool_wait_seconds must be a number of seconds (0 = wait until finished)');
   if (typeof config.web_search !== 'boolean') throw new Error('config: web_search must be true or false');
   config.max_rounds ??= null;

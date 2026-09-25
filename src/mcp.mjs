@@ -2,6 +2,7 @@
 import { createInterface } from 'node:readline';
 import { EFFORTS, NAME, loadConfig, packageVersion } from './config.mjs';
 import { invoke } from './council.mjs';
+import { listSkills } from './skills.mjs';
 
 const DEFAULTS_NOTE = 'Omit to use the configured default; set only when the user asks for a specific one.';
 const MODEL_HINT = {
@@ -42,10 +43,19 @@ const webField = {
   description: 'Optional: whether the models may search the web and read web pages. Omit to use the configured default (on unless the user changed it). '
     + 'Pass false only when the user asks for no internet access.',
 };
+// Installed skills are listed when the server starts; a skill installed later is available after a restart.
+const installedSkills = listSkills().map(skill => skill.name);
+const skillField = {
+  type: 'string',
+  description: 'Optional: the name of an installed skill both models may use for this question, at the steps where they judge it is needed, including any sub-agents it calls for. '
+    + 'Pass it only when the user asks to use that skill (by name, or by a phrase the skill says triggers it). '
+    + `Installed: ${installedSkills.length ? installedSkills.join(', ') : 'none (install with `codex-claude-council skill add <GitHub URL>`)'}. `
+    + 'A step that uses it takes much longer and uses much more of both plans.',
+};
 const councilFields = {
   codex_model: modelField('codex'), codex_effort: effortField('codex'),
   claude_model: modelField('claude'), claude_effort: effortField('claude'),
-  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField, web_search: webField,
+  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
@@ -63,12 +73,12 @@ export const TOOLS = [
   {
     name: 'ask_codex', title: 'Ask Codex (ChatGPT) only',
     description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField }), annotations,
+    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, skill: skillField }), annotations,
   },
   {
     name: 'ask_claude', title: 'Ask Claude only',
     description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField }), annotations,
+    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField }), annotations,
   },
 ];
 
@@ -97,6 +107,7 @@ const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, deba
   + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they cannot change it. '
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes. '
+  + 'Pass skill (an installed skill\'s name) only when the user asks to use that skill; each model then uses it at the steps that need it. '
   + 'If a call returns a job_id because it is still working, call council_result (again, until it returns the answer); do not start the same question again.';
 
 const callCouncil = (name, { question, ...options }, context) => invoke(name, question, options, context);

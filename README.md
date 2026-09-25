@@ -180,6 +180,7 @@ Just ask in plain language:
 | "Ask the council: is **the latest** Next.js release safe to upgrade to for our app?" | `council_ask`: both search the web for the release notes and read the project |
 | "Get **Codex's** take on this error, and check the library's **current docs**: …" | `ask_codex` with web search (on by default) |
 | "Ask the council **without internet access**: …" | `council_ask` with `web_search: false` |
+| "Ask the council, **using the llm-council skill**: should we rewrite the billing service or refactor it?" | `council_ask` with `skill: "llm-council"` (an installed skill) |
 
 **Long runs.** A council often takes several minutes, and some apps end a tool call after about 60 seconds (Claude Desktop does). So each tool returns within about 50 seconds: with the answer, or with "still working", the current step and a `job_id`. The app then calls `council_result` until the answer is ready (the plugin's skill tells it to), while the council keeps running. `council_cancel` stops a job.
 
@@ -204,6 +205,22 @@ With a `workspace` as well, they combine the two: they read your code, then chec
 
 To turn it off: pass `web_search: false` for one question ("ask the council without internet access"), use `--no-web` in the terminal, or set `"web_search": false` in your config. Without web access, both models answer from what they know and from the project, and they are told they have no internet. See [Security and privacy](#security-and-privacy) before using web access together with a sensitive project.
 
+### Skills: `skill`
+
+You can give both council members a skill: a `SKILL.md` with a method they can follow, for example [LLM Council](https://github.com/aiwithremy/claude-skills-llm-council) (five advisors, peer review, a chairman's verdict). Install it once:
+
+```bash
+npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/aiwithremy/claude-skills-llm-council
+npx -y github:hamza-aziz-ai/codex-claude-council skill list
+npx -y github:hamza-aziz-ai/codex-claude-council skill remove llm-council
+```
+
+`skill add` takes a GitHub repository URL (it reads `SKILL.md` from the repository root, or from a `tree/<branch>/<folder>` or `blob/.../SKILL.md` URL), a local `SKILL.md` or a folder containing one. Skills are saved in `~/.codex-claude-council/skills/<name>/`. Restart Claude Code, Codex or the desktop app afterwards so the tools list the new skill. Nothing third-party ships with the plugin, so check a skill's license and contents before you install it.
+
+A skill is used only when you ask for it: "ask the council, using the llm-council skill: …" (the host passes `skill: "llm-council"`), or `--skill llm-council` in the terminal. Both models then get the skill's instructions with the question and **decide for themselves at which steps it is needed**: typically for a real decision, trade-off or disagreement, following the skill's own guidance on when to use it. Steps that don't need it, such as checking a fact or accepting a point, are answered directly. When a model uses the skill, it follows it fully, including sub-agents (Claude's Agent tool, Codex's multi-agent feature), which have the same read-only access as the model itself. The discussion's rules come first: neither model can write files, so a skill's "save a report" steps are skipped, and each answer comes back in the format the step asks for.
+
+A step that uses a skill with sub-agents can take several minutes and uses much more of both plans. Such a call may take up to `skill_timeout_seconds` (default 1800) instead of `timeout_seconds`.
+
 ### Who writes the final answer: `synthesizer`
 
 **Claude** drafts the final answer by default and Codex (ChatGPT) reviews it. Pass `synthesizer: "codex"` or `"claude"` for one question, or change the default in your config. Either way both models answer, critique and reply to each other first.
@@ -226,8 +243,8 @@ For the old single pass (the synthesizer writes the final answer alone after the
 
 | Tool | Optional inputs |
 |---|---|
-| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace`, `web_search` |
-| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search` |
+| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace`, `web_search`, `skill` |
+| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill` |
 
 `workspace` is the absolute path of the project folder both models may read. In Claude Code and Codex the plugin's skill tells the host to pass the folder you are working in.
 
@@ -252,6 +269,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web             
 npx -y github:hamza-aziz-ai/codex-claude-council ask "What changed in the latest Node.js LTS that affects this repo?"  # reads the repo and searches the web
 npx -y github:hamza-aziz-ai/codex-claude-council codex "Is datetime.utcnow() deprecated? Check the current Python docs."  # Codex only, with web search
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web --no-workspace  # neither files nor internet
+npx -y github:hamza-aziz-ai/codex-claude-council ask "Rewrite or refactor the billing service?" --skill llm-council  # with an installed skill
 ```
 
 In the terminal, both models read the git repository you run the command from (if any) unless you pass `--workspace` or `--no-workspace`. Each command is a new pair of sessions that lasts for that run.
@@ -269,6 +287,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 ```json
 {
   "timeout_seconds": 600,
+  "skill_timeout_seconds": 1800,
   "tool_wait_seconds": 50,
   "synthesizer": "claude",
   "max_rounds": 3,
@@ -282,6 +301,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | Setting | Meaning |
 |---|---|
 | `timeout_seconds` | limit for each CLI call |
+| `skill_timeout_seconds` | limit for each CLI call when a skill is in use (default `1800`), as a skill's sub-agents take longer |
 | `tool_wait_seconds` | how long one tool call waits before returning "still working" and a `job_id` (default `50`, under the 60-second limit some apps put on tool calls); `0` waits until the answer is ready |
 | `synthesizer` | which model writes the final answer: `claude` (default) or `codex` (ChatGPT) |
 | `web_search` | whether both models may search the web and read pages: `true` (default) or `false` |
