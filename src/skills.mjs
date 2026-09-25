@@ -81,12 +81,30 @@ export function loadSkill(name, { native = true } = {}) {
   return skill;
 }
 
-/** A GitHub repository URL's parts: clone URL, branch or tag (if any) and path inside the repository. */
+/**
+ * A GitHub repository URL's parts: clone URL, branch or tag (if any) and path inside the repository.
+ * In …/tree/<ref>/<path> a branch name may itself contain "/" (feature/foo), so the URL alone is
+ * ambiguous: ref is taken as the first segment, and rest keeps every segment for resolveRef.
+ */
 export function parseGitHubUrl(url) {
-  const match = String(url).trim().match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:tree|blob)\/([^/]+)(\/.*)?)?\/?$/);
+  const match = String(url).trim().match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:tree|blob)\/(.+?))?\/?$/);
   if (!match) return null;
-  const [, owner, repo, ref = null, path = ''] = match;
-  return { owner, repo, cloneUrl: `https://github.com/${owner}/${repo}.git`, ref, path: path.replace(/^\/+|\/+$/g, '') };
+  const [, owner, repo, after = ''] = match;
+  const rest = after.split('/').filter(Boolean);
+  return { owner, repo, cloneUrl: `https://github.com/${owner}/${repo}.git`, ref: rest[0] ?? null, path: rest.slice(1).join('/'), rest };
+}
+
+/**
+ * The branch or tag a …/tree/<ref>/<path> URL means: the longest leading run of segments that names one
+ * of the repository's refs (refs: its branch and tag names). Falls back to the first segment.
+ */
+export function resolveRef(parts, refs) {
+  const names = new Set(refs);
+  for (let n = parts.rest.length; n > 1; n -= 1) {
+    const ref = parts.rest.slice(0, n).join('/');
+    if (names.has(ref)) return { ...parts, ref, path: parts.rest.slice(n).join('/') };
+  }
+  return parts;
 }
 
 /** The raw URL of SKILL.md for a GitHub repository or file URL (used when git is not available). */
@@ -166,6 +184,16 @@ function installFrom(skill, source, root) {
   return { ...readSkillAt(join(dest, 'SKILL.md'), 'council'), files: folder ? folder.length : 1 };
 }
 
+// The repository's branch and tag names, from `git ls-remote`.
+function defaultListRefs(url) {
+  return new Promise((resolve, reject) => {
+    execFile('git', ['ls-remote', '--heads', '--tags', url], { timeout: 120_000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }, (error, stdout, stderr) => {
+      if (error) return reject(Object.assign(new Error(String(stderr || error.message).trim()), { code: error.code }));
+      resolve(stdout.split('\n').map(line => line.split('\t')[1]?.replace(/^refs\/(heads|tags)\//, '').replace(/\^\{\}$/, '')).filter(Boolean));
+    });
+  });
+}
+
 function defaultClone(url, ref, dir) {
   return new Promise((resolve, reject) => {
     const args = ['clone', '--quiet', '--depth', '1', ...(ref ? ['--branch', ref] : []), url, dir];
@@ -180,8 +208,8 @@ function defaultClone(url, ref, dir) {
  * Install every skill in a GitHub repository (or one folder or file of it), a local folder, or a SKILL.md
  * file or raw URL. Each goes to its own folder, with the files it comes with. Returns the skills installed.
  */
-export async function addSkill(source, { fetchText = defaultFetch, clone = defaultClone } = {}) {
-  const github = /^https?:\/\//i.test(source) ? parseGitHubUrl(source) : null;
+export async function addSkill(source, { fetchText = defaultFetch, clone = defaultClone, listRefs = defaultListRefs } = {}) {
+  let github = /^https?:\/\//i.test(source) ? parseGitHubUrl(source) : null;
   if (/^https?:\/\//i.test(source) && !github) {
     return [installText(await fetchText(source), source)];
   }
@@ -189,6 +217,8 @@ export async function addSkill(source, { fetchText = defaultFetch, clone = defau
     const tmp = mkdtempSync(join(tmpdir(), 'council-skill-'));
     try {
       try {
+        // A branch name with "/" in it: find which leading segments of the URL name the branch or tag.
+        if (github.rest.length > 1) github = resolveRef(github, await listRefs(github.cloneUrl));
         await clone(github.cloneUrl, github.ref, join(tmp, 'repo'));
       } catch (error) {
         if (error.code !== 'ENOENT') throw new Error(`could not download ${github.cloneUrl}: ${error.message}`);

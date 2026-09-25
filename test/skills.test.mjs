@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { addSkill, findSkills, listSkills, loadSkill, nativeSkills, parseGitHubUrl, parseSkill, rawSkillUrl, removeSkill, skillNote, skillsDir } from '../src/skills.mjs';
+import { addSkill, findSkills, listSkills, loadSkill, nativeSkills, parseGitHubUrl, parseSkill, rawSkillUrl, removeSkill, resolveRef, skillNote, skillsDir } from '../src/skills.mjs';
 
 let dir;
 let saved;
@@ -30,8 +30,13 @@ test('a SKILL.md is read for its name, description and instructions', () => {
 
 test('GitHub URLs: clone URL, branch and path; the raw SKILL.md when git is missing', () => {
   assert.deepEqual(parseGitHubUrl('https://github.com/JuliusBrussee/caveman.git'),
-    { owner: 'JuliusBrussee', repo: 'caveman', cloneUrl: 'https://github.com/JuliusBrussee/caveman.git', ref: null, path: '' });
-  assert.deepEqual(parseGitHubUrl('https://github.com/o/r/tree/main/skills/x/'), { owner: 'o', repo: 'r', cloneUrl: 'https://github.com/o/r.git', ref: 'main', path: 'skills/x' });
+    { owner: 'JuliusBrussee', repo: 'caveman', cloneUrl: 'https://github.com/JuliusBrussee/caveman.git', ref: null, path: '', rest: [] });
+  const tree = parseGitHubUrl('https://github.com/o/r/tree/feature/foo/skills/x/');
+  assert.deepEqual([tree.ref, tree.path], ['feature', 'foo/skills/x'], 'from the URL alone, the first segment is taken as the branch');
+  // A branch name with "/" in it is resolved against the repository's branches and tags; the longest match wins.
+  assert.deepEqual(['ref', 'path'].map(k => resolveRef(tree, ['main', 'feature', 'feature/foo'])[k]), ['feature/foo', 'skills/x']);
+  assert.deepEqual(['ref', 'path'].map(k => resolveRef(tree, ['main'])[k]), ['feature', 'foo/skills/x'], 'no match: the first segment');
+  assert.deepEqual(['ref', 'path'].map(k => resolveRef(parseGitHubUrl('https://github.com/o/r/tree/v1.0'), ['v1.0'])[k]), ['v1.0', '']);
   assert.equal(parseGitHubUrl('https://example.com/x'), null);
   assert.equal(rawSkillUrl('https://github.com/aiwithremy/claude-skills-llm-council.git'),
     'https://raw.githubusercontent.com/aiwithremy/claude-skills-llm-council/HEAD/SKILL.md');
@@ -74,10 +79,11 @@ test('a repository installs all its skills, each with its own files, once per na
   assert.equal(loadSkill('beta').description, 'The beta skill, on two lines.');
   assert.doesNotMatch(readFileSync(join(skillsDir(), 'beta', 'SKILL.md'), 'utf8'), /extra: copy/, 'the copy outside hidden folders wins');
   assert.equal(JSON.parse(readFileSync(join(alpha, 'source.json'), 'utf8')).file, 'skills/alpha/SKILL.md');
-  // One folder of a repository, on a branch.
+  // One folder of a repository, on a branch whose name has a "/" in it.
   cloned.length = 0;
-  assert.deepEqual((await addSkill('https://github.com/o/repo/tree/dev/skills/beta', { clone })).map(s => s.name), ['beta']);
-  assert.deepEqual(cloned, [['https://github.com/o/repo.git', 'dev']]);
+  const listRefs = async url => { assert.equal(url, 'https://github.com/o/repo.git'); return ['main', 'dev', 'dev/next', 'v1']; };
+  assert.deepEqual((await addSkill('https://github.com/o/repo/tree/dev/next/skills/beta', { clone, listRefs })).map(s => s.name), ['beta']);
+  assert.deepEqual(cloned, [['https://github.com/o/repo.git', 'dev/next']]);
   // No git: the repository's SKILL.md alone, from GitHub's raw files.
   const noGit = async () => { throw Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }); };
   const fetched = [];

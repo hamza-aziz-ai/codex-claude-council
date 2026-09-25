@@ -161,7 +161,7 @@ Pass the ids of sessions you already have, and the council continues **those ses
 
 - **Claude Code session id:** the UUID shown by `/status` in the session, or in `claude --resume`.
 - **Codex session id:** shown by `/status` in the session, in `codex resume`, and at the end of the session file's name in `~/.codex/sessions/`.
-- Each session runs in the folder it was started in, which is also the `workspace` unless you pass one.
+- Each session runs in the folder it was started in, which is also the default `workspace`. Pass a `workspace` to have it work in another folder.
 - For the council's turns, both run in plan mode / read-only, whatever mode you used them in.
 - **Close those sessions first**, or at least don't type in them while the council runs: two programs writing to one session can mix up its history. Reopen them afterwards (`claude --resume <id>`, `codex resume <id>`) to see the council's turns.
 - Don't pass the id of the session you are asking from; to have that session take part, use `council_join`.

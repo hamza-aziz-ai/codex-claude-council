@@ -137,11 +137,11 @@ export async function holdSessions(entries, work, { signal } = {}) {
   return hold(0);
 }
 
-// A user's session runs in the folder it was started in. Otherwise a side works in the workspace, or
-// without one in an empty folder that lasts as long as its session.
+// A side works in the workspace; a user's session without one, in the folder it was started in; otherwise
+// in an empty folder that lasts as long as its session.
 function workingDir(session, workspace, prefix) {
-  if (session.folder) return session.folder;
   if (workspace) return workspace;
+  if (session.folder) return session.folder;
   if (!session.dir) keptDirs.add(session.dir = mkdtempSync(join(tmpdir(), prefix)));
   return session.dir;
 }

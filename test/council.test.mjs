@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync as readFile, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, claudeAnswer, resetSessions, sessionFolder } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
@@ -133,6 +135,13 @@ test('a session the user passes is continued in place, in the folder it was star
     fake.clearCalls();
     await invoke('ask_claude', 'q', { session_id: claudeId });
     assert.equal(arg(fake.questionCalls()[0], '--resume'), claudeId);
+    // An explicit workspace wins over the session's own folder, so the CLI reads the project the prompt names.
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'council-other-')));
+    fake.clearCalls();
+    await invoke('ask_claude', 'q', { session_id: claudeId, workspace: other });
+    assert.equal(fake.questionCalls()[0].cwd, other);
+    assert.match(fake.questionCalls()[0].input, new RegExp(`working in the project at ${other.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
+    rmSync(other, { recursive: true, force: true });
   });
   await assert.rejects(invoke('ask_claude', 'q', { session_id: 'not-a-uuid' }), /not a Claude Code session id/);
   await assert.rejects(invoke('council_ask', 'q', { codex_session_id: '../x' }), /not a Codex session id/);
