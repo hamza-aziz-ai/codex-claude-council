@@ -5,9 +5,9 @@
 // read anything, but neither can change anything: Claude runs in plan mode, Codex in its read-only sandbox.
 // A session can also be one the user started themselves, passed by id; it then continues in place.
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { NAME, SIDES, loadConfig, resolveSide } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
 
@@ -34,16 +34,81 @@ const PLUGIN_ID = `${NAME}@${NAME}`;
 export const CLAUDE_DENIED = ['ExitPlanMode', `mcp__plugin_${NAME}_council`];
 export const CLAUDE_WEB = ['WebSearch', 'WebFetch'];
 
-// A Claude session id is a UUID; a Codex one a UUID or a thread name.
-const SESSION_ID = { claude: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, codex: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/ };
+// A session is given by its id (a UUID) or by the name the user gave it with /rename. A name is looked up
+// where each CLI keeps it: Claude Code in the session's own transcript (a "custom-title" entry), Codex in
+// session_index.jsonl. Codex also resolves names itself, so a simple Codex name that is not found here is
+// passed on as it is.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CODEX_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const claudeHome = () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+const codexHome = () => process.env.CODEX_HOME || join(homedir(), '.codex');
+const readText = file => { try { return readFileSync(file, 'utf8'); } catch { return ''; } };
+const parseLine = line => { try { return JSON.parse(line); } catch { return null; } };
+const listDir = dir => { try { return readdirSync(dir); } catch { return []; } };
 
-/** A session id the user passed, checked; throws if it cannot be one. */
-export function checkSessionId(side, value) {
-  const id = typeof value === 'string' ? value.trim() : '';
-  if (!SESSION_ID[side].test(id)) {
-    throw new Error(side === 'claude' ? `not a Claude Code session id (a UUID): ${JSON.stringify(value)}` : `not a Codex session id: ${JSON.stringify(value)}`);
+// Of [id, name] pairs, most recent first: the first exact match, else the first ignoring case.
+function pickNamed(pairs, name) {
+  const lower = name.toLowerCase();
+  let loose = null;
+  for (const [id, title] of pairs) {
+    const clean = String(title).trim();
+    if (clean === name) return id;
+    if (!loose && clean.toLowerCase() === lower) loose = id;
   }
-  return id;
+  return loose;
+}
+
+/** The id of the most recently used Claude Code session last renamed to name (/rename), or null. */
+export function claudeSessionNamed(name) {
+  const projects = join(claudeHome(), 'projects');
+  const files = listDir(projects).flatMap(dir => listDir(join(projects, dir))
+    .filter(file => UUID.test(file.replace(/\.jsonl$/, '')) && file.endsWith('.jsonl'))
+    .map(file => join(projects, dir, file)));
+  const newest = files.flatMap(file => { try { return [[statSync(file).mtimeMs, file]]; } catch { return []; } }).sort((a, b) => b[0] - a[0]);
+  const titled = function* () {
+    for (const [, file] of newest) {
+      const text = readText(file);
+      if (!text.includes('"custom-title"')) continue;
+      let title = null;
+      for (const line of text.split(/\r?\n/)) {
+        if (!line.includes('"custom-title"')) continue;
+        const entry = parseLine(line);
+        if (entry?.type === 'custom-title' && typeof entry.customTitle === 'string') title = entry.customTitle;
+      }
+      if (title !== null) yield [basename(file, '.jsonl'), title];
+    }
+  };
+  return pickNamed(titled(), name);
+}
+
+/** The id of the Codex session most recently named name (/rename), from session_index.jsonl, or null. */
+export function codexSessionNamed(name) {
+  const latest = new Map(); // id -> its latest name, in the order they were last named
+  for (const line of readText(join(codexHome(), 'session_index.jsonl')).split(/\r?\n/)) {
+    const entry = parseLine(line);
+    if (typeof entry?.id === 'string' && typeof entry.thread_name === 'string') {
+      latest.delete(entry.id);
+      latest.set(entry.id, entry.thread_name);
+    }
+  }
+  return pickNamed([...latest].reverse(), name);
+}
+
+/**
+ * A session the user passed, by id or by name, as the id to resume; throws if there is no such session.
+ * An id is returned as it is.
+ */
+export function checkSessionId(side, value) {
+  const ref = typeof value === 'string' ? value.trim() : '';
+  const cli = side === 'claude' ? 'Claude Code' : 'Codex';
+  if (!ref || ref.length > 200 || /[\u0000-\u001f\u007f]/.test(ref) || ref.startsWith('-')) {
+    throw new Error(`not a ${cli} session id or name: ${JSON.stringify(value)}`);
+  }
+  if (UUID.test(ref)) return ref;
+  const id = side === 'claude' ? claudeSessionNamed(ref) : codexSessionNamed(ref);
+  if (id) return id;
+  if (side === 'codex' && CODEX_REF.test(ref)) return ref;
+  throw new Error(`no ${cli} session named ${JSON.stringify(ref)}: pass its id (from /status) or the name you gave it with /rename`);
 }
 
 function firstMatch(file, pick) {
@@ -66,11 +131,11 @@ function findFile(dir, test, depth = 4) {
 /** The folder a user's Claude Code or Codex session was started in, from its saved transcript; null if not found. */
 export function sessionFolder(side, id) {
   if (side === 'claude') {
-    const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
+    const projects = join(claudeHome(), 'projects');
     const file = findFile(projects, name => name === `${id}.jsonl`, 1);
     return file && firstMatch(file, event => (typeof event?.cwd === 'string' ? event.cwd : null));
   }
-  const home = process.env.CODEX_HOME || join(homedir(), '.codex');
+  const home = codexHome();
   for (const dir of ['sessions', 'archived_sessions']) {
     const file = findFile(join(home, dir), name => name.startsWith('rollout-') && name.endsWith(`${id}.jsonl`));
     const cwd = file && firstMatch(file, event => (event?.type === 'session_meta' && typeof event.payload?.cwd === 'string' ? event.payload.cwd : null));

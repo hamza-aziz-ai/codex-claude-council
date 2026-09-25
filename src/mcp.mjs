@@ -41,13 +41,13 @@ const workspaceField = {
     + '(or when passing a session id: the session\'s own folder is used).',
 };
 const sessionHint = {
-  codex: 'a Codex session (its id, as shown by `codex resume` or in the session\'s file name)',
-  claude: 'a Claude Code session (its UUID, as shown by `/status` or `claude --resume`)',
+  codex: 'a Codex session the user already has: its id (as shown by `/status`) or the name they gave it with `/rename`',
+  claude: 'a Claude Code session the user already has: its UUID (as shown by `/status`) or the name they gave it with `/rename`',
 };
 const sessionField = side => ({
   type: 'string',
-  description: `Optional: the id of ${sessionHint[side]} the user already has, to continue in place instead of a new session, so the model keeps that session's memory. `
-    + 'Pass it only when the user gives an id. The council\'s turns are added to that session, in plan mode (nothing is changed).',
+  description: `Optional: ${sessionHint[side]}, to continue in place instead of a new session, so the model keeps that session's memory. `
+    + 'Pass it exactly as the user gives it, only when they give one. The council\'s turns are added to that session, in plan mode (nothing is changed).',
 });
 const webField = {
   type: 'boolean',
@@ -98,8 +98,8 @@ const joinFields = {
   me: { type: 'string', enum: ['claude', 'codex'], description: 'Which model you are: "claude" if you are Claude (Claude Code, Claude Desktop), "codex" if you are Codex or ChatGPT. The other model is the one the plugin runs.' },
   other_session_id: {
     type: 'string',
-    description: 'Optional: the id of the user\'s own session of the other model (a Codex session if you are Claude, a Claude Code session if you are Codex), '
-      + 'to continue in place with its memory. Pass it only when the user gives an id; never your own session\'s id.',
+    description: 'Optional: the id or /rename name of the user\'s own session of the other model (a Codex session if you are Claude, a Claude Code session if you are Codex), '
+      + 'to continue in place with its memory. Pass it exactly as the user gives it, only when they give one; never your own session.',
   },
   other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
   other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },
@@ -157,7 +157,7 @@ const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, deba
   + 'Pass max_rounds only when the user asks for a number of rounds (0 = until they agree, with no limit). '
   + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they run in plan mode and cannot change it. '
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
-  + 'If the user gives the id of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on ask_claude / ask_codex) to continue that session. '
+  + 'If the user gives the id or name of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on ask_claude / ask_codex) to continue that session. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes. '
   + 'Pass skill (an installed skill\'s name) only when the user asks to use that skill; each model then uses it at the steps that need it. '
   + 'If a call returns a job_id because it is still working, call council_result (again, until it returns the answer); do not start the same question again. '

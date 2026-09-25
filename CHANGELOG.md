@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1 (2026-09-25)
+
+- **Sessions by name.** Wherever a session id is taken (`claude_session_id`, `codex_session_id`, `session_id`, `other_session_id`, and `--claude-session`, `--codex-session`, `--session`), the name the user gave the session with `/rename` works too, spaces included. Claude Code names are read from the session's own transcript (its latest `custom-title` entry), Codex names from `~/.codex/session_index.jsonl`. The most recently used session with that name is taken, an exact match before one that differs only in case, and it is resumed by its id in its own folder. Checked with a real Claude Code session renamed with `/rename`. Codex also resolves simple names itself, so a Codex name not found in the index is passed on.
+- Session ids and names starting with `-` are refused, so none is passed to a CLI as an option. The error for an unknown name says where to find the id or how to set a name.
+
 ## 0.8.0 (2026-09-25)
 
 - **Plan mode instead of a locked-down sandbox.** Claude Code now runs in plan mode (`--permission-mode plan`) with the user's own setup (skills, plugins, MCP servers, `CLAUDE.md`, permission rules) instead of `--restricted` with a fixed tool list. It reads, searches and runs read-only commands such as `git log` and `git diff` itself, and every edit, write or other command is refused (checked with the real CLI). A system-prompt note keeps its full answer in its reply, since plan mode otherwise steers it to a plan file and ExitPlanMode. Codex has no plan mode in `codex exec`, so it keeps its read-only sandbox, now with the user's own `config.toml` and rules; `-c sandbox_mode="read-only"` still wins over any config (checked, including a config with full access). The prompts tell both they are in plan mode and should propose changes as plans.

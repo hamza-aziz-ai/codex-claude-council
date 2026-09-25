@@ -121,7 +121,7 @@ test('council_join as Codex: Claude\'s session runs the other side, and the coun
   const claude = fake.questionCalls().filter(c => c.cli === 'claude');
   assert.ok(claude.length >= 1 && claude.every(c => c.args.includes('--resume') && c.args.includes('11111111-2222-4333-8444-555555555555')), 'the user\'s Claude session continues in place');
   assert.ok(!fake.questionCalls().some(c => c.cli === 'codex'), 'no Codex CLI: the caller is Codex');
-  assert.match((await call('council_join', { question: 'q', me: 'codex', other_session_id: 'not-a-uuid' })).result.content[0].text, /not a Claude Code session id/);
+  assert.match((await call('council_join', { question: 'q', me: 'codex', other_session_id: 'not-a-uuid' })).result.content[0].text, /no Claude Code session named "not-a-uuid"/);
   assert.match((await call('council_join', { question: 'q' })).result.content[0].text, /needs me/);
 });
 

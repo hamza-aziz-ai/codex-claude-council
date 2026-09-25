@@ -37,8 +37,9 @@ Model and effort (omit to use your config):
                    --no-workspace     no project folder
                    --no-web           no web search or web pages (default: on, "web_search" in the config)
                    --skill <name>     both models may use this installed skill where a step needs it
-  codex, claude:   --session <id>     continue your own Codex / Claude Code session in place (keeps its memory)
-  ask, debate:     --codex-session <id>  --claude-session <id>   the same, per side
+  codex, claude:   --session <id|name>  continue your own Codex / Claude Code session in place (keeps its memory);
+                                        its id from /status, or the name you gave it with /rename
+  ask, debate:     --codex-session <id|name>  --claude-session <id|name>   the same, per side
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install / update / uninstall options:

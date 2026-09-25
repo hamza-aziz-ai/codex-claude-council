@@ -124,7 +124,7 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 | "Run a council **debate** on this migration plan." | `debate`: the final answer plus every answer, critique, reply and draft/review round |
 | "Get **Codex's** second opinion on this function." | `ask_codex` (or `ask_claude` for Claude alone) |
 | "**Discuss with my Codex session 019a…** whether this refactor is safe." (asked in Claude Code) | `council_join`: this session takes part itself; Codex continues session 019a… |
-| "Ask the council, continuing **my Claude session 3f2a…** and **my Codex session 019a…**: is my plan sound?" | `council_ask` with `claude_session_id` and `codex_session_id` |
+| "Ask the council, continuing **my Claude session 3f2a…** and **my Codex session "auth refactor"**: is my plan sound?" | `council_ask` with `claude_session_id` and `codex_session_id` |
 | "Council this with **ChatGPT on gpt-5.6-sol at xhigh** and **Claude on opus at max**: …" | `council_ask` with per-side model and effort |
 | "Ask the council and **keep going until they agree**: …" | `council_ask` with `max_rounds: 0` |
 | "Ask the council, and let **ChatGPT write the final answer**: …" | `council_ask` with `synthesizer: "codex"` |
@@ -152,15 +152,23 @@ By default each side runs a new Codex / Claude Code session in the `workspace`, 
 
 ### Your sessions
 
-Pass the ids of sessions you already have, and the council continues **those sessions in place**, with everything they have read and discussed. The council's turns are added to them, so you see the discussion when you go back.
+Pass sessions you already have, by id or by name, and the council continues **those sessions in place**, with everything they have read and discussed. The council's turns are added to them, so you see the discussion when you go back.
 
 | Tool | Inputs | Terminal |
 |---|---|---|
-| `council_ask`, `debate` | `claude_session_id`, `codex_session_id` (either or both) | `--claude-session <id>`, `--codex-session <id>` |
-| `ask_claude`, `ask_codex` | `session_id` | `--session <id>` |
+| `council_ask`, `debate` | `claude_session_id`, `codex_session_id` (either or both) | `--claude-session <id\|name>`, `--codex-session <id\|name>` |
+| `ask_claude`, `ask_codex` | `session_id` | `--session <id\|name>` |
 
-- **Claude Code session id:** the UUID shown by `/status` in the session, or in `claude --resume`.
-- **Codex session id:** shown by `/status` in the session, in `codex resume`, and at the end of the session file's name in `~/.codex/sessions/`.
+**Finding a session's id or giving it a name:**
+
+| | Claude Code | Codex |
+|---|---|---|
+| **Id** | `/status` in the session (a UUID), or `claude --resume` | `/status` in the session; also the end of its file name in `~/.codex/sessions/YYYY/MM/DD/rollout-…-<id>.jsonl` |
+| **Name** | `/rename <name>` in the session | `/rename <name>` in the session |
+| **List** | `claude --resume` | `codex resume` (this folder), `codex resume --all` (every folder) |
+
+- A **name** is looked up where each CLI keeps it: Claude Code in the session's own transcript, Codex in `~/.codex/session_index.jsonl`. If several sessions have that name, the most recently used one is taken (an exact match before one that differs only in case). A name can contain spaces: `--codex-session "auth refactor"`.
+- Names are easy to reuse by mistake, so pass the id when it matters which session you get.
 - Each session runs in the folder it was started in, which is also the default `workspace`. Pass a `workspace` to have it work in another folder.
 - For the council's turns, both run in plan mode / read-only, whatever mode you used them in.
 - **Close those sessions first**, or at least don't type in them while the council runs: two programs writing to one session can mix up its history. Reopen them afterwards (`claude --resume <id>`, `codex resume <id>`) to see the council's turns.
@@ -334,7 +342,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - **"usage limit"**: your ChatGPT or Claude plan hit its limit. Wait for the reset or lower the effort.
 - **"timed out"**: raise `timeout_seconds` (or `skill_timeout_seconds` with a skill), or lower the effort.
 - **The tool call ended after about 60 seconds**: update to 0.6.2 or later, where every tool returns within about 50 seconds and the host polls `council_result`. If your app has no such limit, `"tool_wait_seconds": 0` waits in one call.
-- **"not a Claude Code session id" / "not a Codex session id"**: pass the full id from `/status`; a Claude Code id is a UUID.
+- **"no … session named …"**: no session has that name. Check it with `claude --resume` / `codex resume --all`, rename the session with `/rename`, or pass its id from `/status`.
 - **"… is not waiting for your reply now"** (`council_join`): the other model is still working; the host should call `council_result` with the id to get its next turn.
 - **`skill "…" is not installed`**: install it with `skill add`, then restart the app so the tools list it.
 - **Tools don't appear**: fully quit and reopen the app after installing. In the desktop apps, check the plugin is installed and enabled under **Settings → Plugins**.
