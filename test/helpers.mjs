@@ -32,7 +32,9 @@ export function setup(config = {}) {
   // installed skills (~/.agents/skills too) or saved sessions of the machine leak in.
   const home = join(dir, 'home');
   mkdirSync(home); // the MCP server starts in the user's home
-  const env = { COUNCIL_CONFIG: configPath, FAKE_LOG: log, CLAUDE_CONFIG_DIR: join(dir, 'claude-home'), CODEX_HOME: join(dir, 'codex-home'), HOME: home, USERPROFILE: home };
+  const env = { COUNCIL_CONFIG: configPath, FAKE_LOG: log, CLAUDE_CONFIG_DIR: join(dir, 'claude-home'), CODEX_HOME: join(dir, 'codex-home'), HOME: home, USERPROFILE: home,
+    // Where Claude Desktop's config is (install --claude-desktop and uninstall edit it): never the real one.
+    APPDATA: join(home, 'AppData', 'Roaming'), LOCALAPPDATA: join(home, 'AppData', 'Local'), XDG_CONFIG_HOME: join(home, '.config') };
   const saved = {};
   for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
   return {
