@@ -29,11 +29,13 @@ flowchart LR
 
 The conversation goes both ways whoever writes the final answer, and from step 2 on each model sees the whole discussion so far.
 
-**Both models can read your project.** In a coding session, both models work in your project folder (the `workspace`). They can open files, search, and look at git history, changes and blame (`log`, `diff`, `show`, `status`, `blame`) to check facts about the code, a change, a fix or a log before relying on it. **Neither can change anything:** Codex runs in its read-only sandbox, enforced by the operating system, and Claude Code has only read tools and a read-only git tool, with no shell; everything else is refused.
+**Both models work in plan mode.** In a coding session, both models work in your project folder (the `workspace`), with your own Claude Code and Codex setup: your skills, plugins, MCP servers and `CLAUDE.md` / `AGENTS.md`. They can open files, search and run read-only commands such as `git log`, `diff`, `show` and `blame` to check facts about the code, a change, a fix or a log before relying on it. **Neither can change anything:** Claude Code runs in **plan mode**, and Codex, whose command line has no plan mode, runs in its **read-only sandbox**, enforced by the operating system. Proposed changes come back as plans, not edits.
 
 **Both models can search the web.** Codex uses its built-in live web search and Claude uses WebSearch and WebFetch, so they can check current versions, APIs, docs and error messages instead of relying on memory. It is on by default; pass `web_search: false` for one question, `--no-web` in the terminal, or set `"web_search": false` in your config to turn it off.
 
 **Each model keeps one session.** Each side keeps a single Codex / Claude Code session for as long as your host session runs, so it remembers earlier questions, the discussion and what it has already read, instead of reading the project again for every prompt. Each prompt carries only what that model has not seen yet. When you start a new Claude Code or Codex session, the council starts new sessions too.
+
+**Or it continues yours.** If you already have a Claude Code and a Codex session working on a project, give their ids and the council continues those sessions in place, with everything they already know. See [Continue your own sessions](#continue-your-own-sessions).
 
 ## Requirements
 
@@ -45,8 +47,8 @@ The conversation goes both ways whoever writes the final answer, and from step 2
 | [Git](https://git-scm.com) (recommended) | usually already installed | – |
 
 - **Both CLIs are required.** The installer checks for them first and stops, with these install steps, if either is missing. Every council run also checks that both are signed in before it starts, and stops with the sign-in steps if either is not.
-- **Keep both CLIs up to date.** The council uses recent options: Claude Code's `--restricted`, and Codex's `exec resume` and web search. If a run fails with "unknown option" or "unexpected argument", update the CLI it names: `claude update`, or `npm install -g @openai/codex@latest` (or update Codex however you installed it).
-- **Git** lets both models look at your project's history, changes and blame. Without it, they can still read the files.
+- **Keep both CLIs up to date.** The council uses recent options: Claude Code's plan mode and `stream-json` output, and Codex's `exec resume` and web search. If a run fails with "unknown option" or "unexpected argument", update the CLI it names: `claude update`, or `npm install -g @openai/codex@latest` (or update Codex however you installed it).
+- **Git** lets both models look at your project's history, changes and blame, and `skill add` uses it to download a repository's skills. Without it, they can still read the files, and `skill add` installs only a repository's top-level `SKILL.md`.
 
 ## Install
 
@@ -181,10 +183,13 @@ Just ask in plain language:
 | "Get **Codex's** take on this error, and check the library's **current docs**: …" | `ask_codex` with web search (on by default) |
 | "Ask the council **without internet access**: …" | `council_ask` with `web_search: false` |
 | "Ask the council, **using the llm-council skill**: should we rewrite the billing service or refactor it?" | `council_ask` with `skill: "llm-council"` (an installed skill) |
+| "Ask the council **with ponytail**: how should we add retries to the sign-in check?" | `council_ask` with `skill: "ponytail"` |
+| "Ask the council, continuing **my Claude session 3f2a…** and **my Codex session 019a…**: is my refactor plan sound?" | `council_ask` with `claude_session_id` and `codex_session_id` |
+| "Ask **Codex** in **my session 019a…**: why did the migration test fail?" | `ask_codex` with `session_id` |
 
 **Long runs.** A council often takes several minutes, and some apps end a tool call after about 60 seconds (Claude Desktop does). So each tool returns within about 50 seconds: with the answer, or with "still working", the current step and a `job_id`. The app then calls `council_result` until the answer is ready (the plugin's skill tells it to), while the council keeps running. `council_cancel` stops a job.
 
-With a `workspace`, the models read what they need from the project themselves; without one, they have no file access, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
+With a `workspace`, the models read what they need from the project themselves; without one, they start in an empty folder, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
 
 ### Web search
 
@@ -207,19 +212,44 @@ To turn it off: pass `web_search: false` for one question ("ask the council with
 
 ### Skills: `skill`
 
-You can give both council members a skill: a `SKILL.md` with a method they can follow, for example [LLM Council](https://github.com/aiwithremy/claude-skills-llm-council) (five advisors, peer review, a chairman's verdict). Install it once:
+You can give both council members skills: `SKILL.md` folders with a method or style they can follow. Install a repository's skills once:
 
 ```bash
 npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/aiwithremy/claude-skills-llm-council
+npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/JuliusBrussee/caveman.git
+npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/DietrichGebert/ponytail.git
+npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/Graphify-Labs/graphify.git
 npx -y github:hamza-aziz-ai/codex-claude-council skill list
-npx -y github:hamza-aziz-ai/codex-claude-council skill remove llm-council
+npx -y github:hamza-aziz-ai/codex-claude-council skill remove caveman-stats
 ```
 
-`skill add` takes a GitHub repository URL (it reads `SKILL.md` from the repository root, or from a `tree/<branch>/<folder>` or `blob/.../SKILL.md` URL), a local `SKILL.md` or a folder containing one. Skills are saved in `~/.codex-claude-council/skills/<name>/`. Restart Claude Code, Codex or the desktop app afterwards so the tools list the new skill. Nothing third-party ships with the plugin, so check a skill's license and contents before you install it.
+`skill add` clones the repository (with `git`) and installs **every skill in it**, each with the files it comes with (references, scripts): caveman brings 20 skills (`caveman`, `caveman-review`, `caveman-compress`, …), ponytail 6 (`ponytail`, `ponytail-review`, `ponytail-audit`, …), graphify and llm-council one each. Where a repository keeps copies of a skill for other tools, the main one is used. It also takes one folder of a repository (`…/tree/<branch>/<folder>`), a local folder or a `SKILL.md` file. Skills are saved in `~/.codex-claude-council/skills/<name>/`. Skills you installed natively for Claude Code (`~/.claude/skills`) or Codex (`~/.codex/skills`, `~/.agents/skills`) can be used by name as well. Restart Claude Code, Codex or the desktop app afterwards so the tools list new skills. Nothing third-party ships with the plugin, so check a skill's license and contents before you install it (llm-council, for example, has no license file).
 
-A skill is used only when you ask for it: "ask the council, using the llm-council skill: …" (the host passes `skill: "llm-council"`), or `--skill llm-council` in the terminal. Both models then get the skill's instructions with the question and **decide for themselves at which steps it is needed**: typically for a real decision, trade-off or disagreement, following the skill's own guidance on when to use it. Steps that don't need it, such as checking a fact or accepting a point, are answered directly. When a model uses the skill, it follows it fully, including sub-agents (Claude's Agent tool, Codex's multi-agent feature), which have the same read-only access as the model itself. The discussion's rules come first: neither model can write files, so a skill's "save a report" steps are skipped, and each answer comes back in the format the step asks for.
+A skill is used only when you ask for it: "ask the council, using the llm-council skill: …" (the host passes `skill: "llm-council"`), or `--skill llm-council` in the terminal. Both models then get the skill's instructions with the question and **decide for themselves at which steps it is needed**, following the skill's own guidance on when to use it. A method like llm-council is used for a real decision, trade-off or disagreement; a style like caveman (terse replies) or ponytail (the simplest solution that works) says to apply it to every reply. Steps that don't need a skill, such as checking a fact or accepting a point, are answered directly. When a model uses a skill, it follows it fully, including sub-agents (Claude's Agent tool, Codex's multi-agent feature), which work in plan mode / read-only too. The discussion's rules come first: neither model can write files, so steps that would (saving a report, building an index) are skipped, and each answer comes back in the format the step asks for.
+
+**graphify** builds a knowledge graph of your project by running its Python tool and writing `graphify-out/`, which the council cannot do. Build the graph yourself first (`pip install graphifyy`, then `graphify .` in the project), and the council members read `graphify-out/GRAPH_REPORT.md` and `graph.json` from there. Codex can also run `graphify query` in its read-only sandbox; Claude's plan mode allows only commands it knows to be read-only.
 
 A step that uses a skill with sub-agents can take several minutes and uses much more of both plans. Such a call may take up to `skill_timeout_seconds` (default 1800) instead of `timeout_seconds`.
+
+### Continue your own sessions
+
+Say you already have a Claude Code session and a Codex session working on a project, and both know it well. Pass their ids and the council continues **those sessions in place**, instead of starting new ones: each model keeps everything it has read and discussed, and the council's turns are added to that session, so you see them when you go back to it. Both still run in plan mode / read-only for the council, whatever mode you used them in.
+
+| Tool | Inputs | Terminal |
+|---|---|---|
+| `council_ask`, `debate` | `claude_session_id`, `codex_session_id` (either or both) | `--claude-session <id>`, `--codex-session <id>` |
+| `ask_claude`, `ask_codex` | `session_id` | `--session <id>` |
+
+- **Claude Code session id:** the UUID shown by `/status` in the session, or in `claude --resume`.
+- **Codex session id:** shown by `/status` in the session, in `codex resume`, and at the end of each session file's name in `~/.codex/sessions/`.
+
+Each session runs in the folder it was started in, and that folder is the `workspace` unless you pass one. The council's turns go into the session, so **close it in its terminal or app first** (or at least don't type in it while the council runs), since two programs writing to one session at once can mix up its history. Don't pass the id of the session you are asking from.
+
+```bash
+npx -y github:hamza-aziz-ai/codex-claude-council ask "Is the plan we discussed for the auth refactor sound?" \
+  --claude-session 3f2a9c1e-5b7d-4e8a-9f10-2c3d4e5f6a7b --codex-session 019a3b4c-5d6e-7f80-9a1b-2c3d4e5f6a7b
+npx -y github:hamza-aziz-ai/codex-claude-council codex "Why did the migration test fail?" --session 019a3b4c-5d6e-7f80-9a1b-2c3d4e5f6a7b
+```
 
 ### Who writes the final answer: `synthesizer`
 
@@ -243,10 +273,10 @@ For the old single pass (the synthesizer writes the final answer alone after the
 
 | Tool | Optional inputs |
 |---|---|
-| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace`, `web_search`, `skill` |
-| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill` |
+| `ask_codex`, `ask_claude` | `model`, `effort`, `workspace`, `web_search`, `skill`, `session_id` |
+| `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill`, `codex_session_id`, `claude_session_id` |
 
-`workspace` is the absolute path of the project folder both models may read. In Claude Code and Codex the plugin's skill tells the host to pass the folder you are working in.
+`workspace` is the absolute path of the project folder both models work in (in plan mode, reading but never changing it). In Claude Code and Codex the plugin's skill tells the host to pass the folder you are working in.
 
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`
 - Claude effort: `low`, `medium`, `high`, `xhigh`, `max`
@@ -264,15 +294,17 @@ npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --synthesizer codex  
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --effort low
 npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet --effort max
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --workspace ~/code/app  # read this project
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no file access
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no project folder
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web                # no web search
 npx -y github:hamza-aziz-ai/codex-claude-council ask "What changed in the latest Node.js LTS that affects this repo?"  # reads the repo and searches the web
 npx -y github:hamza-aziz-ai/codex-claude-council codex "Is datetime.utcnow() deprecated? Check the current Python docs."  # Codex only, with web search
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web --no-workspace  # neither files nor internet
 npx -y github:hamza-aziz-ai/codex-claude-council ask "Rewrite or refactor the billing service?" --skill llm-council  # with an installed skill
+npx -y github:hamza-aziz-ai/codex-claude-council claude "How should I add retries here?" --skill ponytail             # the simplest solution
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --claude-session <uuid> --codex-session <id>             # continue your sessions
 ```
 
-In the terminal, both models read the git repository you run the command from (if any) unless you pass `--workspace` or `--no-workspace`. Each command is a new pair of sessions that lasts for that run.
+In the terminal, both models work in the git repository you run the command from (if any) unless you pass `--workspace`, `--no-workspace` or a session id. Each command is a new pair of sessions that lasts for that run, unless you pass session ids.
 
 For a shorter command, install it globally with `npm install -g github:hamza-aziz-ai/codex-claude-council` and use `codex-claude-council ask "..."`. Questions can also be piped on stdin.
 
@@ -334,12 +366,13 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 ## Security and privacy
 
 - Everything runs on your computer. Your question goes to OpenAI and Anthropic through their official CLIs, under your own accounts.
-- **Neither model can change your files.** Codex runs `codex exec` in its **read-only sandbox**, enforced by the operating system, ignoring your `~/.codex/config.toml` and `.rules` files (so no plugins, hooks or MCP servers load). Claude Code runs with `--restricted` (no user, project or local settings, so no hooks, plugins or allow rules from them), no skills, no shell, and `--permission-mode dontAsk`, so it can use only its read tools (Read, Grep, Glob, confined to the project) and this plugin's read-only git tools (`src/git-mcp.mjs`: status, log, diff, show, a file at a revision, blame). Those run git with a fixed argument list and no shell; every path must stay inside the project (also through links) and every revision is checked, so no git option can write a file or read one outside the project.
-- **What they can read.** With a `workspace`, whatever either model chooses to read in that project is sent to OpenAI or Anthropic, as when you paste it. Claude's file tools are confined to the project folder. Codex's read-only sandbox lets it read other files on your computer too, as Codex itself does by default. Without a `workspace`, Claude has no tools and Codex runs in an empty folder.
+- **Neither model can change your files.** Codex runs `codex exec` in its **read-only sandbox**, enforced by the operating system, with `approval_policy="never"`; these are set on the command line, which overrides your `~/.codex/config.toml` (checked: even a config that grants full access stays read-only). Claude Code runs in **plan mode** (`--permission-mode plan`): it can read, search and run commands Claude Code knows to be read-only, and every edit, write or other command is refused, since nobody is there to approve it. Plan mode is Claude Code's own permission guard, not an operating-system sandbox. The only file it may write is its own plan file under `~/.claude/plans/`.
+- **Your own setup.** Both run with your own configuration: your skills, plugins, MCP servers, hooks, `CLAUDE.md` / `AGENTS.md` and permission rules. This plugin itself is switched off inside them, so a member can't start another council. Your MCP servers' tools are available to them; plan mode blocks Claude's non-read-only tools, while Codex follows each server's own approval settings, so keep that in mind for MCP servers that can change things.
+- **What they can read.** Whatever either model chooses to read is sent to OpenAI or Anthropic, as when you paste it. Both can read files outside the project too, as they can in your normal sessions: Codex's read-only sandbox allows reading the whole disk, and plan mode allows read-only commands anywhere. Without a `workspace`, they start in an empty folder and are told to work from the question.
 - **Web access.** With `web_search` on (the default), Codex's web search runs on OpenAI's side (its sandbox still has no network for commands), and Claude can search and fetch web pages. Your question and what the models read can shape their search queries and the pages they open. With a `workspace` as well, text in the project that tries to instruct the model (a prompt injection) could in principle get it to send project content to a website, for example in a URL it fetches. For sensitive projects, turn web access off with `web_search: false` or `"web_search": false` in your config.
-- **Sessions.** The councils' sessions are saved by the CLIs like any other session, so they appear in `claude --resume` and `codex resume` for that folder.
+- **Sessions.** The councils' sessions are saved by the CLIs like any other session, so they appear in `claude --resume` and `codex resume` for that folder. A session you pass by id is continued in place: the council's turns are added to it.
 - API-key environment variables are removed before the CLIs start, so calls use your subscriptions rather than per-token API billing. Codex must be signed in with ChatGPT and Claude Code with a Claude subscription unless you set `allow_api_key_auth`.
-- A plugin with a local MCP server runs with your user permissions. This one is about 1,000 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.
+- A plugin with a local MCP server runs with your user permissions. This one is about 1,700 lines of dependency-free JavaScript in [`src/`](src); read it before installing if you like.
 
 ## Uninstall
 

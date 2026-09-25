@@ -15,13 +15,17 @@ This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign
 
 ## Let them read the project: `workspace`
 
-When you are working in a project, always pass `workspace`: the absolute path of the project folder (your working directory). Both models can then read it themselves: open files, search, and look at git history, changes and blame (log, diff, show, status, blame). Neither can change anything. So in `question`, point them at what matters (files, functions, the failing test, the error or log excerpt, the change you made) instead of pasting whole files. They cannot see this conversation, so state the task and any context that is not in the project, such as an error message or a log you saw.
+When you are working in a project, always pass `workspace`: the absolute path of the project folder (your working directory). Both models then work in it in plan mode, with the user's own Claude Code / Codex setup: they open files, search and run read-only commands (git log, diff, show, status, blame). Neither can change anything; they propose changes as plans. So in `question`, point them at what matters (files, functions, the failing test, the error or log excerpt, the change you made) instead of pasting whole files. They cannot see this conversation, so state the task and any context that is not in the project, such as an error message or a log you saw.
 
 Both models can also search the web and read web pages (on by default), so they can check current versions, APIs and docs. Pass `web_search: false` only when the user asks for no internet access.
 
-Omit `workspace` only for questions unrelated to any project; the models then have no file access, so quote everything they need in `question`.
+Omit `workspace` only for questions unrelated to any project; the models then start in an empty folder, so quote everything they need in `question`.
 
 Each model keeps one session for as long as this session runs: it remembers earlier council questions and what it has already read, so a follow-up question can refer to the earlier discussion.
+
+## Continue the user's own sessions
+
+If the user gives the id of a Claude Code or Codex session they already have (for example "continue my Claude session 3f2a… and my Codex session 019a…"), pass it: `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`. That session is continued in place, with everything it already knows, in plan mode; its own folder is the workspace unless you pass one. Never pass the id of your own current session, and never guess an id. Remind the user not to type in those sessions while the council runs.
 
 ## Model and effort
 
@@ -44,7 +48,7 @@ Report whether they agreed (the tool says so at the end of its answer). If they 
 
 ## Installed skills: `skill`
 
-Every tool takes an optional `skill`: the name of a skill the user installed for the council (the tool descriptions list them). Pass it only when the user asks to use that skill, by name or by a phrase the skill says triggers it (for example "use the llm-council skill", "council this with llm-council"). Never add it on your own. Both models then get the skill's instructions and use it, including its sub-agents, at the steps where they judge it is needed; other steps are answered directly. Such runs take longer and use more of both plans, so expect several "still working" results. If the tool says the skill is not installed, tell the user the install command it gives.
+Every tool takes an optional `skill`: the name of a skill the user installed for the council or natively for Claude Code / Codex (the tool descriptions list them), for example `llm-council`, `caveman`, `ponytail` or `graphify`. Pass it only when the user asks to use that skill, by name or by a phrase the skill says triggers it (for example "use the llm-council skill", "council this with llm-council"). Never add it on your own. Both models then get the skill's instructions and use it, including its sub-agents, at the steps where they judge it is needed; other steps are answered directly. Such runs take longer and use more of both plans, so expect several "still working" results. If the tool says the skill is not installed, tell the user the install command it gives.
 
 ## Long runs: `job_id` and `council_result`
 

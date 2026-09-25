@@ -1,17 +1,20 @@
 // One question to one CLI, using the user's own subscription sign-in.
 // Each side keeps one CLI session for as long as this process lives (for the MCP server, that is the
 // host's session), so a model remembers the discussion and what it has already read of the project.
+// Both run with the user's own setup (their skills, plugins, MCP servers, CLAUDE.md / AGENTS.md) and can
+// read anything, but neither can change anything: Claude runs in plan mode, Codex in its read-only sandbox.
+// A session can also be one the user started themselves, passed by id; it then continues in place.
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PACKAGE_ROOT, SIDES, loadConfig, resolveSide } from './config.mjs';
+import { NAME, SIDES, loadConfig, resolveSide } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
 
-const EMPTY_MCP_CONFIG = join(PACKAGE_ROOT, 'src', 'empty-mcp.json');
-
 // GIT_OPTIONAL_LOCKS=0 stops read-only git commands (git status) from refreshing the index.
-const READ_ONLY_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' };
+// MEMBER_ENV tells this plugin's own server, if a member's setup starts it, that it runs inside a council.
+export const MEMBER_ENV = 'CODEX_CLAUDE_COUNCIL_MEMBER';
+const READ_ONLY_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat', [MEMBER_ENV]: '1' };
 
 // A step that uses a skill runs its sub-agents too, so it gets the longer skill_timeout_seconds.
 function options(config, signal, cwd, skill) {
@@ -19,26 +22,75 @@ function options(config, signal, cwd, skill) {
   return { cwd, env: { ...cleanEnv(config), ...READ_ONLY_ENV }, timeoutMs: seconds * 1000, signal };
 }
 
-// Claude reads the project with its file tools (Read, Grep, Glob; confined to the working folder by
-// --restricted) and the read-only git tools of git-mcp.mjs, which check every path and revision. It has no
-// shell; anything else is refused (--permission-mode dontAsk).
-const GIT_SERVER = join(PACKAGE_ROOT, 'src', 'git-mcp.mjs');
-export const CLAUDE_TOOLS = 'Read,Grep,Glob';
-export const CLAUDE_ALLOWED = ['mcp__council-git'];
-export const CLAUDE_DENIED = ['Edit', 'Write', 'NotebookEdit', 'Bash'];
-// With web access, Claude may also search the web and fetch pages.
+// Claude runs in plan mode: it reads, searches and runs read-only commands, and anything that would change
+// something is refused (checked with the real CLI). Plan mode steers it towards a plan and ExitPlanMode,
+// which a council member has no use for; this note keeps its answer in its reply.
+export const CLAUDE_MEMBER_NOTE = 'You are a member of a council of two AI models (Claude and Codex), running in plan mode: '
+  + 'you can read, search and run read-only commands, but you cannot change anything, and ExitPlanMode is not available. '
+  + 'Your final reply is your deliverable and is all that is passed on: always end your turn with your complete answer to the prompt, '
+  + 'not with a note about plan mode or a reference to a plan file. Do not comment on plan mode unless you are asked to change something.';
+// The plugin's own tools would let a member start a council inside a council.
+const PLUGIN_ID = `${NAME}@${NAME}`;
+export const CLAUDE_DENIED = ['ExitPlanMode', `mcp__plugin_${NAME}_council`];
 export const CLAUDE_WEB = ['WebSearch', 'WebFetch'];
-// With a skill, Claude may spawn sub-agents. They get no more tools than Claude itself (checked with the real CLI).
-export const CLAUDE_SUBAGENTS = ['Agent'];
 
-// One session per side, workspace and model. Calls to one session run one at a time.
+// A Claude session id is a UUID; a Codex one a UUID or a thread name.
+const SESSION_ID = { claude: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, codex: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/ };
+
+/** A session id the user passed, checked; throws if it cannot be one. */
+export function checkSessionId(side, value) {
+  const id = typeof value === 'string' ? value.trim() : '';
+  if (!SESSION_ID[side].test(id)) {
+    throw new Error(side === 'claude' ? `not a Claude Code session id (a UUID): ${JSON.stringify(value)}` : `not a Codex session id: ${JSON.stringify(value)}`);
+  }
+  return id;
+}
+
+function firstMatch(file, pick) {
+  try {
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/, 50)) {
+      try { const found = pick(JSON.parse(line)); if (found) return found; } catch { /* not JSON */ }
+    }
+  } catch { /* unreadable */ }
+  return null;
+}
+
+function findFile(dir, test, depth = 4) {
+  let entries = [];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return null; }
+  for (const entry of entries) if (entry.isFile() && test(entry.name)) return join(dir, entry.name);
+  if (depth > 0) for (const entry of entries) if (entry.isDirectory()) { const found = findFile(join(dir, entry.name), test, depth - 1); if (found) return found; }
+  return null;
+}
+
+/** The folder a user's Claude Code or Codex session was started in, from its saved transcript; null if not found. */
+export function sessionFolder(side, id) {
+  if (side === 'claude') {
+    const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
+    const file = findFile(projects, name => name === `${id}.jsonl`, 1);
+    return file && firstMatch(file, event => (typeof event?.cwd === 'string' ? event.cwd : null));
+  }
+  const home = process.env.CODEX_HOME || join(homedir(), '.codex');
+  for (const dir of ['sessions', 'archived_sessions']) {
+    const file = findFile(join(home, dir), name => name.startsWith('rollout-') && name.endsWith(`${id}.jsonl`));
+    const cwd = file && firstMatch(file, event => (event?.type === 'session_meta' && typeof event.payload?.cwd === 'string' ? event.payload.cwd : null));
+    if (cwd) return cwd;
+  }
+  return null;
+}
+
+// One session per side, workspace and model, or per session id the user passed (resume). Calls to one
+// session run one at a time.
 const sessions = new Map();
 const keptDirs = new Set();
 process.once('exit', () => { for (const dir of keptDirs) try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
 
-function sessionFor(side, workspace, model) {
-  const key = JSON.stringify([side, workspace || null, model || null]);
-  if (!sessions.has(key)) sessions.set(key, { id: null, dir: null, queue: Promise.resolve() });
+function sessionFor(side, workspace, model, resume) {
+  const key = JSON.stringify(resume ? ['resume', side, resume] : [side, workspace || null, model || null]);
+  if (!sessions.has(key)) {
+    const folder = resume ? sessionFolder(side, resume) : null;
+    sessions.set(key, { id: resume || null, folder: folder && existsSync(folder) ? folder : null, dir: null, queue: Promise.resolve() });
+  }
   return sessions.get(key);
 }
 
@@ -73,7 +125,7 @@ async function inSession(session, work, signal) {
 }
 
 /**
- * Hold these sessions ({ side, workspace, model }) for the whole of work, so no other council or question
+ * Hold these sessions ({ side, workspace, model, resume }) for the whole of work, so no other council or question
  * takes a turn in them meanwhile: each prompt assumes the turns before it in the session are its own.
  * Calls made inside pass { held: true }. Sessions are taken in a fixed order, so two councils cannot
  * each hold one and wait for the other.
@@ -81,26 +133,17 @@ async function inSession(session, work, signal) {
 export async function holdSessions(entries, work, { signal } = {}) {
   const ordered = [...entries].sort((a, b) => a.side.localeCompare(b.side));
   const hold = index => (index === ordered.length ? work()
-    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model), () => hold(index + 1), signal));
+    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model, ordered[index].resume), () => hold(index + 1), signal));
   return hold(0);
 }
 
-// Without a workspace, a side works in an empty folder that lasts as long as its session.
+// A user's session runs in the folder it was started in. Otherwise a side works in the workspace, or
+// without one in an empty folder that lasts as long as its session.
 function workingDir(session, workspace, prefix) {
+  if (session.folder) return session.folder;
   if (workspace) return workspace;
   if (!session.dir) keptDirs.add(session.dir = mkdtempSync(join(tmpdir(), prefix)));
   return session.dir;
-}
-
-// The MCP config that gives Claude the read-only git tools for one workspace, kept with its session.
-function gitToolsConfig(session, workspace) {
-  if (!session.mcpConfig) {
-    const dir = mkdtempSync(join(tmpdir(), 'council-claude-git-'));
-    keptDirs.add(dir);
-    session.mcpConfig = join(dir, 'mcp.json');
-    writeFileSync(session.mcpConfig, JSON.stringify({ mcpServers: { 'council-git': { type: 'stdio', command: process.execPath, args: [GIT_SERVER, workspace] } } }));
-  }
-  return session.mcpConfig;
 }
 
 /** Forget every session, so the next call to each side starts a new one. */
@@ -178,24 +221,26 @@ function codexThreadId(stdout) {
 }
 
 /**
- * workspace: the project folder the model may read (never write), or undefined for no file access.
+ * workspace: the project folder the model works in and may read (never write).
  * web: whether it may search the web (default: the config's web_search). Codex's web search runs on
  * OpenAI's side; its sandbox stays read-only with no network for commands.
+ * resume: the id of a Codex session the user started, continued in place (it keeps its memory).
  */
-export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, held = false } = {}) {
+export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
-  const session = sessionFor('codex', workspace, chosen.model);
+  const session = sessionFor('codex', workspace, chosen.model, resume && checkSessionId('codex', resume));
   const call = () => inTempDir('council-codex-out-', async outDir => {
     const cwd = workingDir(session, workspace, 'council-codex-');
     const opts = options(config, signal, cwd, skill);
     const problem = await codexSignInProblem(exe, config, opts);
     if (problem) throw new Error(problem);
     const answerFile = join(outDir, 'answer.txt');
-    // --ignore-user-config and --ignore-rules keep ~/.codex/config.toml (plugins, hooks, MCP servers) and
-    // .rules files out. The sandbox is also set with -c because `codex exec resume` has no --sandbox flag.
-    const common = ['--json', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check',
-      '-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="never"'];
+    // The user's own config applies (their skills, plugins, MCP servers), but -c overrides it: the sandbox
+    // stays read-only even where the config grants more (checked with the real CLI), and this plugin is off.
+    // The sandbox is set with -c because `codex exec resume` has no --sandbox flag.
+    const common = ['--json', '--skip-git-repo-check', '-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="never"',
+      '-c', `plugins."${PLUGIN_ID}".enabled=false`];
     if (chosen.model) common.push('-m', chosen.model);
     if (chosen.effort) common.push('-c', `model_reasoning_effort=${chosen.effort}`);
     common.push('-c', `web_search="${web ? 'live' : 'disabled'}"`);
@@ -239,15 +284,15 @@ export function claudeAnswer(stdout) {
 }
 
 /**
- * workspace: the project folder the model may read (never write), or undefined for no file access.
+ * workspace: the project folder the model works in and may read (never write).
  * web: whether it may search the web and fetch pages (default: the config's web_search).
- * --restricted ignores user, project and local settings (so no hooks, plugins or allow rules from them)
- * and confines the file tools to the working folder; dontAsk refuses anything not allowed here.
+ * resume: the id of a Claude Code session the user started, continued in place (it keeps its memory).
+ * Plan mode applies on top of the user's own settings, whatever mode they use themselves.
  */
-export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, held = false } = {}) {
+export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false } = {}) {
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
-  const session = sessionFor('claude', workspace, chosen.model);
+  const session = sessionFor('claude', workspace, chosen.model, resume && checkSessionId('claude', resume));
   const call = async () => {
     const cwd = workingDir(session, workspace, 'council-claude-');
     const opts = options(config, signal, cwd, skill);
@@ -255,13 +300,8 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
     if (problem) throw new Error(problem);
     const id = session.id ?? randomUUID();
     const args = ['-p', '--output-format', 'stream-json', '--verbose', session.id ? '--resume' : '--session-id', id,
-      '--restricted', '--permission-mode', 'dontAsk', '--disable-slash-commands', '--strict-mcp-config',
-      '--mcp-config', workspace ? gitToolsConfig(session, workspace) : EMPTY_MCP_CONFIG];
-    const tools = [...(workspace ? [CLAUDE_TOOLS] : []), ...(web ? CLAUDE_WEB : []), ...(skill ? CLAUDE_SUBAGENTS : [])];
-    const allowed = [...(workspace ? CLAUDE_ALLOWED : []), ...(web ? CLAUDE_WEB : []), ...(skill ? CLAUDE_SUBAGENTS : [])];
-    args.push('--tools', tools.join(','));
-    if (allowed.length) args.push('--allowedTools', ...allowed);
-    args.push('--disallowedTools', ...CLAUDE_DENIED);
+      '--permission-mode', 'plan', '--append-system-prompt', CLAUDE_MEMBER_NOTE,
+      '--disallowedTools', ...CLAUDE_DENIED, ...(web ? [] : CLAUDE_WEB)];
     if (chosen.model) args.push('--model', chosen.model);
     if (chosen.effort) args.push('--effort', chosen.effort);
     const result = await run(exe, args, { ...opts, input: prompt });

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 (2026-09-25)
+
+- **Plan mode instead of a locked-down sandbox.** Claude Code now runs in plan mode (`--permission-mode plan`) with the user's own setup (skills, plugins, MCP servers, `CLAUDE.md`, permission rules) instead of `--restricted` with a fixed tool list. It reads, searches and runs read-only commands such as `git log` and `git diff` itself, and every edit, write or other command is refused (checked with the real CLI). A system-prompt note keeps its full answer in its reply, since plan mode otherwise steers it to a plan file and ExitPlanMode. Codex has no plan mode in `codex exec`, so it keeps its read-only sandbox, now with the user's own `config.toml` and rules; `-c sandbox_mode="read-only"` still wins over any config (checked, including a config with full access). The prompts tell both they are in plan mode and should propose changes as plans.
+- The read-only git tools server (`src/git-mcp.mjs`) is gone: Claude runs git itself in plan mode.
+- The plugin is switched off inside its own members (`--disallowedTools` for Claude, `plugins."codex-claude-council@codex-claude-council".enabled=false` for Codex), and its server refuses to start a council when run inside one, so a member can't start a council of its own.
+- **Continue your own sessions.** Pass `claude_session_id` / `codex_session_id` (`--claude-session` / `--codex-session` in the terminal), or `session_id` on `ask_claude` / `ask_codex` (`--session`), and the council continues those sessions in place, with their memory, instead of starting new ones. Each runs in the folder it was started in (read from the session's transcript), which is also the default workspace. `debate` reports the sessions in `settings`.
+- **`skill add` installs every skill in a repository**, each with its own files (references, scripts): it clones the repository and finds each `SKILL.md`, taking the main copy where a repository keeps copies for other tools. Tested with caveman (20 skills), ponytail (6), graphify (1) and llm-council (1). Without git it falls back to the repository's top-level `SKILL.md`. Skills installed natively for Claude Code or Codex (`~/.claude/skills`, `~/.codex/skills`, `~/.agents/skills`) can be named with `skill` too. The skill note tells the models where the skill's files are, and to skip steps that would write files (such as building graphify's graph) and say so.
+- Folded `description: >` blocks in a SKILL.md's frontmatter are read correctly.
+
 ## 0.7.0 (2026-09-25)
 
 - **Skills for the council.** Install a skill (a `SKILL.md`) once with `codex-claude-council skill add <GitHub URL | SKILL.md | folder>`, for example `skill add https://github.com/aiwithremy/claude-skills-llm-council`; `skill list` and `skill remove <name>` manage them. Skills live in `~/.codex-claude-council/skills/<name>/`; none ship with the plugin.

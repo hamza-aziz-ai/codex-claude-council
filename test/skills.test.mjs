@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { addSkill, listSkills, loadSkill, parseSkill, rawSkillUrl, removeSkill, skillNote, skillsDir } from '../src/skills.mjs';
+import { addSkill, findSkills, listSkills, loadSkill, nativeSkills, parseGitHubUrl, parseSkill, rawSkillUrl, removeSkill, skillNote, skillsDir } from '../src/skills.mjs';
 
 let dir;
 let saved;
@@ -28,7 +28,11 @@ test('a SKILL.md is read for its name, description and instructions', () => {
   assert.throws(() => parseSkill('---\nname: ../evil\n---\nx'), /name must be/);
 });
 
-test('GitHub repository and file URLs map to the raw SKILL.md', () => {
+test('GitHub URLs: clone URL, branch and path; the raw SKILL.md when git is missing', () => {
+  assert.deepEqual(parseGitHubUrl('https://github.com/JuliusBrussee/caveman.git'),
+    { owner: 'JuliusBrussee', repo: 'caveman', cloneUrl: 'https://github.com/JuliusBrussee/caveman.git', ref: null, path: '' });
+  assert.deepEqual(parseGitHubUrl('https://github.com/o/r/tree/main/skills/x/'), { owner: 'o', repo: 'r', cloneUrl: 'https://github.com/o/r.git', ref: 'main', path: 'skills/x' });
+  assert.equal(parseGitHubUrl('https://example.com/x'), null);
   assert.equal(rawSkillUrl('https://github.com/aiwithremy/claude-skills-llm-council.git'),
     'https://raw.githubusercontent.com/aiwithremy/claude-skills-llm-council/HEAD/SKILL.md');
   assert.equal(rawSkillUrl('https://github.com/o/r/tree/main/skills/x'), 'https://raw.githubusercontent.com/o/r/main/skills/x/SKILL.md');
@@ -36,25 +40,88 @@ test('GitHub repository and file URLs map to the raw SKILL.md', () => {
   assert.throws(() => rawSkillUrl('https://example.com/x'), /not a GitHub repository URL/);
 });
 
-test('skills install from a GitHub URL, a file or a folder, into the user\'s own folder, and can be listed and removed', async () => {
-  assert.equal(skillsDir(), join(dir, 'skills'));
+const skillText = (name, extra = '') => `---\nname: ${name}\ndescription: >\n  The ${name} skill,\n  on two lines.\n${extra}---\n\n# ${name}\nDo ${name} things.\n`;
+const put = (path, text) => { mkdirSync(join(path, '..'), { recursive: true }); writeFileSync(path, text); };
+
+test('a repository installs all its skills, each with its own files, once per name', async () => {
+  // Laid out like caveman / ponytail / graphify: skills/<name>/SKILL.md, copies for other tools, a lowercase skill.md.
+  const repo = join(dir, 'repo');
+  put(join(repo, 'skills', 'alpha', 'SKILL.md'), skillText('alpha'));
+  put(join(repo, 'skills', 'alpha', 'references', 'guide.md'), 'guide');
+  put(join(repo, 'skills', 'alpha', 'scripts', 'run.py'), 'print(1)');
+  put(join(repo, 'skills', 'alpha', 'nested', 'SKILL.md'), skillText('nested'));
+  put(join(repo, 'skills', 'alpha', 'node_modules', 'x.js'), 'x');
+  put(join(repo, 'skills', 'beta', 'SKILL.md'), skillText('beta'));
+  put(join(repo, '.other-tool', 'skills', 'beta', 'SKILL.md'), skillText('beta', 'extra: copy\n'));
+  put(join(repo, 'plugins', 'p', 'skills', 'alpha', 'SKILL.md'), skillText('alpha', 'extra: copy\n'));
+  put(join(repo, 'pkg', 'skill.md'), skillText('gamma'));
+  put(join(repo, 'pkg', 'big.py'), 'code');
+  put(join(repo, 'docs', 'SKILL.md'), '# not a skill: no frontmatter');
+  assert.deepEqual(findSkills(repo).map(s => [s.name, s.file.slice(repo.length + 1).split(/[\\/]/).join('/')]), [
+    ['alpha', 'skills/alpha/SKILL.md'], ['beta', 'skills/beta/SKILL.md'], ['gamma', 'pkg/skill.md'], ['nested', 'skills/alpha/nested/SKILL.md'],
+  ]);
+  const cloned = [];
+  const clone = async (url, ref, to) => { cloned.push([url, ref]); cpSync(repo, to, { recursive: true }); };
+  const installed = await addSkill('https://github.com/o/repo.git', { clone });
+  assert.deepEqual(cloned, [['https://github.com/o/repo.git', null]]);
+  assert.deepEqual(installed.map(s => s.name), ['alpha', 'beta', 'gamma', 'nested']);
+  const alpha = join(skillsDir(), 'alpha');
+  assert.equal(readFileSync(join(alpha, 'references', 'guide.md'), 'utf8'), 'guide', 'the skill\'s own files come along');
+  assert.ok(existsSync(join(alpha, 'scripts', 'run.py')));
+  assert.ok(!existsSync(join(alpha, 'nested')), 'a nested skill is installed on its own, not inside this one');
+  assert.ok(!existsSync(join(alpha, 'node_modules')));
+  assert.deepEqual(readdirSync(join(skillsDir(), 'gamma')).sort(), ['SKILL.md', 'source.json'], 'a lowercase skill.md comes alone, not its package');
+  assert.equal(loadSkill('beta').description, 'The beta skill, on two lines.');
+  assert.doesNotMatch(readFileSync(join(skillsDir(), 'beta', 'SKILL.md'), 'utf8'), /extra: copy/, 'the copy outside hidden folders wins');
+  assert.equal(JSON.parse(readFileSync(join(alpha, 'source.json'), 'utf8')).file, 'skills/alpha/SKILL.md');
+  // One folder of a repository, on a branch.
+  cloned.length = 0;
+  assert.deepEqual((await addSkill('https://github.com/o/repo/tree/dev/skills/beta', { clone })).map(s => s.name), ['beta']);
+  assert.deepEqual(cloned, [['https://github.com/o/repo.git', 'dev']]);
+  // No git: the repository's SKILL.md alone, from GitHub's raw files.
+  const noGit = async () => { throw Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }); };
   const fetched = [];
-  const skill = await addSkill('https://github.com/aiwithremy/claude-skills-llm-council', { fetchText: async url => { fetched.push(url); return SKILL; } });
+  const [council] = await addSkill('https://github.com/aiwithremy/claude-skills-llm-council', { clone: noGit, fetchText: async url => { fetched.push(url); return SKILL; } });
   assert.deepEqual(fetched, ['https://raw.githubusercontent.com/aiwithremy/claude-skills-llm-council/HEAD/SKILL.md']);
-  assert.equal(skill.path, join(dir, 'skills', 'llm-council', 'SKILL.md'));
-  assert.equal(readFileSync(skill.path, 'utf8'), SKILL);
-  assert.equal(JSON.parse(readFileSync(join(dir, 'skills', 'llm-council', 'source.json'), 'utf8')).source, 'https://github.com/aiwithremy/claude-skills-llm-council');
+  assert.equal(council.name, 'llm-council');
+  await assert.rejects(addSkill('https://github.com/o/missing', { clone: async () => { throw new Error('Repository not found'); } }), /could not download .*Repository not found/);
+  await assert.rejects(addSkill(join(repo, 'docs')), /no SKILL\.md with a name and description found/);
+  for (const name of ['alpha', 'beta', 'gamma', 'nested', 'llm-council']) removeSkill(name);
+});
+
+test('skills install from a file or a folder, into the user\'s own folder, and can be listed and removed', async () => {
+  assert.equal(skillsDir(), join(dir, 'skills'));
   const folder = join(dir, 'from-folder');
   mkdirSync(folder);
-  writeFileSync(join(folder, 'SKILL.md'), SKILL.replace('llm-council', 'second'));
-  assert.equal((await addSkill(folder)).name, 'second');
+  writeFileSync(join(folder, 'SKILL.md'), SKILL);
+  const [skill] = await addSkill(folder);
+  assert.equal(skill.path, join(dir, 'skills', 'llm-council', 'SKILL.md'));
+  assert.equal(readFileSync(skill.path, 'utf8'), SKILL);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'skills', 'llm-council', 'source.json'), 'utf8')).source, folder);
+  writeFileSync(join(dir, 'second.md'), SKILL.replace('llm-council', 'second'));
+  assert.equal((await addSkill(join(dir, 'second.md')))[0].name, 'second');
   writeFileSync(join(dir, 'third.md'), SKILL.replace('llm-council', 'third'));
-  assert.equal((await addSkill(join(dir, 'third.md'))).name, 'third');
+  assert.equal((await addSkill(join(dir, 'third.md')))[0].name, 'third');
   assert.deepEqual(listSkills().map(s => s.name), ['llm-council', 'second', 'third']);
   assert.equal(loadSkill('LLM-Council').name, 'llm-council', 'names are matched case-insensitively');
   assert.equal(removeSkill('second').name, 'second');
   assert.deepEqual(listSkills().map(s => s.name), ['llm-council', 'third']);
-  assert.throws(() => loadSkill('second'), /not installed \(installed: llm-council, third\)/);
+  assert.throws(() => loadSkill('second'), /not installed \(installed: llm-council, third/);
+});
+
+test('skills installed natively for Claude Code or Codex can be used by name, but not removed from here', async () => {
+  const claudeHome = join(dir, 'claude-home');
+  put(join(claudeHome, 'skills', 'native-one', 'SKILL.md'), skillText('native-one'));
+  put(join(claudeHome, 'skills', 'third', 'SKILL.md'), skillText('third')); // the council's own "third" wins
+  const saved = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = claudeHome;
+  try {
+    assert.deepEqual(nativeSkills().map(s => s.name), ['native-one']);
+    assert.equal(loadSkill('native-one').dir, join(claudeHome, 'skills', 'native-one'));
+    assert.throws(() => removeSkill('native-one'), /not installed/);
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved;
+  }
 });
 
 test('the skill note: full instructions first, a reminder afterwards, used where needed, the discussion\'s rules first', () => {
@@ -66,6 +133,8 @@ test('the skill note: full instructions first, a reminder afterwards, used where
   assert.match(first, /answer directly without it/);
   assert.doesNotMatch(first, /every step/);
   assert.match(first, /the rules win: you cannot write or change files/);
+  assert.doesNotMatch(first, /its folder/, 'no folder to mention for a skill read from text');
+  assert.match(skillNote({ ...skill, dir: '/skills/llm-council' }, true), /are in its folder, \/skills\/llm-council; read them from there/);
   assert.ok(first.includes('<skill name="llm-council">\n# LLM Council\n\nFive advisors.\n</skill>'));
   const again = skillNote(skill, false);
   assert.match(again, /^The "llm-council" skill is still available .*only if the step needs it/);

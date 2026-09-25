@@ -8,7 +8,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 
 const [cli, ...args] = process.argv.slice(2);
 const input = readFileSync(0, 'utf8');
-if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ cli, args, input, cwd: process.cwd(), pid: process.pid })}\n`);
+if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ cli, args, input, cwd: process.cwd(), pid: process.pid, env: { CODEX_CLAUDE_COUNCIL_MEMBER: process.env.CODEX_CLAUDE_COUNCIL_MEMBER } })}\n`);
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const lastLine = input.split(/\r?\n/).filter(line => line.trim()).pop() || '';
 let failing = process.env.FAKE_FAIL === cli;

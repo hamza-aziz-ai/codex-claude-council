@@ -1,8 +1,9 @@
 // Dependency-free MCP server (JSON-RPC 2.0 over stdio, newline-delimited).
 import { createInterface } from 'node:readline';
 import { EFFORTS, NAME, loadConfig, packageVersion } from './config.mjs';
+import { MEMBER_ENV } from './adapters.mjs';
 import { invoke } from './council.mjs';
-import { listSkills } from './skills.mjs';
+import { listSkills, nativeSkills } from './skills.mjs';
 
 const DEFAULTS_NOTE = 'Omit to use the configured default; set only when the user asks for a specific one.';
 const MODEL_HINT = {
@@ -34,17 +35,27 @@ const synthesizerField = {
 };
 const workspaceField = {
   type: 'string',
-  description: 'Absolute path of the project folder you are working in. Both models can then read it (files, search, '
-    + 'git history, changes and blame) but never change it. Pass it whenever the question is '
-    + 'about the code, a change, a fix, an error or logs in this project. Omit only for questions unrelated to any project.',
+  description: 'Absolute path of the project folder you are working in. Both models then work in it in plan mode: they read it (files, search, '
+    + 'read-only commands such as git log and diff) but never change it. Pass it whenever the question is '
+    + 'about the code, a change, a fix, an error or logs in this project. Omit only for questions unrelated to any project '
+    + '(or when passing a session id: the session\'s own folder is used).',
 };
+const sessionHint = {
+  codex: 'a Codex session (its id, as shown by `codex resume` or in the session\'s file name)',
+  claude: 'a Claude Code session (its UUID, as shown by `/status` or `claude --resume`)',
+};
+const sessionField = side => ({
+  type: 'string',
+  description: `Optional: the id of ${sessionHint[side]} the user already has, to continue in place instead of a new session, so the model keeps that session's memory. `
+    + 'Pass it only when the user gives an id. The council\'s turns are added to that session, in plan mode (nothing is changed).',
+});
 const webField = {
   type: 'boolean',
   description: 'Optional: whether the models may search the web and read web pages. Omit to use the configured default (on unless the user changed it). '
     + 'Pass false only when the user asks for no internet access.',
 };
 // Installed skills are listed when the server starts; a skill installed later is available after a restart.
-const installedSkills = listSkills().map(skill => skill.name);
+const installedSkills = [...listSkills(), ...nativeSkills()].map(skill => skill.name);
 const skillField = {
   type: 'string',
   description: 'Optional: the name of an installed skill both models may use for this question, at the steps where they judge it is needed, including any sub-agents it calls for. '
@@ -56,6 +67,7 @@ const councilFields = {
   codex_model: modelField('codex'), codex_effort: effortField('codex'),
   claude_model: modelField('claude'), claude_effort: effortField('claude'),
   synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
+  codex_session_id: sessionField('codex'), claude_session_id: sessionField('claude'),
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
@@ -73,12 +85,12 @@ export const TOOLS = [
   {
     name: 'ask_codex', title: 'Ask Codex (ChatGPT) only',
     description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, skill: skillField }), annotations,
+    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('codex') }), annotations,
   },
   {
     name: 'ask_claude', title: 'Ask Claude only',
     description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField }), annotations,
+    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('claude') }), annotations,
   },
 ];
 
@@ -104,8 +116,9 @@ TOOLS.push(
 const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
   + 'Pass max_rounds only when the user asks for a number of rounds (0 = until they agree, with no limit). '
-  + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they cannot change it. '
+  + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they run in plan mode and cannot change it. '
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
+  + 'If the user gives the id of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on ask_claude / ask_codex) to continue that session. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes. '
   + 'Pass skill (an installed skill\'s name) only when the user asks to use that skill; each model then uses it at the steps that need it. '
   + 'If a call returns a job_id because it is still working, call council_result (again, until it returns the answer); do not start the same question again.';
@@ -167,6 +180,7 @@ function findJob(id) {
 }
 
 async function callCouncilTool(name, args, { signal, onProgress }) {
+  if (process.env[MEMBER_ENV]) throw new Error('This is a council member\'s own session: it cannot start another council. Answer the question yourself.');
   if (name === 'council_result') return waitForJob(findJob(args.job_id), { signal, onProgress });
   if (name === 'council_cancel') {
     const job = findJob(args.job_id);

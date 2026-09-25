@@ -47,13 +47,13 @@ test('initialize reports the server and tool capability', async () => {
 test('tools/list exposes the four council tools, with per-tool model/effort inputs, and the job tools', async () => {
   const { result } = await request('tools/list', {});
   const tools = Object.fromEntries(result.tools.map(tool => [tool.name, tool.inputSchema]));
-  const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill'];
+  const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill', 'codex_session_id', 'claude_session_id'];
   assert.deepEqual(Object.keys(tools).sort(), ['ask_claude', 'ask_codex', 'council_ask', 'council_cancel', 'council_result', 'debate']);
   assert.deepEqual(Object.keys(tools.council_result.properties), ['job_id']);
   assert.deepEqual(Object.keys(tools.council_cancel.properties), ['job_id']);
   assert.deepEqual(Object.keys(tools.council_ask.properties), councilFields);
   assert.deepEqual(Object.keys(tools.debate.properties), councilFields);
-  assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort', 'workspace', 'web_search', 'skill']);
+  assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort', 'workspace', 'web_search', 'skill', 'session_id']);
   assert.deepEqual(tools.ask_codex.properties.effort.enum, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
   assert.deepEqual(tools.ask_claude.properties.effort.enum, ['low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual(tools.debate.properties.synthesizer.enum, ['claude', 'codex']);
@@ -90,6 +90,22 @@ test('tool errors come back as isError results', async () => {
   const { result } = await call('council_ask', { question: 'q', claude_effort: 'none' });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /claude effort must be one of/);
+});
+
+test('inside a council member\'s own session, the tools refuse to start another council', async () => {
+  const member = start({ CODEX_CLAUDE_COUNCIL_MEMBER: '1' });
+  const saved = server;
+  server = member;
+  try {
+    fake.clearCalls();
+    const { result } = await call('council_ask', { question: 'q' });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /cannot start another council/);
+    assert.equal(fake.calls().length, 0);
+  } finally {
+    server = saved;
+    member.kill();
+  }
 });
 
 test('protocol errors and ping', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync as readFile, realpathSync, writeFileSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
-import { CLAUDE_ALLOWED, CLAUDE_DENIED, CLAUDE_SUBAGENTS, CLAUDE_TOOLS, CLAUDE_WEB, askClaude, askCodex, claudeAnswer, resetSessions } from '../src/adapters.mjs';
+import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, claudeAnswer, resetSessions, sessionFolder } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
@@ -13,28 +13,37 @@ beforeEach(() => { fake.clearCalls(); fake.writeConfig(); resetSessions(); });
 const arg = (call, flag) => call.args[call.args.indexOf(flag) + 1];
 const configValues = call => call.args.flatMap((a, i) => (a === '-c' ? [call.args[i + 1]] : []));
 
-test('codex runs read-only, isolated from user config and rules, with model and effort as explicit flags', async () => {
+test('codex runs in its read-only sandbox with the user\'s own config, this plugin off, model and effort as explicit flags', async () => {
   const answer = await askCodex('Question?\nこんにちは — ✓ "quoted" & <tag> 100% $HOME');
   assert.equal(answer, 'codex[gpt-test|xhigh] こんにちは — ✓ "quoted" & <tag> 100% $HOME');
   const [call] = fake.questionCalls();
   assert.equal(call.args[0], 'exec');
-  for (const flag of ['--json', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check']) assert.ok(call.args.includes(flag), flag);
+  for (const flag of ['--json', '--skip-git-repo-check']) assert.ok(call.args.includes(flag), flag);
+  for (const flag of ['--ignore-user-config', '--ignore-rules']) assert.ok(!call.args.includes(flag), `${flag}: the user's own setup applies`);
   assert.ok(!call.args.includes('--ephemeral'), 'the session is kept so it can be resumed');
   assert.equal(arg(call, '--sandbox'), 'read-only');
-  assert.deepEqual(configValues(call), ['sandbox_mode="read-only"', 'approval_policy="never"', 'model_reasoning_effort=xhigh', 'web_search="live"']);
+  assert.deepEqual(configValues(call), ['sandbox_mode="read-only"', 'approval_policy="never"', 'plugins."codex-claude-council@codex-claude-council".enabled=false',
+    'model_reasoning_effort=xhigh', 'web_search="live"']);
+  assert.equal(call.env[MEMBER_ENV], '1', 'this plugin\'s server refuses to start a council inside a member');
   assert.equal(arg(call, '-m'), 'gpt-test');
   assert.equal(call.args.at(-1), '-');
   assert.match(call.input, /こんにちは/);
 });
 
-test('claude runs restricted: no settings files, no MCP servers, nothing allowed beyond what is listed', async () => {
+test('claude runs in plan mode with the user\'s own setup, without ExitPlanMode or this plugin\'s tools', async () => {
   const answer = await askClaude('Question?\nhello', { model: 'sonnet', effort: 'max' });
   assert.equal(answer, 'claude[sonnet|max] hello');
   const [call] = fake.questionCalls();
-  assert.equal(arg(call, '--tools'), 'WebSearch,WebFetch', 'without a workspace, only the web tools (on by default)');
-  for (const flag of ['-p', '--restricted', '--disable-slash-commands', '--strict-mcp-config']) assert.ok(call.args.includes(flag), flag);
+  assert.ok(call.args.includes('-p'));
+  for (const flag of ['--restricted', '--disable-slash-commands', '--strict-mcp-config', '--tools', '--mcp-config']) assert.ok(!call.args.includes(flag), `${flag}: the user's own setup applies`);
   assert.ok(!call.args.includes('--no-session-persistence'), 'the session is kept so it can be resumed');
-  assert.equal(arg(call, '--permission-mode'), 'dontAsk');
+  assert.equal(arg(call, '--permission-mode'), 'plan');
+  assert.equal(arg(call, '--append-system-prompt'), CLAUDE_MEMBER_NOTE);
+  assert.match(CLAUDE_MEMBER_NOTE, /always end your turn with your complete answer/);
+  const listed = flag => call.args.slice(call.args.indexOf(flag) + 1).filter((a, i, rest) => !rest.slice(0, i + 1).some(x => x.startsWith('--')));
+  assert.deepEqual(listed('--disallowedTools'), ['ExitPlanMode', 'mcp__plugin_codex-claude-council_council'], 'web tools stay (on by default)');
+  assert.deepEqual(CLAUDE_DENIED, ['ExitPlanMode', 'mcp__plugin_codex-claude-council_council']);
+  assert.equal(call.env[MEMBER_ENV], '1');
   assert.match(arg(call, '--session-id'), /^[0-9a-f-]{36}$/);
   assert.equal(arg(call, '--output-format'), 'stream-json', 'the whole event stream, so the answer is not only the last message');
   assert.ok(call.args.includes('--verbose'), 'stream-json needs --verbose in print mode');
@@ -86,7 +95,7 @@ test('each side keeps one session: later calls resume it in the same folder', as
   assert.notEqual(fake.questionCalls().at(-1).args[1], 'resume', 'after a reset, a new session starts');
 });
 
-test('with a workspace, both models run in the project folder and can read but not write it', async () => {
+test('with a workspace, both models run in the project folder: Codex read-only, Claude in plan mode', async () => {
   const workspace = realpathSync(fake.dir); // what the council passes (on macOS, /var is a link to /private/var)
   await askCodex('a', {}, { workspace });
   await askClaude('b', {}, { workspace });
@@ -96,19 +105,38 @@ test('with a workspace, both models run in the project folder and can read but n
   assert.equal(arg(codex1, '-C'), workspace);
   assert.equal(arg(codex1, '--sandbox'), 'read-only');
   assert.ok(configValues(codex2).includes('sandbox_mode="read-only"'));
-  // Claude has its file tools, the read-only git tools and the web tools, and no shell.
-  assert.equal(arg(claude, '--tools'), `${CLAUDE_TOOLS},WebSearch,WebFetch`);
-  assert.equal(CLAUDE_TOOLS, 'Read,Grep,Glob');
-  const listed = flag => claude.args.slice(claude.args.indexOf(flag) + 1).filter((a, i, rest) => !rest.slice(0, i + 1).some(x => x.startsWith('--')));
-  assert.deepEqual(listed('--allowedTools'), ['mcp__council-git', 'WebSearch', 'WebFetch']);
-  assert.deepEqual(listed('--disallowedTools'), CLAUDE_DENIED);
-  for (const tool of ['Bash', 'Edit', 'Write', 'NotebookEdit']) assert.ok(CLAUDE_DENIED.includes(tool), tool);
-  assert.deepEqual(CLAUDE_ALLOWED, ['mcp__council-git']);
-  const config = JSON.parse(readFile(arg(claude, '--mcp-config'), 'utf8'));
-  assert.deepEqual(Object.keys(config.mcpServers), ['council-git']);
-  assert.equal(config.mcpServers['council-git'].command, process.execPath);
-  assert.match(config.mcpServers['council-git'].args[0], /git-mcp\.mjs$/);
-  assert.equal(config.mcpServers['council-git'].args[1], workspace, 'the git tools are bound to this workspace');
+  assert.equal(arg(claude, '--permission-mode'), 'plan');
+});
+
+test('a session the user passes is continued in place, in the folder it was started in', async () => {
+  const project = realpathSync(fake.dir);
+  const claudeId = '11111111-2222-4333-8444-555555555555';
+  const codexId = '019a0000-1111-7222-8333-444444444444';
+  // Where the CLIs keep their transcripts, with the folder each session started in.
+  mkdirSync(`${fake.dir}/claude-home/projects/-some-project`, { recursive: true });
+  writeFileSync(`${fake.dir}/claude-home/projects/-some-project/${claudeId}.jsonl`, `${JSON.stringify({ type: 'summary' })}\n${JSON.stringify({ type: 'user', cwd: project })}\n`);
+  mkdirSync(`${fake.dir}/codex-home/sessions/2026/09/25`, { recursive: true });
+  writeFileSync(`${fake.dir}/codex-home/sessions/2026/09/25/rollout-2026-09-25T10-00-00-${codexId}.jsonl`, `${JSON.stringify({ type: 'session_meta', payload: { id: codexId, cwd: project } })}\n`);
+  await withEnv({ CLAUDE_CONFIG_DIR: `${fake.dir}/claude-home`, CODEX_HOME: `${fake.dir}/codex-home` }, async () => {
+    assert.equal(sessionFolder('claude', claudeId), project);
+    assert.equal(sessionFolder('codex', codexId), project);
+    assert.equal(sessionFolder('claude', '99999999-2222-4333-8444-555555555555'), null);
+    const result = JSON.parse(await invoke('debate', 'q', { claude_session_id: claudeId, codex_session_id: codexId, max_rounds: 1 }));
+    assert.equal(result.settings.workspace, project, 'the sessions\' folder is the workspace');
+    assert.deepEqual(result.settings.sessions, { codex: codexId, claude: claudeId });
+    for (const call of fake.questionCalls()) {
+      assert.equal(call.cwd, project);
+      if (call.cli === 'claude') assert.equal(arg(call, '--resume'), claudeId, 'every turn continues the user\'s session');
+      else assert.deepEqual([call.args[1], call.args.at(-2)], ['resume', codexId]);
+    }
+    assert.ok(!fake.questionCalls().some(call => call.args.includes('--session-id') || call.args.includes('--fork-session')));
+    fake.clearCalls();
+    await invoke('ask_claude', 'q', { session_id: claudeId });
+    assert.equal(arg(fake.questionCalls()[0], '--resume'), claudeId);
+  });
+  await assert.rejects(invoke('ask_claude', 'q', { session_id: 'not-a-uuid' }), /not a Claude Code session id/);
+  await assert.rejects(invoke('council_ask', 'q', { codex_session_id: '../x' }), /not a Codex session id/);
+  await assert.rejects(invoke('ask_codex', 'q', { codex_session_id: 'x' }), /does not accept: codex_session_id/);
 });
 
 test('council_ask: by default both models sign the final answer; overrides reach every call on their side only', async () => {
@@ -132,7 +160,7 @@ test('debate returns answers, critiques, replies, rounds and the settings used',
   assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
     'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true, skill: null,
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true, skill: null, sessions: { codex: null, claude: null },
   });
   assert.equal(result.agreed, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);
@@ -215,7 +243,7 @@ test('a council with a workspace tells both models they can read the project, an
   for (const call of calls) assert.equal(call.cwd, workspace);
   for (const cli of ['codex', 'claude']) {
     assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace, true)));
-    assert.match(accessNote(workspace, true), /can read the project at .*You cannot change anything/);
+    assert.match(accessNote(workspace, true), /working in the project at .*You are in plan mode: you cannot change anything/);
   }
   // Only a model that can read the project is asked to check claims against it.
   const kindOf = c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'review' : c.input.includes('answered the same question independently') ? 'critique' : 'other');
@@ -235,7 +263,7 @@ test('web access: on by default for both models, off per call or in the config',
   const lastOf = cli => fake.questionCalls().filter(c => c.cli === cli).at(-1);
   await invoke('council_ask', 'q');
   assert.ok(configValues(lastOf('codex')).includes('web_search="live"'), 'Codex searches the web live');
-  assert.equal(arg(lastOf('claude'), '--tools'), 'WebSearch,WebFetch');
+  assert.ok(!lastOf('claude').args.some(a => CLAUDE_WEB.includes(a)), 'Claude\'s web tools are not denied');
   assert.match(fake.questionCalls().find(c => c.input.startsWith('You are ')).input, /You can also search the web/);
   for (const turnOff of [() => invoke('council_ask', 'q', { web_search: false }), () => { fake.writeConfig({ web_search: false }); return invoke('council_ask', 'q'); }]) {
     fake.clearCalls();
@@ -243,9 +271,8 @@ test('web access: on by default for both models, off per call or in the config',
     await turnOff();
     for (const call of fake.questionCalls().filter(c => c.cli === 'codex')) assert.ok(configValues(call).includes('web_search="disabled"'));
     for (const call of fake.questionCalls().filter(c => c.cli === 'claude')) {
-      assert.equal(arg(call, '--tools'), '', 'no tools at all: the empty value must survive quoting');
-      assert.ok(!call.args.includes('--allowedTools'));
-      assert.ok(!call.args.some(a => CLAUDE_WEB.includes(a)));
+      const denied = call.args.slice(call.args.indexOf('--disallowedTools') + 1);
+      for (const tool of CLAUDE_WEB) assert.ok(denied.includes(tool), `${tool} is denied`);
     }
     assert.match(fake.questionCalls().find(c => c.input.startsWith('You are ')).input, /You have no internet access/);
   }
@@ -253,7 +280,7 @@ test('web access: on by default for both models, off per call or in the config',
   assert.equal(JSON.parse(await invoke('debate', 'q', { web_search: false })).settings.web_search, false);
   fake.clearCalls();
   await invoke('ask_claude', 'q', { web_search: false });
-  assert.equal(arg(fake.questionCalls()[0], '--tools'), '');
+  assert.ok(fake.questionCalls()[0].args.includes('WebSearch'));
   await assert.rejects(invoke('council_ask', 'q', { web_search: 'yes' }), /web_search must be true or false/);
 });
 
@@ -271,15 +298,11 @@ test('with a skill, both models get its instructions first, use it where a step 
     for (const call of later) assert.doesNotMatch(call.input, /Consult five advisors/, 'later steps do not resend the instructions');
   }
   assert.match(callsOf('codex').at(-1).input, /VERDICT: AGREE or VERDICT: DISAGREE/, 'the review keeps its verdict line');
-  for (const call of callsOf('claude')) {
-    assert.ok(arg(call, '--tools').split(',').includes('Agent'), 'Claude may spawn sub-agents');
-    assert.ok(call.args.includes(CLAUDE_SUBAGENTS[0]));
-  }
+  for (const call of callsOf('claude')) assert.ok(!call.args.includes('Agent'), 'Claude\'s own sub-agent tool is not denied');
   for (const call of callsOf('codex')) assert.equal(arg(call, '--enable'), 'multi_agent');
   fake.clearCalls();
   resetSessions();
   await invoke('council_ask', 'q');
-  for (const call of callsOf('claude')) assert.ok(!arg(call, '--tools').split(',').includes('Agent'), 'no sub-agents without a skill');
   for (const call of callsOf('codex')) assert.ok(!call.args.includes('--enable'));
   assert.ok(!fake.questionCalls().some(c => c.input.includes('skill')), 'no skill text without a skill');
   fake.clearCalls();

@@ -3,14 +3,15 @@
 // Each model keeps one session (see adapters.mjs), so every prompt carries only what it has not seen yet.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { askClaude, askCodex, holdSessions, requireBothSignedIn } from './adapters.mjs';
+import { askClaude, askCodex, checkSessionId, holdSessions, requireBothSignedIn, sessionFolder } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 import { loadSkill, skillNote } from './skills.mjs';
 
-const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill'];
+const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill',
+  'codex_session_id', 'claude_session_id'];
 export const TOOL_OPTIONS = Object.freeze({
-  ask_codex: ['model', 'effort', 'workspace', 'web_search', 'skill'],
-  ask_claude: ['model', 'effort', 'workspace', 'web_search', 'skill'],
+  ask_codex: ['model', 'effort', 'workspace', 'web_search', 'skill', 'session_id'],
+  ask_claude: ['model', 'effort', 'workspace', 'web_search', 'skill', 'session_id'],
   council_ask: COUNCIL_OPTIONS,
   debate: COUNCIL_OPTIONS,
 });
@@ -18,6 +19,7 @@ export const MAX_QUESTION_LENGTH = 12_000;
 const LABEL = { codex: 'Codex (ChatGPT)', claude: 'Claude' };
 const SPEAKER = { codex: 'Codex', claude: 'Claude' }; // names used inside prompts
 const OTHER = { codex: 'claude', claude: 'codex' };
+const SIDES_ORDER = ['codex', 'claude'];
 
 export function prompt(name, values) {
   const template = readFileSync(join(PACKAGE_ROOT, 'src', 'prompts', `${name}.txt`), 'utf8');
@@ -50,11 +52,26 @@ export function checkWorkspace(value) {
   return real;
 }
 
+/**
+ * The workspace: the one given, else the folder of a session the user passed (the first found of those
+ * given), else none.
+ */
+function workspaceFor(workspace, sessions) {
+  if (workspace) return workspace;
+  for (const side of ['claude', 'codex']) {
+    const folder = sessions[side] && sessionFolder(side, sessions[side]);
+    if (folder) {
+      try { return checkWorkspace(folder); } catch { /* the folder is gone */ }
+    }
+  }
+  return undefined;
+}
+
 /** What a model is told about its access, in its first prompt for each question. */
 export function accessNote(workspace, web = false) {
   const files = workspace
-    ? `You can read the project at ${workspace}: open files, search, and look at its git history, changes and blame (with your file and git tools) to check facts before relying on them. You cannot change anything; writes are blocked. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
-    : 'You have no access to files: work from the text you are given.';
+    ? `You are working in the project at ${workspace}. Read it to check facts before relying on them: open files, search, and run read-only commands such as git log, diff, show and blame. You are in plan mode: you cannot change anything (edits and writes are blocked), so describe any change you propose instead of making it. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
+    : 'No folder was given for this question: work from the text you are given. You are in plan mode: you cannot change anything.';
   const internet = web
     ? ' You can also search the web and read web pages: use them for facts that change or that you are unsure of (versions, APIs, docs, error messages), prefer primary sources such as official documentation, and say where a fact came from.'
     : ' You have no internet access.';
@@ -93,6 +110,10 @@ function checkOptions(tool, options) {
     }
     if (key === 'skill') {
       clean.skill = loadSkill(value).name;
+      continue;
+    }
+    if (key.endsWith('session_id')) {
+      clean[key] = checkSessionId(key === 'session_id' ? tool.slice(4) : key.split('_')[0], value);
       continue;
     }
     if (key === 'synthesizer') {
@@ -141,13 +162,16 @@ export function splitDraft(text) {
  * codex / claude: optional { model, effort } overrides for that side.
  * maxRounds: 0 for no limit, N for at most N draft/review rounds; default from config (null there = single pass).
  * synthesizer: "claude" or "codex" writes the final answer (drafts, in the loop); default from config.
- * workspace: the project folder both models may read (never write); omit for no file access.
+ * workspace: the project folder both models work in and may read (never write); default: the folder of a
+ * session passed in sessions, else none.
  * webSearch: whether both models may search the web; default from config.
  * skill: the name of an installed skill both models may use at the steps that need it, or undefined for none.
+ * sessions: { codex, claude }, ids of sessions the user started, continued in place instead of new ones.
  */
-export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName } = {}, { signal, onProgress } = {}) {
+export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName, sessions = {} } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
-  workspace = workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace);
+  sessions = { codex: sessions.codex && checkSessionId('codex', sessions.codex), claude: sessions.claude && checkSessionId('claude', sessions.claude) };
+  workspace = workspaceFor(workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace), sessions);
   const config = loadConfig();
   maxRounds = parseMaxRounds(maxRounds) ?? config.max_rounds ?? undefined;
   const writer = synthesizer === undefined ? config.synthesizer : sideName(synthesizer);
@@ -158,11 +182,11 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   // With a skill, the first prompt of the question carries its instructions and each later step says it is still available.
   const withSkill = (text, first = false) => skillNote(skill, first) + text;
   const task = {
-    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, skill: Boolean(skill), held: true }),
-    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill: Boolean(skill), held: true }),
+    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.codex, held: true }),
+    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.claude, held: true }),
   };
   // The council holds both sessions from start to finish (see holdSessions).
-  const held = [{ side: 'codex', workspace, model: settings.codex.model }, { side: 'claude', workspace, model: settings.claude.model }];
+  const held = SIDES_ORDER.map(side => ({ side, workspace, model: settings[side].model, resume: sessions[side] }));
   return holdSessions(held, async () => {
     const ask = async (side, text) => (await together(signal, [task[side](text)]))[0];
     const progress = message => onProgress?.(message);
@@ -189,7 +213,8 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const base = {
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
-      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, skill: skill?.name ?? null },
+      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, skill: skill?.name ?? null,
+        sessions: { codex: sessions.codex ?? null, claude: sessions.claude ?? null } },
     };
 
     if (maxRounds === undefined) {
@@ -252,16 +277,17 @@ export async function invoke(tool, question, options = {}, { signal, onProgress 
   if (!Object.hasOwn(TOOL_OPTIONS, tool)) throw new Error(`unknown tool: ${tool}`);
   question = checkQuestion(question);
   const clean = checkOptions(tool, options || {});
-  const { workspace } = clean;
+  const own = tool.startsWith('ask_') ? { [tool.slice(4)]: clean.session_id } : { codex: clean.codex_session_id, claude: clean.claude_session_id };
+  const workspace = workspaceFor(clean.workspace, own);
   const web = clean.web_search ?? loadConfig().web_search;
   const skill = clean.skill ? loadSkill(clean.skill) : null;
   const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) });
-  const singleOptions = { signal, workspace, web, skill: Boolean(skill) };
+  const singleOptions = { signal, workspace, web, skill: Boolean(skill), resume: clean.session_id };
   if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, singleOptions);
   if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, singleOptions);
   const side = name => ({ model: clean[`${name}_model`], effort: clean[`${name}_effort`] });
   const result = await debate(question,
-    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search, skill: clean.skill },
+    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search, skill: clean.skill, sessions: own },
     { signal, onProgress });
   return tool === 'council_ask' ? councilText(result) : JSON.stringify(result, null, 2);
 }
