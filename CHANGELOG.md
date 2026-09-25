@@ -3,6 +3,7 @@
 ## 0.8.1 (2026-09-25)
 
 - **Sessions by name.** Wherever a session id is taken (`claude_session_id`, `codex_session_id`, `session_id`, `other_session_id`, and `--claude-session`, `--codex-session`, `--session`), the name the user gave the session with `/rename` works too, spaces included. Claude Code names are read from the session's own transcript (its latest `custom-title` entry), Codex names from `~/.codex/session_index.jsonl`. The most recently used session with that name is taken, an exact match before one that differs only in case, and it is resumed by its id in its own folder. Checked with a real Claude Code session renamed with `/rename`. Codex also resolves simple names itself, so a Codex name not found in the index is passed on.
+- Looking up a Claude Code name streams each transcript line by line, without blocking the server, and remembers each file's size and name, so later lookups read only what was added since (a 207 MB transcript: 0.6 s the first time, then instant). The workspace's own project is searched first.
 - Session ids and names starting with `-` are refused, so none is passed to a CLI as an option. The error for an unknown name says where to find the id or how to set a name.
 
 ## 0.8.0 (2026-09-25)

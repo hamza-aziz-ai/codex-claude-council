@@ -5,9 +5,10 @@
 // read anything, but neither can change anything: Claude runs in plan mode, Codex in its read-only sandbox.
 // A session can also be one the user started themselves, passed by id; it then continues in place.
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdtempSync, promises as fsp, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { NAME, SIDES, loadConfig, resolveSide } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
 
@@ -58,27 +59,59 @@ function pickNamed(pairs, name) {
   return loose;
 }
 
-/** The id of the most recently used Claude Code session last renamed to name (/rename), or null. */
-export function claudeSessionNamed(name) {
-  const projects = join(claudeHome(), 'projects');
-  const files = listDir(projects).flatMap(dir => listDir(join(projects, dir))
-    .filter(file => UUID.test(file.replace(/\.jsonl$/, '')) && file.endsWith('.jsonl'))
-    .map(file => join(projects, dir, file)));
-  const newest = files.flatMap(file => { try { return [[statSync(file).mtimeMs, file]]; } catch { return []; } }).sort((a, b) => b[0] - a[0]);
-  const titled = function* () {
-    for (const [, file] of newest) {
-      const text = readText(file);
-      if (!text.includes('"custom-title"')) continue;
-      let title = null;
-      for (const line of text.split(/\r?\n/)) {
-        if (!line.includes('"custom-title"')) continue;
-        const entry = parseLine(line);
-        if (entry?.type === 'custom-title' && typeof entry.customTitle === 'string') title = entry.customTitle;
-      }
-      if (title !== null) yield [basename(file, '.jsonl'), title];
+// Claude Code keeps a session's name in its transcript, where /rename appended it, so it can be anywhere in a
+// long file. Each transcript is read line by line (never whole, and without blocking the server), once:
+// transcripts only grow, so later lookups read just what was added since, from the size and name remembered.
+const titles = new Map(); // transcript path -> { size, title }
+async function latestTitle(file, size) {
+  const known = titles.get(file);
+  if (known?.size === size) return known.title;
+  const start = known && known.size < size ? known.size : 0;
+  let title = start ? known.title : null;
+  try {
+    const lines = createInterface({ input: createReadStream(file, { start, encoding: 'utf8' }), crlfDelay: Infinity });
+    for await (const line of lines) {
+      if (!line.includes('"custom-title"')) continue;
+      const entry = parseLine(line);
+      if (entry?.type === 'custom-title' && typeof entry.customTitle === 'string') title = entry.customTitle;
     }
-  };
-  return pickNamed(titled(), name);
+  } catch {
+    return null;
+  }
+  titles.set(file, { size, title });
+  return title;
+}
+
+// Claude Code's folder for a project's transcripts: its path with every other character than a letter or digit as "-".
+const projectDirName = folder => folder.replace(/[^A-Za-z0-9]/g, '-');
+
+/**
+ * The id of the Claude Code session last renamed to name (/rename), or null: of the workspace's project first
+ * (when given), then of any project; the most recently used first.
+ */
+export async function claudeSessionNamed(name, { workspace } = {}) {
+  const projects = join(claudeHome(), 'projects');
+  const here = workspace ? projectDirName(workspace) : null;
+  const files = [];
+  for (const dir of listDir(projects)) {
+    for (const file of listDir(join(projects, dir))) {
+      if (!file.endsWith('.jsonl') || !UUID.test(file.slice(0, -6))) continue;
+      try {
+        const stat = await fsp.stat(join(projects, dir, file));
+        files.push({ path: join(projects, dir, file), size: stat.size, mtime: stat.mtimeMs, local: dir === here });
+      } catch { /* gone meanwhile */ }
+    }
+  }
+  files.sort((a, b) => (b.local - a.local) || (b.mtime - a.mtime));
+  const lower = name.toLowerCase();
+  let loose = null;
+  for (const file of files) {
+    const title = (await latestTitle(file.path, file.size))?.trim();
+    if (title === undefined) continue;
+    if (title === name) return basename(file.path, '.jsonl');
+    if (!loose && title.toLowerCase() === lower) loose = basename(file.path, '.jsonl');
+  }
+  return loose;
 }
 
 /** The id of the Codex session most recently named name (/rename), from session_index.jsonl, or null. */
@@ -94,18 +127,26 @@ export function codexSessionNamed(name) {
   return pickNamed([...latest].reverse(), name);
 }
 
+const CLI_LABEL = { claude: 'Claude Code', codex: 'Codex' };
+
+/** A session the user passed, by id or by name, checked for its form (not looked up); returns it trimmed. */
+export function checkSessionRef(side, value) {
+  const ref = typeof value === 'string' ? value.trim() : '';
+  if (!ref || ref.length > 200 || /[\u0000-\u001f\u007f]/.test(ref) || ref.startsWith('-')) {
+    throw new Error(`not a ${CLI_LABEL[side]} session id or name: ${JSON.stringify(value)}`);
+  }
+  return ref;
+}
+
 /**
  * A session the user passed, by id or by name, as the id to resume; throws if there is no such session.
- * An id is returned as it is.
+ * An id is returned as it is. workspace: where to look for a Claude Code name first.
  */
-export function checkSessionId(side, value) {
-  const ref = typeof value === 'string' ? value.trim() : '';
-  const cli = side === 'claude' ? 'Claude Code' : 'Codex';
-  if (!ref || ref.length > 200 || /[\u0000-\u001f\u007f]/.test(ref) || ref.startsWith('-')) {
-    throw new Error(`not a ${cli} session id or name: ${JSON.stringify(value)}`);
-  }
+export async function resolveSession(side, value, { workspace } = {}) {
+  const ref = checkSessionRef(side, value);
+  const cli = CLI_LABEL[side];
   if (UUID.test(ref)) return ref;
-  const id = side === 'claude' ? claudeSessionNamed(ref) : codexSessionNamed(ref);
+  const id = side === 'claude' ? await claudeSessionNamed(ref, { workspace }) : codexSessionNamed(ref);
   if (id) return id;
   if (side === 'codex' && CODEX_REF.test(ref)) return ref;
   throw new Error(`no ${cli} session named ${JSON.stringify(ref)}: pass its id (from /status) or the name you gave it with /rename`);
@@ -295,7 +336,7 @@ function codexThreadId(stdout) {
 export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
-  const session = sessionFor('codex', workspace, chosen.model, resume && checkSessionId('codex', resume));
+  const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
   const call = () => inTempDir('council-codex-out-', async outDir => {
     const cwd = workingDir(session, workspace, 'council-codex-');
     const opts = options(config, signal, cwd, skill);
@@ -358,7 +399,7 @@ export function claudeAnswer(stdout) {
 export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false } = {}) {
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
-  const session = sessionFor('claude', workspace, chosen.model, resume && checkSessionId('claude', resume));
+  const session = sessionFor('claude', workspace, chosen.model, resume && await resolveSession('claude', resume, { workspace }));
   const call = async () => {
     const cwd = workingDir(session, workspace, 'council-claude-');
     const opts = options(config, signal, cwd, skill);

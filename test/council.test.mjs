@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, checkSessionId, claudeAnswer, resetSessions, sessionFolder } from '../src/adapters.mjs';
+import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, claudeAnswer, resolveSession, resetSessions, sessionFolder } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
@@ -120,16 +120,31 @@ test('a session can be given by the name it was given with /rename, in either CL
     { id: codexIds[1], thread_name: 'auth refactor', updated_at: '2026-09-25T10:00:00Z' },
     { id: codexIds[0], thread_name: 'old work', updated_at: '2026-09-25T11:00:00Z' },
   ].map(e => JSON.stringify(e)).join('\n'));
-  assert.equal(checkSessionId('claude', older), older, 'an id is used as it is');
-  assert.equal(checkSessionId('claude', 'auth refactor'), older, 'an exact match wins over a newer one that only matches ignoring case');
-  assert.equal(checkSessionId('claude', 'AUTH REFACTOR'), newer, 'ignoring case: the most recently used');
-  assert.equal(checkSessionId('claude', 'billing'), renamed, 'the latest name counts');
-  assert.throws(() => checkSessionId('claude', 'nothing like it'), /no Claude Code session named "nothing like it"/);
-  assert.equal(checkSessionId('codex', 'auth refactor'), codexIds[1], 'the session most recently given that name');
-  assert.equal(checkSessionId('codex', 'old work'), codexIds[0]);
-  assert.equal(checkSessionId('codex', 'unlisted-thread'), 'unlisted-thread', 'Codex resolves other names itself');
+  assert.equal(await resolveSession('claude', older), older, 'an id is used as it is');
+  assert.equal(await resolveSession('claude', 'auth refactor'), older, 'an exact match wins over a newer one that only matches ignoring case');
+  assert.equal(await resolveSession('claude', 'AUTH REFACTOR'), newer, 'ignoring case: the most recently used');
+  assert.equal(await resolveSession('claude', 'billing'), renamed, 'the latest name counts');
+  await assert.rejects(resolveSession('claude', 'nothing like it'), /no Claude Code session named "nothing like it"/);
+  // Transcripts only grow: a later lookup reads just what was added, and sees a rename made since.
+  writeFileSync(`${claudeDir}/${renamed}.jsonl`, `${transcript(renamed, ['auth refactor', 'billing'])}\n${JSON.stringify({ type: 'custom-title', customTitle: 'payments', sessionId: renamed })}\n`);
+  assert.equal(await resolveSession('claude', 'payments'), renamed);
+  await assert.rejects(resolveSession('claude', 'billing'), /no Claude Code session named "billing"/, 'renamed away');
+  // With a workspace, its own project's sessions come first, even older ones.
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'council-ws-')));
+  const local = 'aaaaaaaa-0000-4000-8000-000000000004';
+  const localDir = `${fake.dir}/claude-home/projects/${workspace.replace(/[^A-Za-z0-9]/g, '-')}`;
+  mkdirSync(localDir, { recursive: true });
+  writeFileSync(`${localDir}/${local}.jsonl`, transcript(local, ['auth refactor']));
+  const older2 = new Date(Date.now() - 120_000);
+  utimesSync(`${localDir}/${local}.jsonl`, older2, older2);
+  assert.equal(await resolveSession('claude', 'auth refactor', { workspace }), local, 'this project\'s session first');
+  rmSync(localDir, { recursive: true, force: true });
+  rmSync(workspace, { recursive: true, force: true });
+  assert.equal(await resolveSession('codex', 'auth refactor'), codexIds[1], 'the session most recently given that name');
+  assert.equal(await resolveSession('codex', 'old work'), codexIds[0]);
+  assert.equal(await resolveSession('codex', 'unlisted-thread'), 'unlisted-thread', 'Codex resolves other names itself');
   // By name, the session is resumed by its id, in its own folder.
-  const result = JSON.parse(await invoke('debate', 'q', { claude_session_id: 'billing', codex_session_id: 'auth refactor', max_rounds: 1 }));
+  const result = JSON.parse(await invoke('debate', 'q', { claude_session_id: 'payments', codex_session_id: 'auth refactor', max_rounds: 1 }));
   assert.deepEqual(result.settings.sessions, { codex: codexIds[1], claude: renamed });
   assert.equal(result.settings.workspace, project);
   for (const call of fake.questionCalls()) {
