@@ -1,6 +1,6 @@
 {
   "name": "codex-claude-council",
-  "version": "0.6.2",
+  "version": "0.8.0",
   "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs; they critique each other, reply, and agree on one answer. MCP server + plugin for Claude Code, Claude Cowork and Codex.",
   "type": "module",
   "bin": {
@@ -10,7 +10,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test/config.test.mjs test/council.test.mjs test/mcp.test.mjs test/cli.test.mjs test/manifests.test.mjs test/git-mcp.test.mjs"
+    "test": "node --test test/config.test.mjs test/council.test.mjs test/mcp.test.mjs test/cli.test.mjs test/manifests.test.mjs test/skills.test.mjs"
   },
   "keywords": [
     "mcp",

@@ -28,7 +28,8 @@ export function setup(config = {}) {
     claude: { command: commands.claude, ...(config.claude || {}), ...(extra.claude || {}) },
   }));
   write();
-  const env = { COUNCIL_CONFIG: configPath, FAKE_LOG: log };
+  // Empty Claude Code and Codex homes: no natively installed skills or saved sessions of the machine leak in.
+  const env = { COUNCIL_CONFIG: configPath, FAKE_LOG: log, CLAUDE_CONFIG_DIR: join(dir, 'claude-home'), CODEX_HOME: join(dir, 'codex-home') };
   const saved = {};
   for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
   return {

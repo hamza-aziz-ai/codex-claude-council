@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
 import { invoke } from '../src/council.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
+import { addSkill, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
 Ask Codex (ChatGPT) and Claude through your own signed-in CLIs.
@@ -14,6 +15,9 @@ Usage:
   ${NAME} update [options]         Update the plugin in Claude Code and Codex to the latest version
   ${NAME} uninstall [options]      Remove it again (your config file is kept)
   ${NAME} doctor                   Check Node.js, both CLIs, sign-ins and config
+  ${NAME} skill add <url|path>     Install the skills (SKILL.md folders) of a GitHub repository or local folder/file
+  ${NAME} skill list               List installed skills
+  ${NAME} skill remove <name>      Remove an installed skill
   ${NAME} config [--init]          Show the effective config, or create an editable config file
   ${NAME} ask "question"           Both answer, critique each other, reply, then agree on one final answer
   ${NAME} debate "question"        Same, printing answers, critiques, replies, rounds and settings as JSON
@@ -27,10 +31,14 @@ Model and effort (omit to use your config):
                    --synthesizer <claude|codex>   who writes the final answer (default: claude; chatgpt = codex)
                    --max-rounds <n>   draft/review until both agree: n = at most n rounds, 0 = no limit
                                       (default: 3; "max_rounds": null in the config for a single pass)
-  all four:        --workspace <dir>  project folder both models can read (never change);
-                                      default: the git repository you are in, if any
-                   --no-workspace     no file access at all
+  all four:        --workspace <dir>  project folder both models work in, in plan mode (read, never change);
+                                      default: the session's folder with a session id, else the git
+                                      repository you are in, if any
+                   --no-workspace     no project folder
                    --no-web           no web search or web pages (default: on, "web_search" in the config)
+                   --skill <name>     both models may use this installed skill where a step needs it
+  codex, claude:   --session <id>     continue your own Codex / Claude Code session in place (keeps its memory)
+  ask, debate:     --codex-session <id>  --claude-session <id>   the same, per side
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install / update / uninstall options:
@@ -54,6 +62,10 @@ const OPTIONS = {
   workspace: { type: 'string' },
   'no-workspace': { type: 'boolean' },
   'no-web': { type: 'boolean' },
+  skill: { type: 'string' },
+  session: { type: 'string' },
+  'codex-session': { type: 'string' },
+  'claude-session': { type: 'string' },
   synthesizer: { type: 'string' },
   only: { type: 'string' },
   source: { type: 'string' },
@@ -89,6 +101,26 @@ async function main() {
     return null;
   }
   if (commandName === 'doctor') return doctor();
+  if (commandName === 'skill') {
+    const [action, target] = rest;
+    if (action === 'add' && target) {
+      const skills = await addSkill(target);
+      for (const skill of skills) console.log(`Installed skill "${skill.name}" at ${skill.path}${skill.files > 1 ? ` (${skill.files} files)` : ''}`);
+      console.log(`Use ${skills.length > 1 ? 'one' : 'it'} with: --skill <name> (terminal) or skill: "<name>" (any council tool), e.g. --skill ${skills[0].name}. `
+        + 'Restart Claude Code / Codex to see it listed.');
+      return 0;
+    }
+    if (action === 'list') {
+      const line = s => `${s.name}\n  ${s.description.slice(0, 160)}${s.description.length > 160 ? '…' : ''}`;
+      const skills = listSkills();
+      console.log(skills.length ? skills.map(line).join('\n') : `No skills installed for the council (folder: ${skillsDir()}).`);
+      const native = nativeSkills();
+      if (native.length) console.log(`\nAlso usable by name (installed natively for Claude Code or Codex):\n${native.map(s => `${line(s)}\n  (${s.dir})`).join('\n')}`);
+      return 0;
+    }
+    if (action === 'remove' && target) return console.log(`Removed skill "${removeSkill(target).name}".`), 0;
+    throw new Error('usage: skill add <GitHub URL | SKILL.md path | folder>, skill list, skill remove <name>');
+  }
   if (commandName === 'config') {
     if (values.init) return initConfig();
     console.log(`# ${userConfigPath()}\n${JSON.stringify(loadConfig(), null, 2)}`);
@@ -104,16 +136,20 @@ async function main() {
   const question = rest.join(' ') || (await readStdin());
   const single = tool === 'ask_codex' || tool === 'ask_claude';
   const pairs = single
-    ? { model: values.model, effort: values.effort }
+    ? { model: values.model, effort: values.effort, session_id: values.session }
     : { codex_model: values['codex-model'], codex_effort: values['codex-effort'], claude_model: values['claude-model'],
-      claude_effort: values['claude-effort'], max_rounds: values['max-rounds'], synthesizer: values.synthesizer };
+      claude_effort: values['claude-effort'], max_rounds: values['max-rounds'], synthesizer: values.synthesizer,
+      codex_session_id: values['codex-session'], claude_session_id: values['claude-session'] };
   const wrong = single
-    ? ['codex-model', 'codex-effort', 'claude-model', 'claude-effort', 'max-rounds', 'synthesizer'].filter(key => values[key] !== undefined)
-    : ['model', 'effort'].filter(key => values[key] !== undefined);
+    ? ['codex-model', 'codex-effort', 'claude-model', 'claude-effort', 'max-rounds', 'synthesizer', 'codex-session', 'claude-session'].filter(key => values[key] !== undefined)
+    : ['model', 'effort', 'session'].filter(key => values[key] !== undefined);
   if (wrong.length) throw new Error(`${commandName} does not take --${wrong.join(', --')} (see --help)`);
   if (values.workspace !== undefined && values['no-workspace']) throw new Error('use --workspace or --no-workspace, not both');
   if (values['no-web']) pairs.web_search = false;
-  pairs.workspace = values['no-workspace'] ? undefined : values.workspace !== undefined ? resolve(values.workspace) : gitRoot(process.cwd());
+  if (values.skill !== undefined) pairs.skill = values.skill;
+  // With a session id, the session's own folder is the default (see council.mjs); otherwise the git repository here.
+  const resuming = [values.session, values['codex-session'], values['claude-session']].some(value => value !== undefined);
+  pairs.workspace = values['no-workspace'] ? undefined : values.workspace !== undefined ? resolve(values.workspace) : resuming ? undefined : gitRoot(process.cwd());
   const options = Object.fromEntries(Object.entries(pairs).filter(([, value]) => value !== undefined));
   const onProgress = message => process.stderr.write(`[council] ${message}\n`);
   // Ctrl+C stops the codex/claude processes too, not just this one.

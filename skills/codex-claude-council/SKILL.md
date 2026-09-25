@@ -1,61 +1,65 @@
 ---
 name: codex-claude-council
-description: Ask OpenAI Codex (ChatGPT) and Claude the same question through the user's own signed-in CLIs; they critique each other, reply to the critiques and return one answer both agree with. Use when the user asks for both models, a council or debate, a second opinion from ChatGPT/Codex or Claude, or a cross-check of an answer, plan or decision.
+description: Ask OpenAI Codex (ChatGPT) and Claude the same question through the user's own signed-in CLIs; they critique each other, reply to the critiques and return one answer both agree with. Use when the user asks for both models, a council or debate, a second opinion from ChatGPT/Codex or Claude, a cross-check of an answer, plan or decision, or to discuss something with their Codex or Claude Code session.
 ---
 
 # Codex–Claude Council
 
-This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign-in) and Claude Code CLI (Claude subscription sign-in). No API keys are used.
+This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign-in) and Claude Code CLI (Claude subscription sign-in). No API keys are used. The two members answer independently, critique each other, reply to the critiques, then draft and review one answer until both agree.
 
 ## Pick the tool
 
-- `council_ask`: both models answer independently, each critiques the other's answer, each replies to the critique of its own answer, then they draft and review one final answer until both agree with it. Use for decisions, reviews and anything worth cross-checking.
-- `debate`: the same run, returned as JSON with both answers, both critiques, both replies, every draft/review round and the model/effort settings used. Use when the user wants to see where the models agree or disagree.
-- `ask_codex` / `ask_claude`: one model only, for a quick second opinion.
+| The user wants | Tool |
+|---|---|
+| A cross-checked answer from both models (decisions, reviews, plans) | `council_ask` |
+| To see where the models agree or disagree: every answer, critique, reply and round | `debate` (JSON; summarise the agreement and disagreements before quoting details) |
+| A quick second opinion from one model | `ask_codex` or `ask_claude` |
+| **You** to discuss with the other model, or gives only the id of **their session of the other model** (in Claude Code: "discuss with my Codex session 019a…") | `council_join` (see below) |
+| Their existing Claude Code **and** Codex sessions to discuss with each other | `council_ask` / `debate` with `claude_session_id` and `codex_session_id` |
 
-## Let them read the project: `workspace`
+## Always pass `workspace` in a project
 
-When you are working in a project, always pass `workspace`: the absolute path of the project folder (your working directory). Both models can then read it themselves: open files, search, and look at git history, changes and blame (log, diff, show, status, blame). Neither can change anything. So in `question`, point them at what matters (files, functions, the failing test, the error or log excerpt, the change you made) instead of pasting whole files. They cannot see this conversation, so state the task and any context that is not in the project, such as an error message or a log you saw.
+Pass `workspace`: the absolute path of the project folder you are working in. The members work there in plan mode (Claude) or Codex's read-only sandbox, with the user's own skills, plugins and MCP servers: they read files, search and run read-only commands such as `git log`, `diff` and `blame`. Neither can change anything; they propose changes as plans. In `question`, point them at what matters (files, functions, the failing test, the error or log excerpt, the change you made) instead of pasting whole files. They cannot see this conversation, so state the task and any context that is not in the project. Omit `workspace` only for questions unrelated to any project, and then quote everything they need.
 
-Both models can also search the web and read web pages (on by default), so they can check current versions, APIs and docs. Pass `web_search: false` only when the user asks for no internet access.
+Each member keeps its session for as long as this session runs, so follow-up questions can refer to the earlier discussion.
 
-Omit `workspace` only for questions unrelated to any project; the models then have no file access, so quote everything they need in `question`.
+## Take part yourself: `council_join` and `council_turn`
 
-Each model keeps one session for as long as this session runs: it remembers earlier council questions and what it has already read, so a follow-up question can refer to the earlier discussion.
+With `council_join`, you are one of the two members, in this conversation, and the plugin runs only the other model. Set `me` to the model you are (`claude` if you are Claude, `codex` if you are Codex or ChatGPT). If the user gave the id of their session of the other model, pass it as `other_session_id`; otherwise leave it out and the other model starts a new session.
 
-## Model and effort
+`council_join` (and later `council_turn` or `council_result`) returns "Your turn in the council" with a `council_id` and a `<council_message>`: the same prompt a member gets for that step (answer, critique, reply, draft, review). For each turn:
 
-Leave model and effort out unless the user asks for them; the defaults come from the user's config file (`codex-claude-council config`).
+- Write the reply yourself, as a council member: use what you already know from this session and your own tools to read and search, but do not change any files while the council runs, and do not hand the turn to another agent or tool.
+- Follow the message's format exactly: a draft ends with a `---NOTES---` line and notes; a review ends with `VERDICT: AGREE` or `VERDICT: DISAGREE`.
+- Send it with `council_turn` (`council_id`, and `text`: your complete reply; only that text reaches the other model). The result is your next turn, the final answer, or "still working" (then call `council_result` with the id).
+- Keep going until the final answer arrives, then give it to the user. Do not show every turn unless the user asks.
 
-- `ask_codex` / `ask_claude`: `model`, `effort` (and `workspace`, as above)
-- `council_ask` / `debate`: `codex_model`, `codex_effort`, `claude_model`, `claude_effort` (each side can be set on its own)
-- Codex effort: none, minimal, low, medium, high, xhigh. Claude effort: low, medium, high, xhigh, max. Claude models accept aliases such as opus, sonnet or fable.
-- "ChatGPT" means the Codex side.
-- `synthesizer` on `council_ask` / `debate`: who drafts the final answer, `claude` (the default) or `codex`; the other model reviews it. Pass it only when the user names who should write it, e.g. "let ChatGPT write the final answer".
+## Continue the user's own sessions
 
-## Agreement
+If the user gives ids of Claude Code or Codex sessions they already have and wants those sessions to discuss, pass `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`. Each is continued in place, with everything it already knows, in plan mode / read-only; its own folder is the workspace unless you pass one. Never pass the id of your own current session (use `council_join` instead), and never guess an id. Remind the user not to type in those sessions while the council runs.
 
-By default the synthesizer drafts one joint answer and the other model reviews it, for at most 3 rounds, stopping as soon as both agree. `council_ask` and `debate` take an optional `max_rounds` to change that:
+## Options
 
-- `max_rounds: N` (1 or more): at most N rounds. Use it when the user names a number of rounds.
-- `max_rounds: 0`: keep going until both agree, with no limit. Use it when the user asks for agreement without a limit ("until they agree", "keep going until both are happy").
+Pass options only when the user asks for them; the defaults come from the user's config (`codex-claude-council config`).
 
-Report whether they agreed (the tool says so at the end of its answer). If they did not, give the final draft and summarise the remaining objections. Mention that no-limit runs can take a long time.
+- **Model and effort:** `model` / `effort` on `ask_codex` / `ask_claude`; `codex_model`, `codex_effort`, `claude_model`, `claude_effort` on `council_ask` / `debate`; `other_model` / `other_effort` on `council_join`. Codex effort: none, minimal, low, medium, high, xhigh. Claude effort: low, medium, high, xhigh, max. Claude models accept aliases such as opus, sonnet or fable. "ChatGPT" means the Codex side.
+- **`synthesizer`:** who drafts the final answer, `claude` (default) or `codex`; the other reviews it. Pass it only when the user names who should write it ("let ChatGPT write the final answer").
+- **`max_rounds`:** by default at most 3 draft/review rounds, stopping as soon as both agree. `N` when the user names a number of rounds; `0` when they want agreement without a limit ("until they agree"), which can take a long time.
+- **`web_search`:** on by default, so the members can check current versions, APIs and docs. Pass `false` only when the user asks for no internet access.
+- **`skill`:** the name of a skill installed for the council or natively for Claude Code / Codex (the tool descriptions list them), for example `llm-council`, `caveman`, `ponytail` or `graphify`. Pass it only when the user asks for that skill, by name or by a phrase the skill says triggers it; never add it on your own. The members then use it, including its sub-agents, at the steps where they judge it is needed. If the tool says the skill is not installed, give the user the install command it names.
+
+Report whether the models agreed (the tool says so at the end). If they did not, give the final draft and summarise the remaining objections.
 
 ## Long runs: `job_id` and `council_result`
 
-A council usually takes longer than a single tool call may last in some apps (Claude Desktop ends tool calls after about 60 seconds). So every tool returns within about 50 seconds: with the answer if it is ready, or with "still working", the current step and a `job_id`. When that happens:
+A council takes minutes, and some apps end tool calls after about 60 seconds. So every tool returns within about 50 seconds: with the answer, with your turn (`council_join`), or with "still working", the current step and a `job_id`. On "still working":
 
-- Call `council_result` with that `job_id`. It waits up to about 50 seconds and returns the answer as soon as it is ready. If it says "still working" again, call it again; keep going until the answer arrives. The council keeps running between calls.
-- Do not start the same question again, and do not tell the user it failed: "still working" is normal.
-- You may briefly tell the user the council is still working and at which step (for example "Round 2: Codex is reviewing the draft").
+- Call `council_result` with that `job_id`; it waits up to about 50 seconds and returns the answer (or your next turn) as soon as it is ready. Repeat until it does. The council keeps running between calls.
+- Do not start the same question again, and do not tell the user it failed: "still working" is normal. You may briefly say which step it is at.
 - `council_cancel` stops a job, for example if the user asks to stop.
 
-## Expectations
+## Problems
 
-- With a `workspace`, the models may take longer on their first question in a session while they read the project; later questions reuse what they read.
-- A council run makes six CLI calls (answers, critiques, replies) plus two per agreement round: eight when the models agree on the first draft. At high effort it can take several minutes, and it counts against the user's ChatGPT and Claude plan limits.
-- Show the answer, not the mechanics. For `debate`, summarise the agreement and disagreements before quoting details.
-- `council_ask` and `debate` check that both CLIs are signed in before sending anything. If either is not, the tool fails with a message naming which one and its login command (`codex login` and choose "Sign in with ChatGPT", or `claude auth login`); relay those steps to the user and ask them to sign in, then try again.
-- If a tool reports a missing CLI, a sign-in problem or a usage limit, tell the user plainly and suggest `codex-claude-council doctor` (or `npx -y github:hamza-aziz-ai/codex-claude-council doctor`). Do not retry in a loop.
-- The server runs on the user's own computer. It does not work from cloud-only sessions without their machine.
+- Before a council, the CLIs it runs are checked for a sign-in, and nothing is sent until they are signed in. If one is not, the tool names it and its login command (`codex login` and choose "Sign in with ChatGPT", or `claude auth login`): relay that to the user, then try again.
+- For a missing CLI, a sign-in problem or a usage limit, tell the user plainly and suggest `npx -y github:hamza-aziz-ai/codex-claude-council doctor`. Do not retry in a loop.
+- The server runs on the user's own computer; it does not work from cloud-only sessions without their machine.

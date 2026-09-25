@@ -8,7 +8,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 
 const [cli, ...args] = process.argv.slice(2);
 const input = readFileSync(0, 'utf8');
-if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ cli, args, input, cwd: process.cwd(), pid: process.pid })}\n`);
+if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ cli, args, input, cwd: process.cwd(), pid: process.pid, env: { CODEX_CLAUDE_COUNCIL_MEMBER: process.env.CODEX_CLAUDE_COUNCIL_MEMBER } })}\n`);
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const lastLine = input.split(/\r?\n/).filter(line => line.trim()).pop() || '';
 let failing = process.env.FAKE_FAIL === cli;
@@ -41,12 +41,13 @@ function codex() {
 function claude() {
   if (args[0] === '--version') return console.log('0.0.0 (Claude Code fake)');
   if (args[0] === 'auth') return console.log(process.env.FAKE_CLAUDE_AUTH || '{"loggedIn":true,"authMethod":"claude.ai"}');
-  if (failing) {
-    console.log(JSON.stringify({ is_error: true, result: 'fake claude failure' }));
-    process.exit(1);
-  }
+  // Like `--output-format stream-json --verbose`: an init event, the main agent's message, then the result.
   const session = flag('--resume') || flag('--session-id');
-  console.log(JSON.stringify({ is_error: false, session_id: session, result: `claude[${flag('--model') || '-'}|${flag('--effort') || '-'}] ${reply}` }));
+  const text = failing ? 'fake claude failure' : `claude[${flag('--model') || '-'}|${flag('--effort') || '-'}] ${reply}`;
+  console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: session }));
+  console.log(JSON.stringify({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } }));
+  console.log(JSON.stringify({ type: 'result', subtype: failing ? 'error' : 'success', is_error: failing, session_id: session, result: text }));
+  if (failing) process.exit(1);
 }
 
 const main = cli === 'codex' ? codex : claude;
