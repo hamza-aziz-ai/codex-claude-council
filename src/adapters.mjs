@@ -358,7 +358,18 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
       : ['exec', ...common, '--sandbox', 'read-only', '-C', cwd, '-'];
     const result = await run(exe, args, { ...opts, input: prompt });
     session.id ??= codexThreadId(result.stdout);
-    if (result.code !== 0) throw new Error(`codex failed: ${withHint('codex', failureDetail(result.stderr || result.stdout))}`);
+    if (result.code !== 0) {
+      const detail = result.stderr || result.stdout;
+      if (resume && /already has an active writer/i.test(detail)) {
+        throw new Error(`Codex session ${resume} is open in another Codex process, and Codex lets only one program write to a session at a time. `
+          + 'Close that session (exit or /quit), then try again, or try again without the session id to start a new session.');
+      }
+      if (resume && /no rollout found/i.test(detail)) {
+        throw new Error(`Codex has not saved session ${resume}: it saves a session after its first message. `
+          + 'Send one message in that session first, or check the id with `codex resume`.');
+      }
+      throw new Error(`codex failed: ${withHint('codex', failureDetail(detail))}`);
+    }
     if (!session.id) throw new Error('codex did not report a session id; update the Codex CLI (`npm install -g @openai/codex`)');
     let answer = '';
     try { answer = readFileSync(answerFile, 'utf8').trim(); } catch { /* empty */ }

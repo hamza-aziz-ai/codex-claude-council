@@ -406,6 +406,17 @@ test('a failing side stops the council with that side\'s error', () => withEnv({
   }
 }));
 
+test('a Codex session that is open elsewhere or not saved yet is reported with the fix', async () => {
+  const id = '019a0000-1111-7222-8333-444444444444';
+  const failWith = error => ({ FAKE_FAIL: 'codex', FAKE_CODEX_ERROR: `Error: thread/resume: thread/resume failed: ${error} (code -32600)` });
+  await withEnv(failWith(`thread ${id} already has an active writer`), async () => {
+    await assert.rejects(askCodex('q', {}, { resume: id }), new RegExp(`Codex session ${id} is open in another Codex process.*Close that session`));
+    await assert.rejects(askCodex('q'), /codex failed: .*active writer/, 'without a session id of the user\'s, the error is passed on');
+  });
+  await withEnv(failWith(`no rollout found for thread id ${id}`), () =>
+    assert.rejects(askCodex('q', {}, { resume: id }), new RegExp(`Codex has not saved session ${id}.*codex resume`)));
+});
+
 test('sign-in problems are reported with the fix', async () => {
   await withEnv({ FAKE_CODEX_AUTH: 'Not logged in' }, () => assert.rejects(askCodex('q'), /Codex is not signed in.*codex login/));
   await withEnv({ FAKE_CODEX_AUTH: 'Logged in using an API key - sk-proj-***' }, () => assert.rejects(askCodex('q'), /API key/));

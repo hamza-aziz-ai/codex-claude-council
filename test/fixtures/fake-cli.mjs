@@ -1,5 +1,5 @@
 // Stand-in for the real `codex` and `claude` CLIs. Records every call to $FAKE_LOG (JSON lines).
-// Controls: FAKE_FAIL=codex|claude, FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
+// Controls: FAKE_FAIL=codex|claude (FAKE_CODEX_ERROR: the error codex prints),FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
 // Reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees on the n-th review (default 1, 0 = never);
 // FAKE_FAIL_REVIEW_AT=n fails the n-th review. Reviews are counted in the file $FAKE_STATE.
 // Sessions: codex --json reports a new thread (or the resumed one); claude echoes --session-id / --resume.
@@ -30,7 +30,7 @@ function codex() {
   const effort = args.find(arg => arg.startsWith('model_reasoning_effort='))?.replace('model_reasoning_effort=', '') || '-';
   console.error(`model: ${flag('-m') || '-'}\nreasoning effort: ${effort}`);
   if (failing) {
-    console.error("ERROR: You've hit your usage limit.");
+    console.error(process.env.FAKE_CODEX_ERROR || "ERROR: You've hit your usage limit.");
     process.exit(1);
   }
   const thread = args[1] === 'resume' ? args.at(-2) : randomUUID();
