@@ -181,6 +181,8 @@ Just ask in plain language:
 | "Get **Codex's** take on this error, and check the library's **current docs**: …" | `ask_codex` with web search (on by default) |
 | "Ask the council **without internet access**: …" | `council_ask` with `web_search: false` |
 
+**Long runs.** A council often takes several minutes, and some apps end a tool call after about 60 seconds (Claude Desktop does). So each tool returns within about 50 seconds: with the answer, or with "still working", the current step and a `job_id`. The app then calls `council_result` until the answer is ready (the plugin's skill tells it to), while the council keeps running. `council_cancel` stops a job.
+
 With a `workspace`, the models read what they need from the project themselves; without one, they have no file access, so include the code or text you want reviewed in the question. A council run is six CLI calls (answers, critiques, replies) plus two per agreement round, so eight when the models agree on the first draft. At high effort that can take several minutes, and it counts against both plans' usage limits.
 
 ### Web search
@@ -267,6 +269,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 ```json
 {
   "timeout_seconds": 600,
+  "tool_wait_seconds": 50,
   "synthesizer": "claude",
   "max_rounds": 3,
   "web_search": true,
@@ -279,6 +282,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | Setting | Meaning |
 |---|---|
 | `timeout_seconds` | limit for each CLI call |
+| `tool_wait_seconds` | how long one tool call waits before returning "still working" and a `job_id` (default `50`, under the 60-second limit some apps put on tool calls); `0` waits until the answer is ready |
 | `synthesizer` | which model writes the final answer: `claude` (default) or `codex` (ChatGPT) |
 | `web_search` | whether both models may search the web and read pages: `true` (default) or `false` |
 | `max_rounds` | default limit on draft/review rounds: `3` (default), `0` for no limit, `null` for a single pass without agreement |
@@ -300,6 +304,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - **"The council needs both Codex and Claude Code signed in"**: before every council run, both CLIs are checked, and nothing is sent to either model unless both are signed in. The message names each CLI with a problem and the fix: `codex login` (choose *Sign in with ChatGPT*) and/or `claude auth login`.
 - **"usage limit"**: your ChatGPT or Claude plan hit its limit. Wait for the reset or lower the effort.
 - **"timed out"**: raise `timeout_seconds` or lower the effort.
+- **The tool call ended after about 60 seconds** (for example Claude Desktop's bridge limit): update to 0.6.2 or later. Every tool now returns within about 50 seconds, with the answer or with "still working" and a `job_id`; the host then calls `council_result` until the answer is ready, while the council keeps running. If your app has no such limit and you prefer one long call, set `"tool_wait_seconds": 0`.
 - **Tools don't appear**: fully quit and reopen the app after installing. In Claude Desktop or the ChatGPT desktop app, check the plugin is installed and enabled under **Settings → Plugins**.
 - **`node` not found by a desktop app on macOS**: GUI apps don't read your shell profile, so Node installed with nvm may be invisible to them. Install Node from nodejs.org or Homebrew.
 - **CLI not found**: set `codex.command` / `claude.command` to the full path.

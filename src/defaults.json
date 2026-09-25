@@ -1,5 +1,6 @@
 {
   "timeout_seconds": 600,
+  "tool_wait_seconds": 50,
   "synthesizer": "claude",
   "max_rounds": 3,
   "web_search": true,

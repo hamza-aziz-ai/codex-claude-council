@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 (2026-09-25)
+
+- **Councils no longer die at a host's 60-second tool limit.** Some apps end any tool call after about 60 seconds (Claude Desktop's bridge), and a council takes minutes, so `debate` and `council_ask` were cut off. Now every tool starts its work in the background and waits up to `tool_wait_seconds` (default 50). It returns the answer if it is ready, and otherwise "still working", the current step and a `job_id`. The new `council_result` tool waits again (up to the same window) and returns the answer as soon as it is ready; `council_cancel` stops a job. No single call outlasts the limit, and the council keeps running between calls. The skill and the server instructions tell the host to keep calling `council_result` and not to restart the question. Set `"tool_wait_seconds": 0` to wait for the answer in one call.
+
 ## 0.6.1 (2026-09-24)
 
 - New `update` command: `npx -y github:hamza-aziz-ai/codex-claude-council update` refreshes the marketplace and updates the plugin in Claude Code and Codex (`--only`, `--dry-run`). If an update step fails because the plugin is not installed, it says to run `install`.

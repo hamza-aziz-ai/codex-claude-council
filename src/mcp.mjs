@@ -1,6 +1,6 @@
 // Dependency-free MCP server (JSON-RPC 2.0 over stdio, newline-delimited).
 import { createInterface } from 'node:readline';
-import { EFFORTS, NAME, packageVersion } from './config.mjs';
+import { EFFORTS, NAME, loadConfig, packageVersion } from './config.mjs';
 import { invoke } from './council.mjs';
 
 const DEFAULTS_NOTE = 'Omit to use the configured default; set only when the user asks for a specific one.';
@@ -72,15 +72,107 @@ export const TOOLS = [
   },
 ];
 
+const jobField = {
+  type: 'string',
+  description: 'The job_id a council tool returned while still working. Omit to use the most recent job.',
+};
+TOOLS.push(
+  {
+    name: 'council_result', title: 'Get a running council\'s answer',
+    description: 'Wait for the answer of a council_ask, debate, ask_codex or ask_claude call that returned a job_id because it was still working. '
+      + 'Waits up to about a minute; returns the answer as soon as it is ready, or says it is still working (then call this again).',
+    inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false }, annotations,
+  },
+  {
+    name: 'council_cancel', title: 'Stop a running council',
+    description: 'Stop a council_ask, debate, ask_codex or ask_claude call that is still working in the background.',
+    inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false },
+    annotations: { ...annotations, readOnlyHint: false },
+  },
+);
+
 const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
   + 'Pass max_rounds only when the user asks for a number of rounds (0 = until they agree, with no limit). '
   + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they cannot change it. '
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
-  + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes.';
+  + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes. '
+  + 'If a call returns a job_id because it is still working, call council_result (again, until it returns the answer); do not start the same question again.';
 
 const callCouncil = (name, { question, ...options }, context) => invoke(name, question, options, context);
-const COUNCIL = { name: NAME, title: 'Codex–Claude Council', tools: TOOLS, call: callCouncil, instructions: INSTRUCTIONS };
+
+// Background jobs. Some hosts end any tool call after about 60 seconds (Claude Desktop's bridge), and a
+// council takes minutes. So each tool starts a job and waits up to tool_wait_seconds (0 = until done). A job
+// still running then is answered with its id, and council_result waits again: no single call outlasts the
+// host's limit, and the council keeps running in between.
+const jobs = new Map();
+let jobCount = 0;
+
+function startJob(name, args) {
+  for (const [id, old] of jobs) if (old.done && Date.now() - old.started > 3_600_000) jobs.delete(id);
+  const job = { id: `job-${++jobCount}`, name, started: Date.now(), step: 'starting', done: false, listeners: new Set(), controller: new AbortController() };
+  const onProgress = message => { job.step = message; for (const listener of job.listeners) listener(message); };
+  job.promise = callCouncil(name, args, { signal: job.controller.signal, onProgress })
+    .then(text => ({ text }), error => ({ text: error.message, isError: true }))
+    .then(outcome => Object.assign(job, { done: true, outcome }).outcome);
+  jobs.set(job.id, job);
+  return job;
+}
+
+function stillWorking(job) {
+  const seconds = Math.round((Date.now() - job.started) / 1000);
+  const who = job.name === 'ask_codex' ? 'Codex is' : job.name === 'ask_claude' ? 'Claude is' : 'The council is';
+  return `${who} still working (${seconds} s so far; now: ${job.step}). This can take several minutes.\n`
+    + `job_id: ${job.id}\n`
+    + `To get the answer, call council_result with {"job_id": "${job.id}"}. It waits up to about a minute and returns the answer as soon as it is ready; `
+    + 'if it says the job is still working, call it again. Do not start the same question again. To stop it, call council_cancel.';
+}
+
+// Wait for a job until it finishes, the wait window ends, or this call is cancelled.
+async function waitForJob(job, { signal, onProgress }) {
+  const seconds = Number(loadConfig().tool_wait_seconds);
+  if (onProgress) job.listeners.add(onProgress);
+  const timers = [];
+  try {
+    const outcome = await Promise.race([
+      job.promise,
+      ...(seconds > 0 ? [new Promise(resolve => timers.push(setTimeout(resolve, seconds * 1000, null)))] : []),
+      new Promise(resolve => signal?.addEventListener('abort', () => resolve(null), { once: true })),
+    ]);
+    if (!outcome) return stillWorking(job);
+    jobs.delete(job.id);
+    if (outcome.isError) throw new Error(outcome.text);
+    return outcome.text;
+  } finally {
+    timers.forEach(clearTimeout);
+    job.listeners.delete(onProgress);
+  }
+}
+
+function findJob(id) {
+  const job = id ? jobs.get(id) : [...jobs.values()].at(-1);
+  if (!job) throw new Error(id ? `No job ${id}: it has already returned its answer, was cancelled, or belongs to an earlier session.` : 'No council is running.');
+  return job;
+}
+
+async function callCouncilTool(name, args, { signal, onProgress }) {
+  if (name === 'council_result') return waitForJob(findJob(args.job_id), { signal, onProgress });
+  if (name === 'council_cancel') {
+    const job = findJob(args.job_id);
+    job.controller.abort();
+    jobs.delete(job.id);
+    return `Stopped ${job.id}.`;
+  }
+  const job = startJob(name, args);
+  // Cancelling the call that started a job stops the job; cancelling a council_result call only stops waiting.
+  signal?.addEventListener('abort', () => { job.controller.abort(); jobs.delete(job.id); }, { once: true });
+  return waitForJob(job, { signal, onProgress });
+}
+
+const COUNCIL = {
+  name: NAME, title: 'Codex–Claude Council', tools: TOOLS, call: callCouncilTool, instructions: INSTRUCTIONS,
+  close: () => { for (const job of jobs.values()) job.controller.abort(); },
+};
 
 /**
  * Serve tools over stdio. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text,
@@ -152,7 +244,7 @@ export function serve({ input = process.stdin, output = process.stdout, server =
       if (message.id !== undefined && message.id !== null) fail(message.id, -32603, error.message);
     }
   });
-  const abortAll = () => { for (const controller of inFlight.values()) controller.abort(); };
+  const abortAll = () => { for (const controller of inFlight.values()) controller.abort(); server.close?.(); };
   lines.on('close', abortAll);
   return { abortAll };
 }

@@ -44,11 +44,13 @@ test('initialize reports the server and tool capability', async () => {
   notify('notifications/initialized');
 });
 
-test('tools/list exposes four tools with per-tool model/effort inputs', async () => {
+test('tools/list exposes the four council tools, with per-tool model/effort inputs, and the job tools', async () => {
   const { result } = await request('tools/list', {});
   const tools = Object.fromEntries(result.tools.map(tool => [tool.name, tool.inputSchema]));
   const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search'];
-  assert.deepEqual(Object.keys(tools).sort(), ['ask_claude', 'ask_codex', 'council_ask', 'debate']);
+  assert.deepEqual(Object.keys(tools).sort(), ['ask_claude', 'ask_codex', 'council_ask', 'council_cancel', 'council_result', 'debate']);
+  assert.deepEqual(Object.keys(tools.council_result.properties), ['job_id']);
+  assert.deepEqual(Object.keys(tools.council_cancel.properties), ['job_id']);
   assert.deepEqual(Object.keys(tools.council_ask.properties), councilFields);
   assert.deepEqual(Object.keys(tools.debate.properties), councilFields);
   assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort', 'workspace', 'web_search']);
@@ -96,6 +98,55 @@ test('protocol errors and ping', async () => {
   server.stdin.write('{not json\n');
   await new Promise(resolve => setTimeout(resolve, 200));
   assert.equal(unexpected.pop()?.error?.code, -32700);
+});
+
+// Hosts such as Claude Desktop end any tool call after about 60 s; a council takes minutes.
+test('a council that outlasts the wait window returns a job id, and council_result gets the answer', async () => {
+  fake.writeConfig({ tool_wait_seconds: 1 });
+  try {
+    const started = Date.now();
+    const first = (await call('council_ask', { question: 'slow council' })).result;
+    assert.ok(Date.now() - started < 2500, 'the first call returns within the wait window');
+    assert.ok(!first.isError, first.content[0].text);
+    const text = first.content[0].text;
+    assert.match(text, /The council is still working \(\d+ s so far; now: .+\)/);
+    const jobId = text.match(/job_id: (\S+)/)[1];
+    assert.match(text, new RegExp(`call council_result with \\{"job_id": "${jobId}"\\}`));
+    let answer;
+    for (let polls = 0; polls < 30 && !answer; polls += 1) {
+      const polled = (await call('council_result', polls % 2 ? { job_id: jobId } : {})).result;
+      assert.ok(!polled.isError, polled.content[0].text);
+      if (!/still working/.test(polled.content[0].text)) answer = polled.content[0].text;
+    }
+    assert.match(answer, /both agree with this answer/);
+    const gone = (await call('council_result', { job_id: jobId })).result;
+    assert.equal(gone.isError, true, 'a job is forgotten once its answer is returned');
+    assert.match(gone.content[0].text, /already returned its answer/);
+  } finally {
+    fake.writeConfig();
+  }
+});
+
+test('council_cancel stops a running job', async () => {
+  fake.writeConfig({ tool_wait_seconds: 1 });
+  try {
+    const text = (await call('debate', { question: 'to cancel' })).result.content[0].text;
+    const jobId = text.match(/job_id: (\S+)/)[1];
+    assert.match((await call('council_cancel', { job_id: jobId })).result.content[0].text, new RegExp(`Stopped ${jobId}`));
+    assert.equal((await call('council_result', { job_id: jobId })).result.isError, true);
+  } finally {
+    fake.writeConfig();
+  }
+});
+
+test('with tool_wait_seconds 0, a call waits until the answer is ready', async () => {
+  fake.writeConfig({ tool_wait_seconds: 0 });
+  try {
+    const { result } = await call('ask_codex', { question: 'wait for me' });
+    assert.equal(result.content[0].text, 'codex[-|high] wait for me');
+  } finally {
+    fake.writeConfig();
+  }
 });
 
 test('a cancelled call stops and sends no response', async () => {

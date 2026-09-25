@@ -42,6 +42,15 @@ By default the synthesizer drafts one joint answer and the other model reviews i
 
 Report whether they agreed (the tool says so at the end of its answer). If they did not, give the final draft and summarise the remaining objections. Mention that no-limit runs can take a long time.
 
+## Long runs: `job_id` and `council_result`
+
+A council usually takes longer than a single tool call may last in some apps (Claude Desktop ends tool calls after about 60 seconds). So every tool returns within about 50 seconds: with the answer if it is ready, or with "still working", the current step and a `job_id`. When that happens:
+
+- Call `council_result` with that `job_id`. It waits up to about 50 seconds and returns the answer as soon as it is ready. If it says "still working" again, call it again; keep going until the answer arrives. The council keeps running between calls.
+- Do not start the same question again, and do not tell the user it failed: "still working" is normal.
+- You may briefly tell the user the council is still working and at which step (for example "Round 2: Codex is reviewing the draft").
+- `council_cancel` stops a job, for example if the user asks to stop.
+
 ## Expectations
 
 - With a `workspace`, the models may take longer on their first question in a session while they read the project; later questions reuse what they read.
