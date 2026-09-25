@@ -12,6 +12,7 @@ This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign
 - `council_ask`: both models answer independently, each critiques the other's answer, each replies to the critique of its own answer, then they draft and review one final answer until both agree with it. Use for decisions, reviews and anything worth cross-checking.
 - `debate`: the same run, returned as JSON with both answers, both critiques, both replies, every draft/review round and the model/effort settings used. Use when the user wants to see where the models agree or disagree.
 - `ask_codex` / `ask_claude`: one model only, for a quick second opinion.
+- `council_join`: you take part yourself, as one member, in this conversation; the plugin runs only the other model. Use it when the user wants you to discuss with the other model, or gives the id of their session of the other model (for example, in Claude Code: "discuss with my Codex session 019a…"). Set `me` to the model you are (`claude` or `codex`) and `other_session_id` to the id they gave.
 
 ## Let them read the project: `workspace`
 
@@ -23,9 +24,18 @@ Omit `workspace` only for questions unrelated to any project; the models then st
 
 Each model keeps one session for as long as this session runs: it remembers earlier council questions and what it has already read, so a follow-up question can refer to the earlier discussion.
 
+## Taking part yourself: `council_join` and `council_turn`
+
+`council_join` (and later `council_turn` / `council_result`) returns "Your turn in the council" with a `council_id` and a `<council_message>`: the same prompt the other member would get for that step (answer, critique, reply, draft, review). For each turn:
+
+- Write the reply yourself, in this conversation, as a council member: use what you already know from this session and your own tools to read and search the project, but do not change any files while the council runs, and do not hand the turn to another agent or tool.
+- Follow the message's format exactly (a draft ends with a `---NOTES---` line and notes; a review ends with `VERDICT: AGREE` or `VERDICT: DISAGREE`).
+- Send it with `council_turn` (`council_id`, `text`: your complete reply; only that text reaches the other model). The result is your next turn, the final answer, or "still working" (then call `council_result` with the id).
+- Keep going until the final answer arrives, then give it to the user. Don't show every turn unless the user asks.
+
 ## Continue the user's own sessions
 
-If the user gives the id of a Claude Code or Codex session they already have (for example "continue my Claude session 3f2a… and my Codex session 019a…"), pass it: `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`. That session is continued in place, with everything it already knows, in plan mode; its own folder is the workspace unless you pass one. Never pass the id of your own current session, and never guess an id. Remind the user not to type in those sessions while the council runs.
+If the user gives the id of a Claude Code or Codex session they already have (for example "continue my Claude session 3f2a… and my Codex session 019a…") and wants those two sessions to discuss, pass it: `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`. That session is continued in place, with everything it already knows, in plan mode; its own folder is the workspace unless you pass one. Never pass the id of your own current session, and never guess an id. Remind the user not to type in those sessions while the council runs.
 
 ## Model and effort
 

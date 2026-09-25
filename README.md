@@ -37,6 +37,8 @@ The conversation goes both ways whoever writes the final answer, and from step 2
 
 **Or it continues yours.** If you already have a Claude Code and a Codex session working on a project, give their ids and the council continues those sessions in place, with everything they already know. See [Continue your own sessions](#continue-your-own-sessions).
 
+**Or you take part yourself.** Asked from a Claude Code session, the council can use that very session as its Claude member (and from a Codex session, as its Codex member): the session answers, critiques, replies and drafts in its own conversation, and the plugin runs only the other model. See [Take part yourself](#take-part-yourself-council_join).
+
 ## Requirements
 
 | You need | Install | Sign in |
@@ -186,6 +188,7 @@ Just ask in plain language:
 | "Ask the council **with ponytail**: how should we add retries to the sign-in check?" | `council_ask` with `skill: "ponytail"` |
 | "Ask the council, continuing **my Claude session 3f2a…** and **my Codex session 019a…**: is my refactor plan sound?" | `council_ask` with `claude_session_id` and `codex_session_id` |
 | "Ask **Codex** in **my session 019a…**: why did the migration test fail?" | `ask_codex` with `session_id` |
+| "**Discuss with my Codex session 019a…** whether this refactor is safe" (asked in Claude Code) | `council_join`: this Claude Code session takes part itself, Codex continues session 019a… |
 
 **Long runs.** A council often takes several minutes, and some apps end a tool call after about 60 seconds (Claude Desktop does). So each tool returns within about 50 seconds: with the answer, or with "still working", the current step and a `job_id`. The app then calls `council_result` until the answer is ready (the plugin's skill tells it to), while the council keeps running. `council_cancel` stops a job.
 
@@ -243,7 +246,7 @@ Say you already have a Claude Code session and a Codex session working on a proj
 - **Claude Code session id:** the UUID shown by `/status` in the session, or in `claude --resume`.
 - **Codex session id:** shown by `/status` in the session, in `codex resume`, and at the end of each session file's name in `~/.codex/sessions/`.
 
-Each session runs in the folder it was started in, and that folder is the `workspace` unless you pass one. The council's turns go into the session, so **close it in its terminal or app first** (or at least don't type in it while the council runs), since two programs writing to one session at once can mix up its history. Don't pass the id of the session you are asking from.
+Each session runs in the folder it was started in, and that folder is the `workspace` unless you pass one. The council's turns go into the session, so **close it in its terminal or app first** (or at least don't type in it while the council runs), since two programs writing to one session at once can mix up its history. Don't pass the id of the session you are asking from: to have that session take part, use [`council_join`](#take-part-yourself-council_join).
 
 ```bash
 npx -y github:hamza-aziz-ai/codex-claude-council ask "Is the plan we discussed for the auth refactor sound?" \
@@ -269,12 +272,37 @@ For the old single pass (the synthesizer writes the final answer alone after the
 
 `max_rounds: 0` can run for a long time and use a lot of both plans on questions where reasonable people disagree. You can stop it at any time (Esc / cancel in the app, Ctrl+C in the terminal).
 
+### Take part yourself: `council_join`
+
+Say your repository has a Claude Code session `abcd` and a Codex session `efgh`, and you are working in `abcd`. Ask there: "discuss with my Codex session efgh whether we should split the auth module". Then:
+
+- **`abcd` itself is the Claude member.** No second Claude session is started: `abcd` answers, critiques, replies and drafts or reviews in its own conversation, with everything it already knows. `council_join` hands it each turn (the same prompts a Claude member gets), and it sends its reply back with `council_turn`.
+- **Codex continues `efgh`** in place, read-only, with everything it knows. Without a session id, Codex starts a new session instead.
+- The steps are the same as `council_ask`: both answer independently, critique each other, reply, then draft and review until both agree. The final answer lands in `abcd`.
+
+It works the other way round too: from a Codex session, `council_join` makes that session the Codex member, and Claude continues the Claude Code session you name (or a new one).
+
+| `council_join` input | Meaning |
+|---|---|
+| `me` | the model the host is: `claude` or `codex` (the host fills it in) |
+| `other_session_id` | optional: your session of the other model, continued in place |
+| `other_model`, `other_effort` | optional overrides for the other model |
+| `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill` | as for `council_ask` |
+
+Good to know:
+
+- **The host is asked, not forced, to leave files alone.** The other model runs read-only as usual, but your own session keeps whatever permissions you gave it; each turn asks it not to change files while the discussion runs.
+- **Close `efgh` or leave it alone while the council runs,** and reopen it afterwards with `codex resume efgh` to see the council's turns there.
+- Each of the host's turns may take as long as `skill_timeout_seconds` (default 1800); after that the council stops. `council_cancel` stops it at any time.
+- `council_join` needs a host that takes turns (Claude Code, Codex, the desktop apps); it is not available in the terminal commands.
+
 ### Model and effort
 
 | Tool | Optional inputs |
 |---|---|
 | `ask_codex`, `ask_claude` | `model`, `effort`, `workspace`, `web_search`, `skill`, `session_id` |
 | `council_ask`, `debate` | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill`, `codex_session_id`, `claude_session_id` |
+| `council_join` | `me`, `other_session_id`, `other_model`, `other_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill` |
 
 `workspace` is the absolute path of the project folder both models work in (in plan mode, reading but never changing it). In Claude Code and Codex the plugin's skill tells the host to pass the folder you are working in.
 

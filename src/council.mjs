@@ -12,6 +12,7 @@ const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_
 export const TOOL_OPTIONS = Object.freeze({
   ask_codex: ['model', 'effort', 'workspace', 'web_search', 'skill', 'session_id'],
   ask_claude: ['model', 'effort', 'workspace', 'web_search', 'skill', 'session_id'],
+  council_join: ['me', 'other_model', 'other_effort', 'other_session_id', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill'],
   council_ask: COUNCIL_OPTIONS,
   debate: COUNCIL_OPTIONS,
 });
@@ -50,6 +51,17 @@ export function checkWorkspace(value) {
   try { real = realpathSync(value); } catch { throw new Error(`workspace not found: ${value}`); }
   if (!statSync(real).isDirectory()) throw new Error(`workspace is not a folder: ${value}`);
   return real;
+}
+
+/**
+ * What the host is told about its access when it takes part itself (council_join): it works with its own
+ * tools, so nothing blocks its writes; it is asked not to change anything while the discussion runs.
+ */
+export function hostAccessNote(workspace, web = false) {
+  const files = workspace
+    ? `You are working in the project at ${workspace}. Read it to check facts before relying on them. Do not change any files while this discussion runs: describe any change you propose instead of making it.`
+    : 'Work from what you know and the text you are given. Do not change any files while this discussion runs.';
+  return files + (web ? ' Where you can search the web, use it for facts that change or that you are unsure of, and say where a fact came from.' : '');
 }
 
 /**
@@ -113,7 +125,14 @@ function checkOptions(tool, options) {
       continue;
     }
     if (key.endsWith('session_id')) {
-      clean[key] = checkSessionId(key === 'session_id' ? tool.slice(4) : key.split('_')[0], value);
+      const side = key === 'session_id' ? tool.slice(4) : key === 'other_session_id' ? OTHER[sideName(options.me)] : key.split('_')[0];
+      if (!side) throw new Error('me must be "claude" or "codex": the model you are');
+      clean[key] = checkSessionId(side, value);
+      continue;
+    }
+    if (key === 'me') {
+      clean.me = sideName(value);
+      if (!clean.me) throw new Error('me must be "claude" or "codex": the model you are');
       continue;
     }
     if (key === 'synthesizer') {
@@ -167,8 +186,10 @@ export function splitDraft(text) {
  * webSearch: whether both models may search the web; default from config.
  * skill: the name of an installed skill both models may use at the steps that need it, or undefined for none.
  * sessions: { codex, claude }, ids of sessions the user started, continued in place instead of new ones.
+ * host: { side, turn(prompt, signal) -> text } when the caller takes part itself as that side (council_join):
+ * its turns are handed to it instead of to a CLI, and only the other side runs a CLI session.
  */
-export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName, sessions = {} } = {}, { signal, onProgress } = {}) {
+export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName, sessions = {}, host } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
   sessions = { codex: sessions.codex && checkSessionId('codex', sessions.codex), claude: sessions.claude && checkSessionId('claude', sessions.claude) };
   workspace = workspaceFor(workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace), sessions);
@@ -177,6 +198,8 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   const writer = synthesizer === undefined ? config.synthesizer : sideName(synthesizer);
   if (!writer) throw new Error('synthesizer must be "claude" or "codex" (ChatGPT)');
   const settings = { codex: resolveSide('codex', codex, config), claude: resolveSide('claude', claude, config) };
+  if (host) settings[host.side] = { host: true };
+  const cliSides = SIDES_ORDER.filter(side => side !== host?.side);
   const web = webSearch ?? config.web_search;
   const skill = skillName ? loadSkill(skillName) : null;
   // With a skill, the first prompt of the question carries its instructions and each later step says it is still available.
@@ -185,8 +208,9 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.codex, held: true }),
     claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.claude, held: true }),
   };
-  // The council holds both sessions from start to finish (see holdSessions).
-  const held = SIDES_ORDER.map(side => ({ side, workspace, model: settings[side].model, resume: sessions[side] }));
+  if (host) task[host.side] = text => s => host.turn(text, s);
+  // The council holds the CLI sessions from start to finish (see holdSessions).
+  const held = cliSides.map(side => ({ side, workspace, model: settings[side].model, resume: sessions[side] }));
   return holdSessions(held, async () => {
     const ask = async (side, text) => (await together(signal, [task[side](text)]))[0];
     const progress = message => onProgress?.(message);
@@ -197,13 +221,13 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
       return { codex: codexText, claude: claudeText };
     };
 
-    progress('Checking that Codex and Claude Code are both signed in');
-    await requireBothSignedIn(config, { signal });
+    progress(host ? `Checking that ${LABEL[cliSides[0]]} is signed in` : 'Checking that Codex and Claude Code are both signed in');
+    await requireBothSignedIn(config, { signal, sides: cliSides });
 
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
-    const access = accessNote(workspace, web);
-    const answers = await bothSides((me, them) => withSkill(prompt('answer', { question, access, self: SPEAKER[me], other: SPEAKER[them] }), true));
+    const access = side => (side === host?.side ? hostAccessNote(workspace, web) : accessNote(workspace, web));
+    const answers = await bothSides((me, them) => withSkill(prompt('answer', { question, access: access(me), self: SPEAKER[me], other: SPEAKER[them] }), true));
     progress('Each model is critiquing the other');
     const verify = verifyNote(workspace, web);
     const critiques = await bothSides((me, them) => withSkill(prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify })));
@@ -214,7 +238,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
       settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, skill: skill?.name ?? null,
-        sessions: { codex: sessions.codex ?? null, claude: sessions.claude ?? null } },
+        sessions: { codex: sessions.codex ?? null, claude: sessions.claude ?? null }, ...(host ? { host: host.side } : {}) },
     };
 
     if (maxRounds === undefined) {
@@ -272,11 +296,25 @@ export function councilText(result) {
   return `${result.answer}\n\n---\nNot agreed after ${rounds} (${why}).${objections}`;
 }
 
-/** Entry point shared by the MCP server and the command line. Returns text. */
-export async function invoke(tool, question, options = {}, { signal, onProgress } = {}) {
+/**
+ * Entry point shared by the MCP server and the command line. Returns text.
+ * hostTurn(prompt, signal) -> text: for council_join, how to hand the caller its turns.
+ */
+export async function invoke(tool, question, options = {}, { signal, onProgress, hostTurn } = {}) {
   if (!Object.hasOwn(TOOL_OPTIONS, tool)) throw new Error(`unknown tool: ${tool}`);
   question = checkQuestion(question);
   const clean = checkOptions(tool, options || {});
+  if (tool === 'council_join') {
+    if (!clean.me) throw new Error('council_join needs me: "claude" or "codex", the model you are');
+    if (!hostTurn) throw new Error('council_join needs a host that takes turns (use it from Claude Code, Codex or a desktop app)');
+    const other = OTHER[clean.me];
+    const result = await debate(question, {
+      [other]: { model: clean.other_model, effort: clean.other_effort }, maxRounds: clean.max_rounds, synthesizer: clean.synthesizer,
+      workspace: workspaceFor(clean.workspace, { [other]: clean.other_session_id }), webSearch: clean.web_search, skill: clean.skill,
+      sessions: { [other]: clean.other_session_id }, host: { side: clean.me, turn: hostTurn },
+    }, { signal, onProgress });
+    return councilText(result);
+  }
   const own = tool.startsWith('ask_') ? { [tool.slice(4)]: clean.session_id } : { codex: clean.codex_session_id, claude: clean.claude_session_id };
   const workspace = workspaceFor(clean.workspace, own);
   const web = clean.web_search ?? loadConfig().web_search;
