@@ -3,7 +3,7 @@
 // Each model keeps one session (see adapters.mjs), so every prompt carries only what it has not seen yet.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { askClaude, askCodex, checkSessionId, holdSessions, requireBothSignedIn, sessionFolder } from './adapters.mjs';
+import { askClaude, askCodex, checkSessionRef, holdSessions, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 import { loadSkill, skillNote } from './skills.mjs';
 
@@ -127,7 +127,7 @@ function checkOptions(tool, options) {
     if (key.endsWith('session_id')) {
       const side = key === 'session_id' ? tool.slice(4) : key === 'other_session_id' ? OTHER[sideName(options.me)] : key.split('_')[0];
       if (!side) throw new Error('me must be "claude" or "codex": the model you are');
-      clean[key] = checkSessionId(side, value);
+      clean[key] = checkSessionRef(side, value);
       continue;
     }
     if (key === 'me') {
@@ -191,8 +191,12 @@ export function splitDraft(text) {
  */
 export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName, sessions = {}, host } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
-  sessions = { codex: sessions.codex && checkSessionId('codex', sessions.codex), claude: sessions.claude && checkSessionId('claude', sessions.claude) };
-  workspace = workspaceFor(workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace), sessions);
+  workspace = workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace);
+  sessions = {
+    codex: sessions.codex && await resolveSession('codex', sessions.codex, { workspace }),
+    claude: sessions.claude && await resolveSession('claude', sessions.claude, { workspace }),
+  };
+  workspace = workspaceFor(workspace, sessions);
   const config = loadConfig();
   maxRounds = parseMaxRounds(maxRounds) ?? config.max_rounds ?? undefined;
   const writer = synthesizer === undefined ? config.synthesizer : sideName(synthesizer);
@@ -304,6 +308,11 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
   if (!Object.hasOwn(TOOL_OPTIONS, tool)) throw new Error(`unknown tool: ${tool}`);
   question = checkQuestion(question);
   const clean = checkOptions(tool, options || {});
+  // Sessions given by name are looked up once, here, so every later step has the id.
+  for (const key of Object.keys(clean).filter(k => k.endsWith('session_id'))) {
+    const side = key === 'session_id' ? tool.slice(4) : key === 'other_session_id' ? OTHER[clean.me] : key.split('_')[0];
+    clean[key] = await resolveSession(side, clean[key], { workspace: clean.workspace });
+  }
   if (tool === 'council_join') {
     if (!clean.me) throw new Error('council_join needs me: "claude" or "codex", the model you are');
     if (!hostTurn) throw new Error('council_join needs a host that takes turns (use it from Claude Code, Codex or a desktop app)');

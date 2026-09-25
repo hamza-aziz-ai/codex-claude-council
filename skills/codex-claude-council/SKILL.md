@@ -14,7 +14,7 @@ This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign
 | A cross-checked answer from both models (decisions, reviews, plans) | `council_ask` |
 | To see where the models agree or disagree: every answer, critique, reply and round | `debate` (JSON; summarise the agreement and disagreements before quoting details) |
 | A quick second opinion from one model | `ask_codex` or `ask_claude` |
-| **You** to discuss with the other model, or gives only the id of **their session of the other model** (in Claude Code: "discuss with my Codex session 019a…") | `council_join` (see below) |
+| **You** to discuss with the other model, or names only **their session of the other model** (in Claude Code: "discuss with my Codex session 019a…" or "… my Codex session auth-refactor") | `council_join` (see below) |
 | Their existing Claude Code **and** Codex sessions to discuss with each other | `council_ask` / `debate` with `claude_session_id` and `codex_session_id` |
 
 ## Always pass `workspace` in a project
@@ -25,7 +25,7 @@ Each member keeps its session for as long as this session runs, so follow-up que
 
 ## Take part yourself: `council_join` and `council_turn`
 
-With `council_join`, you are one of the two members, in this conversation, and the plugin runs only the other model. Set `me` to the model you are (`claude` if you are Claude, `codex` if you are Codex or ChatGPT). If the user gave the id of their session of the other model, pass it as `other_session_id`; otherwise leave it out and the other model starts a new session.
+With `council_join`, you are one of the two members, in this conversation, and the plugin runs only the other model. Set `me` to the model you are (`claude` if you are Claude, `codex` if you are Codex or ChatGPT). If the user gave their session of the other model, by id or by name, pass it as `other_session_id`; otherwise leave it out and the other model starts a new session.
 
 `council_join` (and later `council_turn` or `council_result`) returns "Your turn in the council" with a `council_id` and a `<council_message>`: the same prompt a member gets for that step (answer, critique, reply, draft, review). For each turn:
 
@@ -36,7 +36,7 @@ With `council_join`, you are one of the two members, in this conversation, and t
 
 ## Continue the user's own sessions
 
-If the user gives ids of Claude Code or Codex sessions they already have and wants those sessions to discuss, pass `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`. Each is continued in place, with everything it already knows, in plan mode / read-only; its own folder is the workspace unless you pass one. Never pass the id of your own current session (use `council_join` instead), and never guess an id. Remind the user not to type in those sessions while the council runs.
+If the user gives Claude Code or Codex sessions they already have, by id or by the name they gave it with `/rename`, and wants those sessions to discuss, pass `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`, exactly as the user wrote it. Each is continued in place, with everything it already knows, in plan mode / read-only; its own folder is the workspace unless you pass one. Never pass your own current session (use `council_join` instead), and never guess an id or name. If the tool says no session has that name, tell the user how to find it (`/status` shows the id, `/rename` sets a name). Remind the user not to type in those sessions while the council runs.
 
 ## Options
 

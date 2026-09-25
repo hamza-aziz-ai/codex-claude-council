@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, claudeAnswer, resetSessions, sessionFolder } from '../src/adapters.mjs';
+import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, claudeAnswer, resolveSession, resetSessions, sessionFolder } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
 import { setup, withEnv } from './helpers.mjs';
 
@@ -97,6 +97,63 @@ test('each side keeps one session: later calls resume it in the same folder', as
   assert.notEqual(fake.questionCalls().at(-1).args[1], 'resume', 'after a reset, a new session starts');
 });
 
+test('a session can be given by the name it was given with /rename, in either CLI', async () => {
+  const project = realpathSync(fake.dir);
+  const [older, newer, renamed] = ['aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000003'];
+  const claudeDir = `${fake.dir}/claude-home/projects/-named`;
+  mkdirSync(claudeDir, { recursive: true });
+  const transcript = (id, titles) => [{ type: 'user', cwd: project, sessionId: id }, ...titles.map(t => ({ type: 'custom-title', customTitle: t, sessionId: id }))]
+    .map(e => JSON.stringify(e)).join('\n');
+  writeFileSync(`${claudeDir}/${older}.jsonl`, transcript(older, ['auth refactor']));
+  writeFileSync(`${claudeDir}/${renamed}.jsonl`, transcript(renamed, ['auth refactor', 'billing'])); // renamed since: now "billing"
+  writeFileSync(`${claudeDir}/${newer}.jsonl`, transcript(newer, ['Auth Refactor']));
+  // Most recently used first: the newer session also answers to "auth refactor", but only ignoring case.
+  const past = new Date(Date.now() - 60_000);
+  utimesSync(`${claudeDir}/${older}.jsonl`, past, past);
+  const codexIds = ['019a0000-1111-7222-8333-000000000001', '019a0000-1111-7222-8333-000000000002'];
+  mkdirSync(`${fake.dir}/codex-home/sessions/2026/09/25`, { recursive: true });
+  for (const id of codexIds) {
+    writeFileSync(`${fake.dir}/codex-home/sessions/2026/09/25/rollout-2026-09-25T10-00-00-${id}.jsonl`, `${JSON.stringify({ type: 'session_meta', payload: { id, cwd: project } })}\n`);
+  }
+  writeFileSync(`${fake.dir}/codex-home/session_index.jsonl`, [
+    { id: codexIds[0], thread_name: 'auth refactor', updated_at: '2026-09-24T10:00:00Z' },
+    { id: codexIds[1], thread_name: 'auth refactor', updated_at: '2026-09-25T10:00:00Z' },
+    { id: codexIds[0], thread_name: 'old work', updated_at: '2026-09-25T11:00:00Z' },
+  ].map(e => JSON.stringify(e)).join('\n'));
+  assert.equal(await resolveSession('claude', older), older, 'an id is used as it is');
+  assert.equal(await resolveSession('claude', 'auth refactor'), older, 'an exact match wins over a newer one that only matches ignoring case');
+  assert.equal(await resolveSession('claude', 'AUTH REFACTOR'), newer, 'ignoring case: the most recently used');
+  assert.equal(await resolveSession('claude', 'billing'), renamed, 'the latest name counts');
+  await assert.rejects(resolveSession('claude', 'nothing like it'), /no Claude Code session named "nothing like it"/);
+  // Transcripts only grow: a later lookup reads just what was added, and sees a rename made since.
+  writeFileSync(`${claudeDir}/${renamed}.jsonl`, `${transcript(renamed, ['auth refactor', 'billing'])}\n${JSON.stringify({ type: 'custom-title', customTitle: 'payments', sessionId: renamed })}\n`);
+  assert.equal(await resolveSession('claude', 'payments'), renamed);
+  await assert.rejects(resolveSession('claude', 'billing'), /no Claude Code session named "billing"/, 'renamed away');
+  // With a workspace, its own project's sessions come first, even older ones.
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'council-ws-')));
+  const local = 'aaaaaaaa-0000-4000-8000-000000000004';
+  const localDir = `${fake.dir}/claude-home/projects/${workspace.replace(/[^A-Za-z0-9]/g, '-')}`;
+  mkdirSync(localDir, { recursive: true });
+  writeFileSync(`${localDir}/${local}.jsonl`, transcript(local, ['auth refactor']));
+  const older2 = new Date(Date.now() - 120_000);
+  utimesSync(`${localDir}/${local}.jsonl`, older2, older2);
+  assert.equal(await resolveSession('claude', 'auth refactor', { workspace }), local, 'this project\'s session first');
+  rmSync(localDir, { recursive: true, force: true });
+  rmSync(workspace, { recursive: true, force: true });
+  assert.equal(await resolveSession('codex', 'auth refactor'), codexIds[1], 'the session most recently given that name');
+  assert.equal(await resolveSession('codex', 'old work'), codexIds[0]);
+  assert.equal(await resolveSession('codex', 'unlisted-thread'), 'unlisted-thread', 'Codex resolves other names itself');
+  // By name, the session is resumed by its id, in its own folder.
+  const result = JSON.parse(await invoke('debate', 'q', { claude_session_id: 'payments', codex_session_id: 'auth refactor', max_rounds: 1 }));
+  assert.deepEqual(result.settings.sessions, { codex: codexIds[1], claude: renamed });
+  assert.equal(result.settings.workspace, project);
+  for (const call of fake.questionCalls()) {
+    assert.equal(call.cwd, project);
+    if (call.cli === 'claude') assert.equal(arg(call, '--resume'), renamed);
+    else assert.equal(call.args.at(-2), codexIds[1]);
+  }
+});
+
 test('with a workspace, both models run in the project folder: Codex read-only, Claude in plan mode', async () => {
   const workspace = realpathSync(fake.dir); // what the council passes (on macOS, /var is a link to /private/var)
   await askCodex('a', {}, { workspace });
@@ -143,8 +200,10 @@ test('a session the user passes is continued in place, in the folder it was star
     assert.match(fake.questionCalls()[0].input, new RegExp(`working in the project at ${other.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
     rmSync(other, { recursive: true, force: true });
   });
-  await assert.rejects(invoke('ask_claude', 'q', { session_id: 'not-a-uuid' }), /not a Claude Code session id/);
-  await assert.rejects(invoke('council_ask', 'q', { codex_session_id: '../x' }), /not a Codex session id/);
+  await assert.rejects(invoke('ask_claude', 'q', { session_id: 'not-a-uuid' }), /no Claude Code session named "not-a-uuid": pass its id \(from \/status\) or the name you gave it with \/rename/);
+  await assert.rejects(invoke('council_ask', 'q', { codex_session_id: '../x' }), /no Codex session named "\.\.\/x"/);
+  await assert.rejects(invoke('council_ask', 'q', { codex_session_id: '--last' }), /not a Codex session id or name/, 'never passed on as an option');
+  await assert.rejects(invoke('ask_claude', 'q', { session_id: 'a\nb' }), /not a Claude Code session id or name/);
   await assert.rejects(invoke('ask_codex', 'q', { codex_session_id: 'x' }), /does not accept: codex_session_id/);
 });
 
