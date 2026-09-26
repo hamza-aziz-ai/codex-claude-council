@@ -1,5 +1,6 @@
 # Codex–Claude Council
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council)](https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council)
 [![CI](https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml/badge.svg)](https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/node-20%2B-brightgreen)
