@@ -20,6 +20,7 @@ Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **Chat
 - [Requirements](#requirements)
 - [Install](#install)
 - [Use it](#use-it)
+- [Examples and best practices](#examples-and-best-practices)
 - [Who takes part](#who-takes-part)
 - [What the members can use](#what-the-members-can-use)
 - [Options](#options)
@@ -148,6 +149,96 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 In a project, the host passes its folder as the `workspace`, and the models read what they need themselves: point them at files, functions, the failing test or the error rather than pasting whole files. They cannot see the host's conversation (unless the host takes part itself), so the host states the task and any context that is not in the project.
 
 **Long runs.** A council takes several minutes: six CLI calls (answers, critiques, replies) plus two per agreement round, all counting against both plans' limits. Some apps end a tool call after about 60 seconds (Claude Desktop does), so every tool returns within about 50 seconds, with the answer or with "still working", the current step and a `job_id`; the host then calls `council_result` until the answer is ready, while the council keeps running. `council_cancel` stops a job.
+
+## Examples and best practices
+
+### Pick the right tool
+
+```mermaid
+flowchart TD
+    S{What do you want?} -->|a quick second opinion| O[ask_codex / ask_claude]
+    S -->|a cross-checked answer| W{Who should take part?}
+    W -->|two fresh sessions| CA[council_ask]
+    W -->|my existing Claude Code and Codex sessions| CS[council_ask with claude_session_id and codex_session_id]
+    W -->|the session I am in, with the other model| CJ[council_join]
+    S -->|every step, to see where they disagree| D[debate]
+```
+
+The host picks the tool from your words. Name the tool if you want to be sure:
+
+| To get | Say | Not |
+|---|---|---|
+| `council_join` (the session you are in takes part) | "**Discuss with** my Codex session 019a… whether …", "**take part yourself** as Claude, with my Codex session …", or "use **council_join** …" | "council_ask with my Codex session", which starts a separate Claude session instead |
+| `council_ask` with your own sessions | "Ask the council, continuing my Claude session … and my Codex session …" | naming the session you are asking from |
+| `debate` | "Run a council **debate** on …", "show me every step" | – |
+
+### Use it from the desktop apps
+
+**Claude Cowork with a ChatGPT Work conversation.** Conversations in ChatGPT's Work mode are saved as Codex sessions, so the plugin can continue one by its title. In a Cowork conversation, ask:
+
+> Discuss with my ChatGPT Work session "Find UAE job platforms": which three job portals should I focus on first, and why?
+
+- **Cowork is the Claude member**, with everything its project gives it: its folders, instructions, connectors and skills.
+- **Codex continues that Work conversation**, read-only, in its own folder, and the council's turns appear there when you reopen it. Close it in the ChatGPT app first.
+- **A Cowork conversation can't be continued from outside:** Cowork doesn't save its conversations as Claude Code sessions. Start from Cowork to have it take part.
+- **Share the project folder.** If both apps' projects use the same folder on your computer, both models read the same files. Instructions stored only inside an app (a Cowork project's instructions, ChatGPT project settings) are not shared: the other model sees the folder's `CLAUDE.md` / `AGENTS.md` instead.
+
+### Give the members what they can't reach
+
+The members run on your computer, read-only. Codex's commands have **no network access**: it can't SSH to a server, query a database, open a Google Sheet or open a claude.ai link. Its web search runs on OpenAI's side and only reaches public pages. So the host collects the data first, into the workspace, and the question points to it:
+
+```mermaid
+flowchart LR
+    subgraph Remote[Out of the members' reach]
+        L[(Server logs)]
+        DB[(Database)]
+        G[Google Sheet]
+        A[claude.ai artifact]
+    end
+    H[Host session] -->|ssh, export, download| F["workspace/.council-data/<br/>(in .git/info/exclude)"]
+    L & DB & G & A -.-> H
+    F --> C[Claude member]
+    F --> X[Codex member]
+```
+
+- **Copy only what the question needs**, such as the log lines for the calls in question, not whole log folders.
+- **Keep the copies out of git:** put them in a folder listed in `.git/info/exclude`, which stays on your machine.
+- **Keep secrets out of the question.** The question is saved in both sessions and sent to both providers. Have the host read a connection string from an environment variable instead.
+
+### Write a question that works
+
+The members can't see your conversation with the host: they see only the `question` (at most 12,000 characters) and the workspace. For a long task, split your prompt in two:
+
+```
+## Part A — instructions for you (the host), not sent to the other model
+1. Collect the data into .council-data/ (see above).
+2. Start council_join with me "claude", other_session_id "<id>",
+   workspace "<absolute path>", max_rounds 0.
+3. When they agree, show me the result and wait for my OK before changing code.
+
+## Part B — the council question (send verbatim)
+Goal: <what you want, and what "done" means>.
+Data: <each file or folder, and its format>.
+Tasks: 1. Measure … 2. Trace the code path (file:line) … 3. Propose the smallest fix as a diff …
+Constraints: every claim cites a log line, a file:line or a measured number.
+```
+
+- **Say what to measure, not what to find.** If the question states the answer ("p50 is 2.7 s"), the other model tends to confirm it instead of checking. Give earlier findings as a file to open *after* its own measurement: "Do not open prior-study.md until you have your own numbers; then compare."
+- **Ask for evidence and for measured results.** "Report the saving as measured; do not round it up to a target" keeps a goal like "save 2 s" from turning into a claim.
+- **State the premise as a question, not a fact.** "Measure first; do not assume a fast path exists" lets the models correct a wrong assumption.
+- **The members only propose.** They are read-only, so the host applies the agreed change afterwards, then tests and commits it.
+- **In Claude Code, `/goal` is limited to 4,000 characters.** Save a long prompt as a file and give `/goal` a short condition: "`/goal Follow every step in /path/task.md in order. Done when: …`".
+
+### Skills, models and effort
+
+- **One skill through the plugin, more by name.** The `skill` option takes one skill. To use several, name them in the question (Codex runs a skill named `$caveman`), and have the host invoke the same skills itself.
+- **Use heavy skills once.** llm-council starts five advisors each time it runs. Ask for it once, on the final plan, not on every turn.
+- **Model and effort:** anything you don't set comes from the plugin's config (effort `high` by default), then from each CLI's own config. So Codex uses the model in your `~/.codex/config.toml`, but the plugin's `high` effort replaces the effort set there. Ask for `xhigh` or `max` for one question, or set it in the [config](#configure).
+
+### Sessions
+
+- **Close a session before the council continues it.** Codex refuses a session that is open in the Codex CLI or app ("already has an active writer"). A session Codex hasn't saved yet (no message sent in it) can't be continued either.
+- **Pass the id when it matters which session you get.** Names are easy to reuse; `codex resume` and `/status` show ids.
 
 ## Who takes part
 
