@@ -5,6 +5,7 @@
 // read anything, but neither can change anything: Claude runs in plan mode, Codex in its read-only sandbox.
 // A session can also be one the user started themselves, passed by id; it then continues in place.
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { createReadStream, existsSync, mkdtempSync, promises as fsp, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -68,15 +69,18 @@ async function latestTitle(file, size) {
   if (known?.size === size) return known.title;
   const start = known && known.size < size ? known.size : 0;
   let title = start ? known.title : null;
+  const input = createReadStream(file, { start, encoding: 'utf8' });
   try {
-    const lines = createInterface({ input: createReadStream(file, { start, encoding: 'utf8' }), crlfDelay: Infinity });
-    for await (const line of lines) {
+    for await (const line of createInterface({ input, crlfDelay: Infinity })) {
       if (!line.includes('"custom-title"')) continue;
       const entry = parseLine(line);
       if (entry?.type === 'custom-title' && typeof entry.customTitle === 'string') title = entry.customTitle;
     }
   } catch {
     return null;
+  } finally {
+    // The file closes a moment after the last line; wait for it, since on Windows an open file can't be deleted.
+    if (!input.closed) { input.destroy(); await once(input, 'close'); }
   }
   titles.set(file, { size, title });
   return title;
