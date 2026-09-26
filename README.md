@@ -15,7 +15,19 @@ Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **Chat
 - **With the web.** Both check current versions, APIs and docs instead of relying on memory.
 - **With skills on request**, such as [llm-council](https://github.com/aiwithremy/claude-skills-llm-council), [caveman](https://github.com/JuliusBrussee/caveman), [ponytail](https://github.com/DietrichGebert/ponytail) or [graphify](https://github.com/Graphify-Labs/graphify).
 
-**Contents:** [How it works](#how-it-works) · [Requirements](#requirements) · [Install](#install) · [Use it](#use-it) · [Who takes part](#who-takes-part) · [What the members can use](#what-the-members-can-use) · [Options](#options) · [Tool reference](#tool-reference) · [From the terminal](#from-the-terminal) · [Configure](#configure) · [Security and privacy](#security-and-privacy) · [Troubleshooting](#troubleshooting)
+**Contents:**
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Use it](#use-it)
+- [Who takes part](#who-takes-part)
+- [What the members can use](#what-the-members-can-use)
+- [Options](#options)
+- [Tool reference](#tool-reference)
+- [From the terminal](#from-the-terminal)
+- [Configure](#configure)
+- [Security and privacy](#security-and-privacy)
+- [Troubleshooting](#troubleshooting)
 
 ## How it works
 
