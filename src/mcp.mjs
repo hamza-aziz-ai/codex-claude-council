@@ -71,6 +71,24 @@ const councilFields = {
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
+const joinFields = {
+  me: { type: 'string', enum: ['claude', 'codex'], description: 'Which model you are: "claude" if you are Claude (Claude Code, Claude Desktop), "codex" if you are Codex or ChatGPT. The other model is the one the plugin runs.' },
+  other_session_id: {
+    type: 'string',
+    description: 'Optional: the id or /rename name of the user\'s own session of the other model (a Codex session if you are Claude, a Claude Code session if you are Codex), '
+      + 'to continue in place with its memory. Pass it exactly as the user gives it, only when they give one; never your own session.',
+  },
+  other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
+  other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },
+  synthesizer: { ...synthesizerField, description: 'Optional: which model drafts the final answer, "claude" or "codex" (you or the other model); the other reviews it. Omit for the configured default.' },
+  max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
+};
+
+const jobField = {
+  type: 'string',
+  description: 'The job_id a council tool returned while still working. Omit to use the most recent job.',
+};
+
 export const TOOLS = [
   {
     name: 'council_ask', title: 'Ask the Codex–Claude council',
@@ -92,21 +110,6 @@ export const TOOLS = [
     description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
     inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('claude') }), annotations,
   },
-];
-
-const joinFields = {
-  me: { type: 'string', enum: ['claude', 'codex'], description: 'Which model you are: "claude" if you are Claude (Claude Code, Claude Desktop), "codex" if you are Codex or ChatGPT. The other model is the one the plugin runs.' },
-  other_session_id: {
-    type: 'string',
-    description: 'Optional: the id or /rename name of the user\'s own session of the other model (a Codex session if you are Claude, a Claude Code session if you are Codex), '
-      + 'to continue in place with its memory. Pass it exactly as the user gives it, only when they give one; never your own session.',
-  },
-  other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
-  other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },
-  synthesizer: { ...synthesizerField, description: 'Optional: which model drafts the final answer, "claude" or "codex" (you or the other model); the other reviews it. Omit for the configured default.' },
-  max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
-};
-TOOLS.push(
   {
     name: 'council_join', title: 'Discuss with the other model yourself',
     description: 'Take part in the council yourself, in this conversation, with everything you already know, instead of a separate session of your model: '
@@ -131,13 +134,6 @@ TOOLS.push(
     },
     annotations,
   },
-);
-
-const jobField = {
-  type: 'string',
-  description: 'The job_id a council tool returned while still working. Omit to use the most recent job.',
-};
-TOOLS.push(
   {
     name: 'council_result', title: 'Get a running council\'s answer',
     description: 'Wait for the answer of a council_ask, debate, ask_codex, ask_claude or council_join call that returned a job_id because it was still working (for council_join: or for your next turn). '
@@ -150,7 +146,7 @@ TOOLS.push(
     inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false },
     annotations: { ...annotations, readOnlyHint: false },
   },
-);
+];
 
 const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
