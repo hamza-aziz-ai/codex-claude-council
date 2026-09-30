@@ -557,6 +557,22 @@ test('max_rounds 0 keeps going until both agree', () => withEnv(loopEnv({ FAKE_A
   assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('review')).length, 7);
 }));
 
+test('with council_join, the host writes the final answer unless the caller names another synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
+  const run = async options => {
+    const asked = [];
+    const hostTurn = async message => {
+      asked.push(message.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'review' : message.includes('---NOTES---') ? 'draft' : 'other');
+      return asked.at(-1) === 'review' ? 'fine\nVERDICT: AGREE' : asked.at(-1) === 'draft' ? 'HOST DRAFT\n---NOTES---\nnone' : 'HOST TEXT';
+    };
+    return { text: await invoke('council_join', 'q', { me: 'codex', max_rounds: 1, ...options }, { hostTurn }), asked };
+  };
+  const hosted = await run({}); // the config's synthesizer is Claude, the other model here
+  assert.match(hosted.text, /^HOST DRAFT/);
+  assert.ok(hosted.asked.includes('draft') && !hosted.asked.includes('review'), 'the host drafts; Claude reviews');
+  const named = await run({ synthesizer: 'claude' });
+  assert.ok(named.asked.includes('review') && !named.asked.includes('draft'), 'a named synthesizer wins: Claude drafts, the host reviews');
+}));
+
 test('the reviewer is the non-synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
   const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 1, synthesizer: 'codex' }));
   assert.deepEqual([result.rounds[0].drafter, result.rounds[0].reviewer], ['codex', 'claude']);

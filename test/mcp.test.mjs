@@ -98,7 +98,7 @@ test('council_join: the caller takes part itself; each of its turns comes back t
   turn = await reply('HOST CRITIQUE');
   assert.match(messageOf(turn), /^Codex reviewed your answer; its critique is below[\s\S]*HOST ANSWER$/, 'reply to Codex\'s critique of the host answer');
   turn = await reply('HOST REPLY');
-  assert.match(messageOf(turn), /^Codex has replied to your critique[\s\S]*HOST CRITIQUE$/, 'the host drafts (Claude is the default synthesizer)');
+  assert.match(messageOf(turn), /^Codex has replied to your critique[\s\S]*HOST CRITIQUE$/, 'the host drafts the final answer');
   const final = await reply('THE JOINT ANSWER\n---NOTES---\nnone');
   assert.match(final, /^THE JOINT ANSWER\n\n---\nCodex \(ChatGPT\) and Claude both agree with this answer \(1 round\)\.$/);
   const calls = fake.questionCalls();
