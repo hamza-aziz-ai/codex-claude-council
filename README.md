@@ -284,7 +284,7 @@ Say your repository has a Claude Code session `abcd` and a Codex session `efgh`,
 
 - **`abcd` itself is the Claude member.** No second Claude session is started. `council_join` hands `abcd` each of Claude's turns (the same prompts a Claude member gets); `abcd` writes them in its own conversation, with everything it already knows, and sends each back with `council_turn`.
 - **Codex continues `efgh`** in place, read-only. Without a session id, Codex starts a new session.
-- The steps are the same as `council_ask`, and the agreed answer lands in `abcd`.
+- The steps are the same as `council_ask`, and the agreed answer lands in `abcd`. **`abcd` drafts the final answer** and Codex reviews it, unless you name another synthesizer.
 
 It works the other way round too: from a Codex session, `council_join` makes that session the Codex member, and Claude continues the Claude Code session you name (or a new one).
 
@@ -308,7 +308,7 @@ Skills that a step would use to change something (saving a report, building an i
 
 ### Agreement: `synthesizer` and `max_rounds`
 
-**Claude** drafts the joint answer by default and Codex reviews it; pass `synthesizer: "codex"` (or change it in your config) to swap. Either way both models answer, critique and reply first.
+**Claude** drafts the joint answer by default and Codex reviews it; pass `synthesizer: "codex"` (or change it in your config) to swap. With `council_join`, the **host** drafts it by default, whichever model it is, since it has the whole context; pass `synthesizer` to have the other model draft instead. Either way both models answer, critique and reply first.
 
 | `max_rounds` | What happens |
 |---|---|
@@ -410,7 +410,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | `timeout_seconds` | limit for each CLI call |
 | `skill_timeout_seconds` | limit for each CLI call when a skill is in use, and for each of the host's turns with `council_join` (default `1800`) |
 | `tool_wait_seconds` | how long one tool call waits before returning "still working" and a `job_id` (default `50`, under the 60-second limit some apps have); `0` waits until the answer is ready |
-| `synthesizer` | which model drafts the final answer: `claude` (default) or `codex` (ChatGPT) |
+| `synthesizer` | which model drafts the final answer: `claude` (default) or `codex` (ChatGPT). Not used by `council_join`, where the host drafts |
 | `max_rounds` | draft/review rounds: `3` (default), `0` for no limit, `null` for a single pass without agreement |
 | `web_search` | whether the models may search the web and read pages: `true` (default) or `false` |
 | `codex.model`, `claude.model` | default model; `null` uses the CLI's own default |

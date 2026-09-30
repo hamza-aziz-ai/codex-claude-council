@@ -317,8 +317,9 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
     if (!clean.me) throw new Error('council_join needs me: "claude" or "codex", the model you are');
     if (!hostTurn) throw new Error('council_join needs a host that takes turns (use it from Claude Code, Codex or a desktop app)');
     const other = OTHER[clean.me];
+    // The host, which has the whole context, writes the final answer unless the caller names another synthesizer.
     const result = await debate(question, {
-      [other]: { model: clean.other_model, effort: clean.other_effort }, maxRounds: clean.max_rounds, synthesizer: clean.synthesizer,
+      [other]: { model: clean.other_model, effort: clean.other_effort }, maxRounds: clean.max_rounds, synthesizer: clean.synthesizer ?? clean.me,
       workspace: workspaceFor(clean.workspace, { [other]: clean.other_session_id }), webSearch: clean.web_search, skill: clean.skill,
       sessions: { [other]: clean.other_session_id }, host: { side: clean.me, turn: hostTurn },
     }, { signal, onProgress });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3 (2026-09-30)
+
+- **With `council_join`, the host writes the final answer by default**, whichever model it is (Claude or Codex): it has the whole context, and the other model reviews it. `synthesizer` still picks the other model when passed. The config's `synthesizer` now applies to `council_ask` and `debate` only. Before, a Codex host with the default config had Claude draft.
+- Looking up a Claude Code session by name now closes each transcript before returning. On Windows the file could still be open for a moment, so it could not be deleted right away.
+- All eight tools are declared in one list in `src/mcp.mjs`, so tools that read the source (such as the M8ven Trust Index) see all of them.
+
 ## 0.8.2 (2026-09-25)
 
 - A Codex session the user passes that is still open in the Codex CLI or app (Codex: `already has an active writer`) now gets a message saying to close it and try again, or to leave out the session id. One Codex has not saved yet (`no rollout found`) gets a message saying to send it a first message or check the id with `codex resume`. Every other Codex failure keeps its message.

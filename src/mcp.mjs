@@ -80,7 +80,7 @@ const joinFields = {
   },
   other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
   other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },
-  synthesizer: { ...synthesizerField, description: 'Optional: which model drafts the final answer, "claude" or "codex" (you or the other model); the other reviews it. Omit for the configured default.' },
+  synthesizer: { ...synthesizerField, description: 'Optional: which model drafts the final answer, "claude" or "codex" (you or the other model); the other reviews it. Omit to draft it yourself (the host); pass it only when the user names who should write it.' },
   max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
 };
 
