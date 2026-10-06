@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 (2026-10-06)
+
+- **`network`: Codex's commands can reach the network**, still read-only on disk. Off by default; turn it on per question (`network: true`, `--network`) or in the config (`"network": true`). `"network_domains"` limits it to some domains, enforced by Codex's network proxy. Codex then runs with a permission profile (a beta Codex feature) instead of its read-only sandbox: the whole disk read-only, the network on. Checked with the real Codex CLI 0.160 on Windows: an API call and a web page fetched, a write refused, a domain off the list blocked. Codex is told it may use the network; on Windows, to use Python or Node for HTTPS, since `curl.exe`, `Invoke-WebRequest` and `git` fail over HTTPS in the sandbox there. Claude's read-only commands already reach the network in plan mode, so the option is about Codex.
+
 ## 0.8.3 (2026-09-30)
 
 - **With `council_join`, the host writes the final answer by default**, whichever model it is (Claude or Codex): it has the whole context, and the other model reviews it. `synthesizer` still picks the other model when passed. The config's `synthesizer` now applies to `council_ask` and `debate` only. Before, a Codex host with the default config had Claude draft.

@@ -36,6 +36,8 @@ Model and effort (omit to use your config):
                                       repository you are in, if any
                    --no-workspace     no project folder
                    --no-web           no web search or web pages (default: on, "web_search" in the config)
+                   --network          let Codex's commands reach the network, still read-only on disk
+                                      (default: off, "network" in the config; not for the claude command)
                    --skill <name>     both models may use this installed skill where a step needs it
   codex, claude:   --session <id|name>  continue your own Codex / Claude Code session in place (keeps its memory);
                                         its id from /status, or the name you gave it with /rename
@@ -63,6 +65,7 @@ const OPTIONS = {
   workspace: { type: 'string' },
   'no-workspace': { type: 'boolean' },
   'no-web': { type: 'boolean' },
+  network: { type: 'boolean' },
   skill: { type: 'string' },
   session: { type: 'string' },
   'codex-session': { type: 'string' },
@@ -147,6 +150,7 @@ async function main() {
   if (wrong.length) throw new Error(`${commandName} does not take --${wrong.join(', --')} (see --help)`);
   if (values.workspace !== undefined && values['no-workspace']) throw new Error('use --workspace or --no-workspace, not both');
   if (values['no-web']) pairs.web_search = false;
+  if (values.network) pairs.network = true;
   if (values.skill !== undefined) pairs.skill = values.skill;
   // With a session id, the session's own folder is the default (see council.mjs); otherwise the git repository here.
   const resuming = [values.session, values['codex-session'], values['claude-session']].some(value => value !== undefined);

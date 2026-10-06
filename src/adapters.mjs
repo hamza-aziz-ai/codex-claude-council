@@ -332,12 +332,27 @@ function codexThreadId(stdout) {
 }
 
 /**
+ * Codex's sandbox: read-only, with no network for commands. With network, a permission profile instead (Codex's
+ * newer, beta settings, which win over sandbox_mode): the whole disk read-only (the Windows sandbox requires
+ * ":root" read access), the network on, and with domains, only those, through Codex's network proxy.
+ * Checked with the real CLI (0.160) on Windows: writes refused, a domain off the list blocked.
+ */
+export function sandboxArgs(network, domains = []) {
+  if (!network) return ['-c', 'sandbox_mode="read-only"'];
+  const allow = domains.length ? `, domains={${domains.map(domain => `"${domain}"="allow"`).join(', ')}}` : '';
+  return ['-c', 'default_permissions="council"', '-c', 'permissions.council.filesystem={":root"="read"}',
+    '-c', `permissions.council.network={enabled=true${allow}}`, ...(domains.length ? ['-c', 'features.network_proxy=true'] : [])];
+}
+
+/**
  * workspace: the project folder the model works in and may read (never write).
  * web: whether it may search the web (default: the config's web_search). Codex's web search runs on
- * OpenAI's side; its sandbox stays read-only with no network for commands.
+ * OpenAI's side; its sandbox stays read-only with no network for commands, unless network is true.
+ * network: whether its commands may reach the network (default: the config's network), still read-only on
+ * disk; limited to the config's network_domains when that list is not empty.
  * resume: the id of a Codex session the user started, continued in place (it keeps its memory).
  */
-export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false } = {}) {
+export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, network = config.network, skill = false, resume, held = false } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
@@ -350,7 +365,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     // The user's own config applies (their skills, plugins, MCP servers), but -c overrides it: the sandbox
     // stays read-only even where the config grants more (checked with the real CLI), and this plugin is off.
     // The sandbox is set with -c because `codex exec resume` has no --sandbox flag.
-    const common = ['--json', '--skip-git-repo-check', '-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="never"',
+    const common = ['--json', '--skip-git-repo-check', ...sandboxArgs(network, config.network_domains), '-c', 'approval_policy="never"',
       '-c', `plugins."${PLUGIN_ID}".enabled=false`];
     if (chosen.model) common.push('-m', chosen.model);
     if (chosen.effort) common.push('-c', `model_reasoning_effort=${chosen.effort}`);
@@ -359,7 +374,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     common.push('--output-last-message', answerFile);
     const args = session.id
       ? ['exec', 'resume', ...common, session.id, '-']
-      : ['exec', ...common, '--sandbox', 'read-only', '-C', cwd, '-'];
+      : ['exec', ...common, ...(network ? [] : ['--sandbox', 'read-only']), '-C', cwd, '-'];
     const result = await run(exe, args, { ...opts, input: prompt });
     session.id ??= codexThreadId(result.stdout);
     if (result.code !== 0) {

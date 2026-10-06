@@ -185,7 +185,7 @@ The host picks the tool from your words. Name the tool if you want to be sure:
 
 ### Give the members what they can't reach
 
-The members run on your computer, read-only. Codex's commands have **no network access**: it can't SSH to a server, query a database, open a Google Sheet or open a claude.ai link. Its web search runs on OpenAI's side and only reaches public pages. So the host collects the data first, into the workspace, and the question points to it:
+The members run on your computer, read-only. By default Codex's commands have **no network access**: it can't call an API, query a database, open a Google Sheet or open a claude.ai link, and its web search runs on OpenAI's side and only reaches public pages. Claude's read-only commands can reach the network. Turn on [`network`](#network-for-codexs-commands-network) to let Codex call APIs too. Either way, data behind a login (SSH, databases, private sheets) is best collected by the host first, into the workspace, with the question pointing to it:
 
 ```mermaid
 flowchart LR
@@ -299,8 +299,8 @@ It works the other way round too: from a Codex session, `council_join` makes tha
 |---|---|---|---|
 | **Mode** | plan mode | read-only sandbox (Codex's command line has no plan mode) | its own, unchanged |
 | **Your setup** | settings, skills, plugins, MCP servers, `CLAUDE.md`, hooks | `config.toml`: skills, plugins, MCP servers, `AGENTS.md`, rules | everything it already has |
-| **Can** | read, search, run read-only commands (`git log`, `diff`, `blame`, …), use skills and sub-agents, search the web | read, search, run commands that change nothing, use skills and sub-agents, search the web | anything it normally can; asked not to change files |
-| **Cannot** | edit, write or run other commands; ask you questions; use this plugin | write anywhere; get approval for anything; use this plugin | – |
+| **Can** | read, search, run read-only commands (`git log`, `diff`, `blame`, `curl`, …), use skills and sub-agents, search the web | read, search, run commands that change nothing, use skills and sub-agents, search the web; with `network`, reach the network from its commands | anything it normally can; asked not to change files |
+| **Cannot** | edit, write or run other commands; ask you questions; use this plugin | write anywhere; reach the network from its commands (unless `network` is on); get approval for anything; use this plugin | – |
 
 Skills that a step would use to change something (saving a report, building an index) have those steps skipped. Your MCP servers' tools run in their own processes: plan mode refuses Claude's tools that change things, while Codex follows each server's own approval settings. See [Security and privacy](#security-and-privacy).
 
@@ -323,6 +323,15 @@ The drafter endorses its own draft, so the reviewer's `AGREE` means both agree w
 Both models can search the web and read pages (on by default): Codex with its live web search, Claude with WebSearch and WebFetch. They prefer primary sources such as official docs and release notes, say where a fact came from, and check each other's claims against them. With a `workspace` they combine the two: *"Is our use of the Stripe API in `src/billing` still correct for the current API version?"*
 
 Turn it off with `web_search: false` for one question ("ask the council without internet access"), `--no-web` in the terminal, or `"web_search": false` in your config. See [Security and privacy](#security-and-privacy) before using it with a sensitive project.
+
+### Network for Codex's commands: `network`
+
+By default Codex's commands have no network access (its web search still works). Turn on `network` to let them reach the network, for example to call an API or fetch live data, while the disk stays **read-only**: *"ask the council, with network access for Codex: is our API returning the new field yet?"*, `--network` in the terminal, or `"network": true` in your config. Claude's read-only commands can already reach the network in plan mode.
+
+- **Limit where it can connect** with `"network_domains": ["api.github.com", "*.example.com"]` in your config. With a list, Codex's network proxy blocks every other domain; with an empty list (the default), any domain is allowed.
+- **How:** Codex runs with a permission profile instead of its read-only sandbox: the whole disk read-only, the network on. Permission profiles are a beta feature of Codex and may change; checked with Codex CLI 0.160.
+- **Windows:** HTTPS from `curl.exe`, `Invoke-WebRequest` and `git` fails inside Codex's sandbox (Windows' own TLS has no credentials for the sandbox account), while Python and Node work; Codex is told so. The sandbox also can't read `~/.ssh`, so SSH logins don't work from Codex there.
+- **Off by default, for a reason:** a model that can read your files and reach the network could also send them out, for example if a log or web page it reads tries to instruct it (a prompt injection). Use a domain list, and keep `network` off for sensitive projects.
 
 ### Skills: `skill`
 
@@ -376,6 +385,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet    
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --workspace ~/code/app  # this project
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no project folder
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web                # no web search
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --network               # Codex's commands may reach the network
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council     # with an installed skill
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --claude-session <uuid> --codex-session <id>  # your sessions
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --session <id>        # your Codex session
@@ -399,6 +409,8 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
   "synthesizer": "claude",
   "max_rounds": 3,
   "web_search": true,
+  "network": false,
+  "network_domains": [],
   "allow_api_key_auth": false,
   "codex":  { "command": null, "model": null, "effort": "high" },
   "claude": { "command": null, "model": null, "effort": "high" }
@@ -413,6 +425,8 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | `synthesizer` | which model drafts the final answer: `claude` (default) or `codex` (ChatGPT). Not used by `council_join`, where the host drafts |
 | `max_rounds` | draft/review rounds: `3` (default), `0` for no limit, `null` for a single pass without agreement |
 | `web_search` | whether the models may search the web and read pages: `true` (default) or `false` |
+| `network` | whether Codex's commands may reach the network, read-only on disk: `false` (default) or `true` |
+| `network_domains` | with `network`, the only domains Codex may connect to, such as `["api.github.com", "*.example.com"]`; `[]` (default) allows any |
 | `codex.model`, `claude.model` | default model; `null` uses the CLI's own default |
 | `codex.effort`, `claude.effort` | default effort |
 | `codex.command`, `claude.command` | full path to a CLI if it isn't found automatically |
@@ -429,7 +443,7 @@ Set `COUNCIL_CONFIG` to use a different config file.
   - With `council_join`, the host is your own session and keeps its own permissions; it is only asked not to change files.
 - **Your own setup applies.** The members run with your skills, plugins, MCP servers, hooks, `CLAUDE.md` / `AGENTS.md` and permission rules. This plugin is switched off inside them, so a member can't start another council. MCP tools run in their own processes: plan mode refuses Claude's tools that change things, while Codex follows each server's own approval settings, so keep that in mind for MCP servers that can change things.
 - **What they read is sent to the model providers.** Whatever either model chooses to read goes to OpenAI or Anthropic, as when you paste it. Both can read files outside the project too, as in your normal sessions: Codex's read-only sandbox allows reading the whole disk, and plan mode allows read-only commands anywhere. Without a `workspace`, they start in an empty folder and are told to work from the question.
-- **Web access.** Codex's web search runs on OpenAI's side (its sandbox still has no network for commands); Claude can search and fetch pages. With a `workspace` as well, text in the project that tries to instruct the model (a prompt injection) could in principle get it to send project content to a website, for example in a URL it fetches. For sensitive projects, turn web access off.
+- **Web access.** Codex's web search runs on OpenAI's side (its sandbox has no network for commands unless you turn on `network`); Claude can search and fetch pages, and its read-only commands can reach the network. With a `workspace` as well, text in the project that tries to instruct the model (a prompt injection) could in principle get it to send project content to a website, for example in a URL it fetches. For sensitive projects, turn web access off.
 - **Sessions.** The members' sessions are saved by the CLIs like any other, so they appear in `claude --resume` and `codex resume` for that folder. A session you pass by id is continued in place: the council's turns are added to it.
 - **Subscriptions, not API keys.** API-key environment variables are removed before the CLIs start. Codex must be signed in with ChatGPT and Claude Code with a Claude subscription, unless you set `allow_api_key_auth`.
 - **The plugin itself** runs with your user permissions: about 1,700 lines of dependency-free JavaScript in [`src/`](src). Read it before installing if you like.
