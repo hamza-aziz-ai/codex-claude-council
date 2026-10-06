@@ -5,6 +5,8 @@
   "synthesizer": "claude",
   "max_rounds": 3,
   "web_search": true,
+  "network": false,
+  "network_domains": [],
   "allow_api_key_auth": false,
   "codex": { "command": null, "model": null, "effort": "high" },
   "claude": { "command": null, "model": null, "effort": "high" }

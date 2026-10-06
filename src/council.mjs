@@ -7,12 +7,12 @@ import { askClaude, askCodex, checkSessionRef, holdSessions, requireBothSignedIn
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 import { loadSkill, skillNote } from './skills.mjs';
 
-const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill',
+const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'network', 'skill',
   'codex_session_id', 'claude_session_id'];
 export const TOOL_OPTIONS = Object.freeze({
-  ask_codex: ['model', 'effort', 'workspace', 'web_search', 'skill', 'session_id'],
+  ask_codex: ['model', 'effort', 'workspace', 'web_search', 'network', 'skill', 'session_id'],
   ask_claude: ['model', 'effort', 'workspace', 'web_search', 'skill', 'session_id'],
-  council_join: ['me', 'other_model', 'other_effort', 'other_session_id', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'skill'],
+  council_join: ['me', 'other_model', 'other_effort', 'other_session_id', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'network', 'skill'],
   council_ask: COUNCIL_OPTIONS,
   debate: COUNCIL_OPTIONS,
 });
@@ -79,6 +79,19 @@ function workspaceFor(workspace, sessions) {
   return undefined;
 }
 
+/**
+ * What Codex is told when its commands may reach the network (network: true). On Windows the sandbox
+ * account has no credentials for Windows' own TLS, so HTTPS from curl.exe, Invoke-WebRequest and git
+ * fails there, while Python and Node work (checked with the real CLI).
+ */
+export function networkNote(domains = []) {
+  const where = domains.length ? `, but only to these domains: ${domains.join(', ')}` : '';
+  const windows = process.platform === 'win32'
+    ? ' On this Windows machine, HTTPS from curl.exe, Invoke-WebRequest and git fails in your sandbox; use Python or Node for HTTPS.'
+    : '';
+  return ` Your commands can also reach the network${where}: use it to fetch live data the question needs, such as an API response or a page. You still cannot change any files.${windows}`;
+}
+
 /** What a model is told about its access, in its first prompt for each question. */
 export function accessNote(workspace, web = false) {
   const files = workspace
@@ -107,10 +120,10 @@ function checkOptions(tool, options) {
       if (rounds !== undefined) clean.max_rounds = rounds;
       continue;
     }
-    if (key === 'web_search') {
+    if (key === 'web_search' || key === 'network') {
       if (value === undefined || value === null) continue;
-      if (typeof value !== 'boolean') throw new Error('web_search must be true or false');
-      clean.web_search = value;
+      if (typeof value !== 'boolean') throw new Error(`${key} must be true or false`);
+      clean[key] = value;
       continue;
     }
     if (value === undefined || value === null) continue;
@@ -184,12 +197,13 @@ export function splitDraft(text) {
  * workspace: the project folder both models work in and may read (never write); default: the folder of a
  * session passed in sessions, else none.
  * webSearch: whether both models may search the web; default from config.
+ * network: whether Codex's commands may reach the network (still read-only on disk); default from config.
  * skill: the name of an installed skill both models may use at the steps that need it, or undefined for none.
  * sessions: { codex, claude }, ids of sessions the user started, continued in place instead of new ones.
  * host: { side, turn(prompt, signal) -> text } when the caller takes part itself as that side (council_join):
  * its turns are handed to it instead of to a CLI, and only the other side runs a CLI session.
  */
-export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, skill: skillName, sessions = {}, host } = {}, { signal, onProgress } = {}) {
+export async function debate(question, { codex = {}, claude = {}, maxRounds, synthesizer, workspace, webSearch, network, skill: skillName, sessions = {}, host } = {}, { signal, onProgress } = {}) {
   question = checkQuestion(question);
   workspace = workspace === undefined || workspace === null ? undefined : checkWorkspace(workspace);
   sessions = {
@@ -205,11 +219,12 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   if (host) settings[host.side] = { host: true };
   const cliSides = SIDES_ORDER.filter(side => side !== host?.side);
   const web = webSearch ?? config.web_search;
+  const net = network ?? config.network;
   const skill = skillName ? loadSkill(skillName) : null;
   // With a skill, the first prompt of the question carries its instructions and each later step says it is still available.
   const withSkill = (text, first = false) => skillNote(skill, first) + text;
   const task = {
-    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.codex, held: true }),
+    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, network: net, skill: Boolean(skill), resume: sessions.codex, held: true }),
     claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.claude, held: true }),
   };
   if (host) task[host.side] = text => s => host.turn(text, s);
@@ -230,7 +245,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
 
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
-    const access = side => (side === host?.side ? hostAccessNote(workspace, web) : accessNote(workspace, web));
+    const access = side => (side === host?.side ? hostAccessNote(workspace, web) : accessNote(workspace, web) + (side === 'codex' && net ? networkNote(config.network_domains) : ''));
     const answers = await bothSides((me, them) => withSkill(prompt('answer', { question, access: access(me), self: SPEAKER[me], other: SPEAKER[them] }), true));
     progress('Each model is critiquing the other');
     const verify = verifyNote(workspace, web);
@@ -241,7 +256,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const base = {
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
-      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, skill: skill?.name ?? null,
+      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, network: net, skill: skill?.name ?? null,
         sessions: { codex: sessions.codex ?? null, claude: sessions.claude ?? null }, ...(host ? { host: host.side } : {}) },
     };
 
@@ -320,22 +335,24 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
     // The host, which has the whole context, writes the final answer unless the caller names another synthesizer.
     const result = await debate(question, {
       [other]: { model: clean.other_model, effort: clean.other_effort }, maxRounds: clean.max_rounds, synthesizer: clean.synthesizer ?? clean.me,
-      workspace: workspaceFor(clean.workspace, { [other]: clean.other_session_id }), webSearch: clean.web_search, skill: clean.skill,
+      workspace: workspaceFor(clean.workspace, { [other]: clean.other_session_id }), webSearch: clean.web_search, network: clean.network, skill: clean.skill,
       sessions: { [other]: clean.other_session_id }, host: { side: clean.me, turn: hostTurn },
     }, { signal, onProgress });
     return councilText(result);
   }
   const own = tool.startsWith('ask_') ? { [tool.slice(4)]: clean.session_id } : { codex: clean.codex_session_id, claude: clean.claude_session_id };
   const workspace = workspaceFor(clean.workspace, own);
-  const web = clean.web_search ?? loadConfig().web_search;
+  const config = loadConfig();
+  const web = clean.web_search ?? config.web_search;
+  const net = tool === 'ask_codex' && (clean.network ?? config.network);
   const skill = clean.skill ? loadSkill(clean.skill) : null;
-  const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) });
-  const singleOptions = { signal, workspace, web, skill: Boolean(skill), resume: clean.session_id };
+  const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
+  const singleOptions = { signal, workspace, web, network: net, skill: Boolean(skill), resume: clean.session_id };
   if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, singleOptions);
   if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, singleOptions);
   const side = name => ({ model: clean[`${name}_model`], effort: clean[`${name}_effort`] });
   const result = await debate(question,
-    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search, skill: clean.skill, sessions: own },
+    { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search, network: clean.network, skill: clean.skill, sessions: own },
     { signal, onProgress });
   return tool === 'council_ask' ? councilText(result) : JSON.stringify(result, null, 2);
 }

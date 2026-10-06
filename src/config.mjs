@@ -42,6 +42,9 @@ function readJson(path, optional) {
   }
 }
 
+/** A domain name for Codex's network allowlist, optionally starting with "*." for its subdomains. */
+export const isDomain = value => typeof value === 'string' && /^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/.test(value);
+
 /** Re-read on every call, so edits to the user config apply without restarting anything. */
 export function loadConfig() {
   const defaults = readJson(join(PACKAGE_ROOT, 'src', 'defaults.json'), false);
@@ -54,6 +57,10 @@ export function loadConfig() {
   if (!(Number(config.skill_timeout_seconds) > 0)) throw new Error('config: skill_timeout_seconds must be a positive number');
   if (!(Number(config.tool_wait_seconds) >= 0)) throw new Error('config: tool_wait_seconds must be a number of seconds (0 = wait until finished)');
   if (typeof config.web_search !== 'boolean') throw new Error('config: web_search must be true or false');
+  if (typeof config.network !== 'boolean') throw new Error('config: network must be true or false');
+  if (!Array.isArray(config.network_domains) || !config.network_domains.every(isDomain)) {
+    throw new Error('config: network_domains must be a list of domain names, such as ["api.github.com", "*.example.com"]');
+  }
   config.max_rounds ??= null;
   if (config.max_rounds !== null && !(Number.isInteger(config.max_rounds) && config.max_rounds >= 0)) {
     throw new Error('config: max_rounds must be a whole number (0 = until both agree), or null for a single pass');

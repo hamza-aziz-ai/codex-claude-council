@@ -32,6 +32,47 @@ test('codex runs in its read-only sandbox with the user\'s own config, this plug
   assert.match(call.input, /こんにちは/);
 });
 
+test('with network, codex runs read-only on disk with the network on: any domain, or only the configured ones', async () => {
+  await askCodex('q', {}, { network: true });
+  let [call] = fake.questionCalls();
+  assert.ok(!call.args.includes('--sandbox'), 'a permission profile, not the read-only sandbox (they do not compose)');
+  let values = configValues(call);
+  assert.ok(!values.includes('sandbox_mode="read-only"'));
+  for (const value of ['default_permissions="council"', 'permissions.council.filesystem={":root"="read"}', 'permissions.council.network={enabled=true}']) {
+    assert.ok(values.includes(value), value);
+  }
+  assert.ok(!values.some(value => value.startsWith('features.network_proxy')), 'no proxy without a domain list');
+  fake.clearCalls();
+  fake.writeConfig({ network_domains: ['api.github.com', '*.example.com'] });
+  await askCodex('q', {}, { network: true });
+  [call] = fake.questionCalls();
+  values = configValues(call);
+  assert.ok(values.includes('permissions.council.network={enabled=true, domains={"api.github.com"="allow", "*.example.com"="allow"}}'));
+  assert.ok(values.includes('features.network_proxy=true'), 'the proxy enforces the domain list');
+});
+
+test('network is off by default, validated, offered only where Codex runs, and Codex is told about it', async () => {
+  await invoke('council_ask', 'q');
+  assert.ok(fake.questionCalls().filter(c => c.cli === 'codex').every(c => configValues(c).includes('sandbox_mode="read-only"')), 'off by default');
+  fake.clearCalls();
+  fake.writeConfig({ network_domains: ['api.github.com'] });
+  await invoke('council_ask', 'q', { network: true });
+  const codex = fake.questionCalls().filter(c => c.cli === 'codex');
+  const claude = fake.questionCalls().filter(c => c.cli === 'claude');
+  assert.ok(codex.every(c => configValues(c).includes('default_permissions="council"')), 'every Codex step');
+  assert.match(codex[0].input, /Your commands can also reach the network, but only to these domains: api\.github\.com/);
+  assert.ok(!claude.some(c => /reach the network/.test(c.input)), 'Claude is not told: the option is about Codex');
+  fake.clearCalls();
+  assert.match(await invoke('ask_codex', 'q', { network: true }), /^codex/);
+  assert.match(fake.questionCalls()[0].input, /reach the network/);
+  await assert.rejects(invoke('ask_claude', 'q', { network: true }), /does not accept: network/);
+  await assert.rejects(invoke('council_ask', 'q', { network: 'yes' }), /network must be true or false/);
+  fake.writeConfig({ network: 'yes' });
+  await assert.rejects(invoke('council_ask', 'q'), /config: network must be true or false/);
+  fake.writeConfig({ network_domains: ['ok.com', 'bad domain"'] });
+  await assert.rejects(invoke('council_ask', 'q'), /config: network_domains must be a list of domain names/);
+});
+
 test('claude runs in plan mode with the user\'s own setup, without ExitPlanMode or this plugin\'s tools', async () => {
   const answer = await askClaude('Question?\nhello', { model: 'sonnet', effort: 'max' });
   assert.equal(answer, 'claude[sonnet|max] hello');
@@ -228,7 +269,7 @@ test('debate returns answers, critiques, replies, rounds and the settings used',
   assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
     'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true, skill: null, sessions: { codex: null, claude: null },
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true, network: false, skill: null, sessions: { codex: null, claude: null },
   });
   assert.equal(result.agreed, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);

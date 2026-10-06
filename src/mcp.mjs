@@ -49,6 +49,11 @@ const sessionField = side => ({
   description: `Optional: ${sessionHint[side]}, to continue in place instead of a new session, so the model keeps that session's memory. `
     + 'Pass it exactly as the user gives it, only when they give one. The council\'s turns are added to that session, in plan mode (nothing is changed).',
 });
+const networkField = {
+  type: 'boolean',
+  description: 'Optional: whether Codex\'s shell commands may reach the network (for example to call an API or fetch live data), still read-only on disk. '
+    + 'Omit to use the configured default (off unless the user changed it). Pass true only when the user asks for it.',
+};
 const webField = {
   type: 'boolean',
   description: 'Optional: whether the models may search the web and read web pages. Omit to use the configured default (on unless the user changed it). '
@@ -66,7 +71,7 @@ const skillField = {
 const councilFields = {
   codex_model: modelField('codex'), codex_effort: effortField('codex'),
   claude_model: modelField('claude'), claude_effort: effortField('claude'),
-  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
+  synthesizer: synthesizerField, max_rounds: roundsField, workspace: workspaceField, web_search: webField, network: networkField, skill: skillField,
   codex_session_id: sessionField('codex'), claude_session_id: sessionField('claude'),
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
@@ -81,7 +86,7 @@ const joinFields = {
   other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
   other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },
   synthesizer: { ...synthesizerField, description: 'Optional: which model drafts the final answer, "claude" or "codex" (you or the other model); the other reviews it. Omit to draft it yourself (the host); pass it only when the user names who should write it.' },
-  max_rounds: roundsField, workspace: workspaceField, web_search: webField, skill: skillField,
+  max_rounds: roundsField, workspace: workspaceField, web_search: webField, network: networkField, skill: skillField,
 };
 
 const jobField = {
@@ -103,7 +108,7 @@ export const TOOLS = [
   {
     name: 'ask_codex', title: 'Ask Codex (ChatGPT) only',
     description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('codex') }), annotations,
+    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, network: networkField, skill: skillField, session_id: sessionField('codex') }), annotations,
   },
   {
     name: 'ask_claude', title: 'Ask Claude only',
