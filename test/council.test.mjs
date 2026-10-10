@@ -315,14 +315,26 @@ test('the next question continues the same sessions', async () => {
 });
 
 test('two councils at once in the same sessions take turns instead of interleaving', () => withEnv({ FAKE_SLEEP_MS: '100' }, async () => {
-  const [first, second] = await Promise.all([invoke('debate', 'first question'), invoke('debate', 'second question')]);
+  const steps = [[], []];
+  const [first, second] = await Promise.all([invoke('debate', 'first question', {}, { onProgress: m => steps[0].push(m) }),
+    invoke('debate', 'second question', {}, { onProgress: m => steps[1].push(m) })]);
   assert.equal(JSON.parse(first).agreed, true);
   assert.equal(JSON.parse(second).agreed, true);
+  assert.ok(!steps[0].some(m => m.startsWith('Waiting for')), 'the first council takes the sessions at once');
+  assert.match(steps[1][0], /^Waiting for the (Claude|Codex \(ChatGPT\)) session: another council or question is using it/, 'the second says why it waits');
   for (const cli of ['codex', 'claude']) {
     // Each council's four turns in a session are consecutive: answer, critique, reply, then draft or review.
     const turns = callsOf(cli).map(c => (c.input.startsWith('You are ') ? 'answer' : 'turn'));
     assert.deepEqual(turns, ['answer', 'turn', 'turn', 'turn', 'answer', 'turn', 'turn', 'turn'], cli);
   }
+}));
+
+test('a single question reports that the model is answering, or that it waits for the session first', () => withEnv({ FAKE_SLEEP_MS: '300' }, async () => {
+  const steps = [[], []];
+  await Promise.all([invoke('ask_claude', 'one', {}, { onProgress: m => steps[0].push(m) }), invoke('ask_claude', 'two', {}, { onProgress: m => steps[1].push(m) })]);
+  assert.deepEqual(steps[0], ['Claude is answering']);
+  assert.deepEqual(steps[1], ['Claude is answering', 'Waiting for the Claude session: another council or question is using it, and this one starts when it is free',
+    'Claude is answering']);
 }));
 
 test('a council cancelled while it waits for a session lets go of the sessions it holds', () => withEnv({ FAKE_SLEEP_MS_CODEX: '3000' }, async () => {

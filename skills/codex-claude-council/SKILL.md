@@ -58,6 +58,7 @@ A council takes minutes, and some apps end tool calls after about 60 seconds. So
 - Call `council_result` with that `job_id`; it waits up to about 50 seconds and returns the answer (or your next turn) as soon as it is ready. Repeat until it does. The council keeps running between calls.
 - Do not start the same question again, and do not tell the user it failed: "still working" is normal. You may briefly say which step it is at.
 - `council_cancel` stops a job, for example if the user asks to stop.
+- A session is used by one council or question at a time; the others wait, and their step says "Waiting for the … session". If it names a `council_join` job waiting for your reply, that job holds the session until you answer it: send that reply with `council_turn`, or stop that job with `council_cancel`, rather than waiting.
 
 ## Problems
 

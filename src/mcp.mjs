@@ -2,7 +2,7 @@
 import { createInterface } from 'node:readline';
 import { EFFORTS, NAME, loadConfig, packageVersion } from './config.mjs';
 import { MEMBER_ENV } from './adapters.mjs';
-import { invoke } from './council.mjs';
+import { WAITING, invoke } from './council.mjs';
 import { listSkills, nativeSkills } from './skills.mjs';
 
 const DEFAULTS_NOTE = 'Omit to use the configured default; set only when the user asks for a specific one.';
@@ -197,7 +197,7 @@ function hostTurn(job, prompt, signal) {
     const finish = () => { clearTimeout(timer); job.turn = null; };
     const timer = setTimeout(() => { finish(); reject(new Error(`no reply to the council's message within ${seconds} s (send it with council_turn)`)); }, seconds * 1000);
     signal?.addEventListener('abort', () => { finish(); reject(new Error('cancelled')); }, { once: true });
-    job.turn = { prompt, step: job.step, reply: text => { finish(); resolve(text); } };
+    job.turn = { prompt, step: job.step, since: Date.now(), reply: text => { finish(); resolve(text); } };
     for (const wake of job.wakers) wake();
     job.wakers.clear();
   });
@@ -212,11 +212,20 @@ function yourTurn(job) {
     + `Only that text is passed on to ${other}.\n\n<council_message>\n${job.turn.prompt.trim()}\n</council_message>`;
 }
 
+// A council_join waiting for the caller's reply keeps its sessions until the reply comes (or its time runs out,
+// up to skill_timeout_seconds), so a job waiting for a session names those: the caller may have lost track of one.
+function heldBy(job) {
+  if (!job.step.startsWith(WAITING)) return '';
+  return [...jobs.values()].filter(other => other !== job && !other.done && other.turn)
+    .map(other => ` ${other.id} has been waiting ${Math.round((Date.now() - other.turn.since) / 1000)} s for your reply to its turn, and keeps its sessions until then: `
+      + `reply with council_turn {"council_id": "${other.id}", "text": ...}, or stop it with council_cancel {"job_id": "${other.id}"}.`).join('');
+}
+
 function stillWorking(job) {
   const seconds = Math.round((Date.now() - job.started) / 1000);
   const who = job.name === 'ask_codex' ? 'Codex is' : job.name === 'ask_claude' ? 'Claude is'
     : job.name === 'council_join' ? `${SIDE_LABEL[job.me === 'claude' ? 'codex' : 'claude']} is` : 'The council is';
-  return `${who} still working (${seconds} s so far; now: ${job.step}). This can take several minutes.\n`
+  return `${who} still working (${seconds} s so far; now: ${job.step}).${heldBy(job)} This can take several minutes.\n`
     + `job_id: ${job.id}\n`
     + `To get the answer, call council_result with {"job_id": "${job.id}"}. It waits up to about a minute and returns the answer as soon as it is ready; `
     + 'if it says the job is still working, call it again. Do not start the same question again. To stop it, call council_cancel.';
