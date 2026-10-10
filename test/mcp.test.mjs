@@ -208,6 +208,32 @@ test('council_cancel stops a running job', async () => {
   }
 });
 
+test('a job waiting for a session another job uses says so, and names a council_join waiting for the caller\'s reply', async () => {
+  fake.writeConfig({ tool_wait_seconds: 1 });
+  const session = '019a0000-1111-7222-8333-555555555555';
+  try {
+    // A council_join whose turn the caller never answers keeps the Codex session.
+    const joined = (await call('council_join', { question: 'q', me: 'claude', other_session_id: session })).result.content[0].text;
+    const held = joined.match(/council_id: (job-\d+)/)[1];
+    // A question in the same session waits, and says why instead of "starting".
+    const asked = (await call('ask_codex', { question: 'same session', session_id: session })).result.content[0].text;
+    const waiting = asked.match(/job_id: (job-\d+)/)[1];
+    assert.match(asked, new RegExp(`now: Waiting for the Codex \\(ChatGPT\\) session ${session}: another council or question is using it`));
+    assert.match(asked, new RegExp(`${held} has been waiting \\d+ s for your reply to its turn, and keeps its sessions until then: `
+      + `reply with council_turn \\{"council_id": "${held}", "text": \\.\\.\\.\\}, or stop it with council_cancel \\{"job_id": "${held}"\\}`));
+    // Once the council_join is stopped, the question runs.
+    await call('council_cancel', { job_id: held });
+    let answer;
+    for (let polls = 0; polls < 10 && !answer; polls += 1) {
+      const text = (await call('council_result', { job_id: waiting })).result.content[0].text;
+      if (!/still working/.test(text)) answer = text;
+    }
+    assert.match(answer, /same session/);
+  } finally {
+    fake.writeConfig();
+  }
+});
+
 test('with tool_wait_seconds 0, a call waits until the answer is ready', async () => {
   fake.writeConfig({ tool_wait_seconds: 0 });
   try {

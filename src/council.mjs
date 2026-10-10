@@ -18,6 +18,10 @@ export const TOOL_OPTIONS = Object.freeze({
 });
 export const MAX_QUESTION_LENGTH = 12_000;
 const LABEL = { codex: 'Codex (ChatGPT)', claude: 'Claude' };
+
+/** Progress while a session is in use by another council or question (see holdSessions), which can take minutes. */
+export const WAITING = 'Waiting for the ';
+const waitingFor = (side, session) => `${WAITING}${LABEL[side]} session${session ? ` ${session}` : ''}: another council or question is using it, and this one starts when it is free`;
 const SPEAKER = { codex: 'Codex', claude: 'Claude' }; // names used inside prompts
 const OTHER = { codex: 'claude', claude: 'codex' };
 const SIDES_ORDER = ['codex', 'claude'];
@@ -300,7 +304,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
       }
     }
     return { answer: draft, agreed: false, rounds_run: rounds.length, rounds, stopped_reason: stoppedReason, ...base };
-  }, { signal });
+  }, { signal, onWait: (side, waiting) => waiting && onProgress?.(waitingFor(side, sessions[side])) });
 }
 
 /** Plain-text answer for council_ask and the terminal. */
@@ -346,10 +350,16 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
   const web = clean.web_search ?? config.web_search;
   const net = tool === 'ask_codex' && (clean.network ?? config.network);
   const skill = clean.skill ? loadSkill(clean.skill) : null;
-  const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
-  const singleOptions = { signal, workspace, web, network: net, skill: Boolean(skill), resume: clean.session_id };
-  if (tool === 'ask_codex') return askCodex(single, { model: clean.model, effort: clean.effort }, singleOptions);
-  if (tool === 'ask_claude') return askClaude(single, { model: clean.model, effort: clean.effort }, singleOptions);
+  if (tool === 'ask_codex' || tool === 'ask_claude') {
+    const one = tool.slice(4);
+    const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
+    const answering = () => onProgress?.(`${LABEL[one]} is answering`);
+    const singleOptions = { signal, workspace, web, network: net, skill: Boolean(skill), resume: clean.session_id,
+      onWait: waiting => (waiting ? onProgress?.(waitingFor(one, clean.session_id)) : answering()) };
+    answering();
+    const ask = one === 'codex' ? askCodex : askClaude;
+    return ask(single, { model: clean.model, effort: clean.effort }, singleOptions);
+  }
   const side = name => ({ model: clean[`${name}_model`], effort: clean[`${name}_effort`] });
   const result = await debate(question,
     { codex: side('codex'), claude: side('claude'), maxRounds: clean.max_rounds, synthesizer: clean.synthesizer, workspace, webSearch: clean.web_search, network: clean.network, skill: clean.skill, sessions: own },

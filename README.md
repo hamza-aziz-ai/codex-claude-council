@@ -461,6 +461,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 - **"timed out"**: raise `timeout_seconds` (or `skill_timeout_seconds` with a skill), or lower the effort.
 - **The tool call ended after about 60 seconds**: update to 0.6.2 or later, where every tool returns within about 50 seconds and the host polls `council_result`. If your app has no such limit, `"tool_wait_seconds": 0` waits in one call.
 - **"no … session named …"**: no session has that name. Check it with `claude --resume` / `codex resume --all`, rename the session with `/rename`, or pass its id from `/status`.
+- **"Waiting for the … session"**: another council or question is using that session; each session takes one at a time, and this one starts when it is free. If the message names a `council_join` job waiting for your reply, that job holds the session until the host answers it (up to `skill_timeout_seconds`, 30 minutes by default): send the reply with `council_turn`, or stop that job with `council_cancel`.
 - **"… is not waiting for your reply now"** (`council_join`): the other model is still working; the host should call `council_result` with the id to get its next turn.
 - **`skill "…" is not installed`**: install it with `skill add`, then restart the app so the tools list it.
 - **Tools don't appear**: fully quit and reopen the app after installing. In the desktop apps, check the plugin is installed and enabled under **Settings → Plugins**.

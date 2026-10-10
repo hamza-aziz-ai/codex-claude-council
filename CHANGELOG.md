@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 (2026-10-10)
+
+- **A job waiting for a session now says so.** Each session takes one council or question at a time, and a job queued behind another one reported "starting" until it got the session, with no reason given. It now reports "Waiting for the Codex (ChatGPT) session …: another council or question is using it". If a `council_join` is holding the session while it waits for the host's reply, the message names that job and how to release it (`council_turn` or `council_cancel`). Found in a real run: a `council_join` whose host lost track of its turn held a ChatGPT Work session for its full 30-minute wait, and a second council on that session showed "starting" for 25 minutes.
+- `ask_codex` and `ask_claude` report "… is answering" while they run, instead of "starting".
+
 ## 0.9.0 (2026-10-06)
 
 - **`network`: Codex's commands can reach the network**, still read-only on disk. Off by default; turn it on per question (`network: true`, `--network`) or in the config (`"network": true`). `"network_domains"` limits it to some domains, enforced by Codex's network proxy. Codex then runs with a permission profile (a beta Codex feature) instead of its read-only sandbox: the whole disk read-only, the network on. Checked with the real Codex CLI 0.160 on Windows: an API call and a web page fetched, a write refused, a domain off the list blocked. Codex is told it may use the network; on Windows, to use Python or Node for HTTPS, since `curl.exe`, `Invoke-WebRequest` and `git` fail over HTTPS in the sandbox there. Claude's read-only commands already reach the network in plan mode, so the option is about Codex.

@@ -216,20 +216,27 @@ function untilDoneOrAborted(promise, signal) {
 }
 
 // One call at a time per session. A caller cancelled while it waits leaves the queue at once; its place
-// passes on when the call before it finishes, so the calls behind it still never overlap.
-async function inSession(session, work, signal) {
+// passes on when the call before it finishes, so the calls behind it still never overlap. When the session is
+// in use, onWait(true) is called, then onWait(false) once it is free: nothing else reports progress meanwhile.
+async function inSession(session, work, signal, onWait) {
   const previous = session.queue;
   let release;
   session.queue = new Promise(resolve => { release = resolve; });
+  const waits = session.users > 0;
+  if (waits) onWait?.(true);
+  session.users = (session.users ?? 0) + 1;
   try {
     await untilDoneOrAborted(previous, signal);
   } catch (error) {
+    session.users -= 1;
     previous.then(release);
     throw error;
   }
+  if (waits) onWait?.(false);
   try {
     return await work();
   } finally {
+    session.users -= 1;
     release();
   }
 }
@@ -238,12 +245,13 @@ async function inSession(session, work, signal) {
  * Hold these sessions ({ side, workspace, model, resume }) for the whole of work, so no other council or question
  * takes a turn in them meanwhile: each prompt assumes the turns before it in the session are its own.
  * Calls made inside pass { held: true }. Sessions are taken in a fixed order, so two councils cannot
- * each hold one and wait for the other.
+ * each hold one and wait for the other. onWait(side, waiting) reports waiting for a session in use (see inSession).
  */
-export async function holdSessions(entries, work, { signal } = {}) {
+export async function holdSessions(entries, work, { signal, onWait } = {}) {
   const ordered = [...entries].sort((a, b) => a.side.localeCompare(b.side));
   const hold = index => (index === ordered.length ? work()
-    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model, ordered[index].resume), () => hold(index + 1), signal));
+    : inSession(sessionFor(ordered[index].side, ordered[index].workspace, ordered[index].model, ordered[index].resume), () => hold(index + 1), signal,
+      waiting => onWait?.(ordered[index].side, waiting)));
   return hold(0);
 }
 
@@ -352,7 +360,7 @@ export function sandboxArgs(network, domains = []) {
  * disk; limited to the config's network_domains when that list is not empty.
  * resume: the id of a Codex session the user started, continued in place (it keeps its memory).
  */
-export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, network = config.network, skill = false, resume, held = false } = {}) {
+export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, network = config.network, skill = false, resume, held = false, onWait } = {}) {
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
@@ -395,7 +403,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     if (!answer) throw new Error('codex returned an empty answer');
     return answer;
   });
-  return held ? call() : inSession(session, call, signal);
+  return held ? call() : inSession(session, call, signal, onWait);
 }
 
 /**
@@ -426,7 +434,7 @@ export function claudeAnswer(stdout) {
  * resume: the id of a Claude Code session the user started, continued in place (it keeps its memory).
  * Plan mode applies on top of the user's own settings, whatever mode they use themselves.
  */
-export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false } = {}) {
+export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false, onWait } = {}) {
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
   const session = sessionFor('claude', workspace, chosen.model, resume && await resolveSession('claude', resume, { workspace }));
@@ -449,5 +457,5 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
     }
     return answer;
   };
-  return held ? call() : inSession(session, call, signal);
+  return held ? call() : inSession(session, call, signal, onWait);
 }
