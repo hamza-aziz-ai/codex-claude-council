@@ -63,8 +63,9 @@ const webField = {
 const installedSkills = [...listSkills(), ...nativeSkills()].map(skill => skill.name);
 const skillField = {
   type: 'string',
-  description: 'Optional: the name of an installed skill both models may use for this question, at the steps where they judge it is needed, including any sub-agents it calls for. '
-    + 'Pass it only when the user asks to use that skill (by name, or by a phrase the skill says triggers it). '
+  description: 'Optional: the name of an installed skill both models may use for this question, at the steps where they judge it is needed, including any sub-agents it calls for; '
+    + 'for several skills, their names separated by commas ("llm-council, caveman"). '
+    + 'Pass only skills the user asks to use (by name, or by a phrase the skill says triggers it). '
     + `Installed: ${installedSkills.length ? installedSkills.join(', ') : 'none (install with `codex-claude-council skill add <GitHub URL>`)'}. `
     + 'A step that uses it takes much longer and uses much more of both plans.',
 };
@@ -160,7 +161,7 @@ const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, deba
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
   + 'If the user gives the id or name of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on ask_claude / ask_codex) to continue that session. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes. '
-  + 'Pass skill (an installed skill\'s name) only when the user asks to use that skill; each model then uses it at the steps that need it. '
+  + 'Pass skill (an installed skill\'s name, or several separated by commas) only when the user asks to use those skills; each model then uses them at the steps that need them. '
   + 'If a call returns a job_id because it is still working, call council_result (again, until it returns the answer); do not start the same question again. '
   + 'To take part yourself instead of a separate session of your model (for example when the user gives the id of their session of the other model), use council_join; '
   + 'whenever a result says it is your turn, write that reply yourself and send it with council_turn.';

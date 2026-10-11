@@ -5,7 +5,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { askClaude, askCodex, checkSessionRef, holdSessions, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
-import { loadSkill, skillNote } from './skills.mjs';
+import { loadSkills, skillNote } from './skills.mjs';
 
 const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'network', 'skill',
   'codex_session_id', 'claude_session_id'];
@@ -131,14 +131,15 @@ function checkOptions(tool, options) {
       continue;
     }
     if (value === undefined || value === null) continue;
+    if (key === 'skill') {
+      const names = loadSkills(value).map(skill => skill.name);
+      if (names.length) clean.skill = names;
+      continue;
+    }
     if (typeof value !== 'string') throw new Error(`${key} must be a string`);
     if (!value.trim()) continue;
     if (key === 'workspace') {
       clean.workspace = checkWorkspace(value.trim());
-      continue;
-    }
-    if (key === 'skill') {
-      clean.skill = loadSkill(value).name;
       continue;
     }
     if (key.endsWith('session_id')) {
@@ -202,7 +203,8 @@ export function splitDraft(text) {
  * session passed in sessions, else none.
  * webSearch: whether both models may search the web; default from config.
  * network: whether Codex's commands may reach the network (still read-only on disk); default from config.
- * skill: the name of an installed skill both models may use at the steps that need it, or undefined for none.
+ * skill: installed skills both models may use at the steps that need them: a name, names separated by commas, a list
+ * of names, or undefined for none.
  * sessions: { codex, claude }, ids of sessions the user started, continued in place instead of new ones.
  * host: { side, turn(prompt, signal) -> text } when the caller takes part itself as that side (council_join):
  * its turns are handed to it instead of to a CLI, and only the other side runs a CLI session.
@@ -224,12 +226,13 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   const cliSides = SIDES_ORDER.filter(side => side !== host?.side);
   const web = webSearch ?? config.web_search;
   const net = network ?? config.network;
-  const skill = skillName ? loadSkill(skillName) : null;
-  // With a skill, the first prompt of the question carries its instructions and each later step says it is still available.
-  const withSkill = (text, first = false) => skillNote(skill, first) + text;
+  const skills = loadSkills(skillName);
+  const skill = skills.length > 0;
+  // With skills, the first prompt of the question carries their instructions and each later step says they are still available.
+  const withSkill = (text, first = false) => skillNote(skills, first) + text;
   const task = {
-    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, network: net, skill: Boolean(skill), resume: sessions.codex, held: true }),
-    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill: Boolean(skill), resume: sessions.claude, held: true }),
+    codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, network: net, skill, resume: sessions.codex, held: true }),
+    claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill, resume: sessions.claude, held: true }),
   };
   if (host) task[host.side] = text => s => host.turn(text, s);
   // The council holds the CLI sessions from start to finish (see holdSessions).
@@ -260,7 +263,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     const base = {
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
-      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, network: net, skill: skill?.name ?? null,
+      settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, network: net, skill: skill ? skills.map(s => s.name) : null,
         sessions: { codex: sessions.codex ?? null, claude: sessions.claude ?? null }, ...(host ? { host: host.side } : {}) },
     };
 
@@ -349,12 +352,12 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
   const config = loadConfig();
   const web = clean.web_search ?? config.web_search;
   const net = tool === 'ask_codex' && (clean.network ?? config.network);
-  const skill = clean.skill ? loadSkill(clean.skill) : null;
+  const skills = loadSkills(clean.skill);
   if (tool === 'ask_codex' || tool === 'ask_claude') {
     const one = tool.slice(4);
-    const single = skillNote(skill, true) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
+    const single = skillNote(skills, true) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
     const answering = () => onProgress?.(`${LABEL[one]} is answering`);
-    const singleOptions = { signal, workspace, web, network: net, skill: Boolean(skill), resume: clean.session_id,
+    const singleOptions = { signal, workspace, web, network: net, skill: skills.length > 0, resume: clean.session_id,
       onWait: waiting => (waiting ? onProgress?.(waitingFor(one, clean.session_id)) : answering()) };
     answering();
     const ask = one === 'codex' ? askCodex : askClaude;

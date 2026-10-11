@@ -145,6 +145,7 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 | "Ask the council: is **the latest** Next.js release safe to upgrade to for our app?" | `council_ask`: both read the project and search the web |
 | "Ask the council **without internet access**: …" | `council_ask` with `web_search: false` |
 | "Ask the council, **using the llm-council skill**: rewrite the billing service or refactor it?" | `council_ask` with `skill: "llm-council"` |
+| "Ask the council, **using the llm-council and caveman skills**: …" | `council_ask` with `skill: "llm-council, caveman"` |
 
 In a project, the host passes its folder as the `workspace`, and the models read what they need themselves: point them at files, functions, the failing test or the error rather than pasting whole files. They cannot see the host's conversation (unless the host takes part itself), so the host states the task and any context that is not in the project.
 
@@ -231,7 +232,7 @@ Constraints: every claim cites a log line, a file:line or a measured number.
 
 ### Skills, models and effort
 
-- **One skill through the plugin, more by name.** The `skill` option takes one skill. To use several, name them in the question (Codex runs a skill named `$caveman`), and have the host invoke the same skills itself.
+- **Several skills at once.** Name them all (`skill: "llm-council, caveman"`, or `--skill llm-council --skill caveman`). Both models get each one's instructions and use each where it fits. With `council_join`, have the host invoke the same skills itself.
 - **Use heavy skills once.** llm-council starts five advisors each time it runs. Ask for it once, on the final plan, not on every turn.
 - **Model and effort:** anything you don't set comes from the plugin's config (effort `high` by default), then from each CLI's own config. So Codex uses the model in your `~/.codex/config.toml`, but the plugin's `high` effort replaces the effort set there. Ask for `xhigh` or `max` for one question, or set it in the [config](#configure).
 
@@ -350,7 +351,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council skill remove caveman-stats
 - Skills are saved in `~/.codex-claude-council/skills/<name>/`. Skills installed natively for Claude Code (`~/.claude/skills`) or Codex (`~/.codex/skills`, `~/.agents/skills`) can be named too. Restart the apps afterwards so the tools list new skills.
 - Nothing third-party ships with the plugin: check a skill's license and contents before you install it (llm-council, for example, has no license file).
 
-**A skill is used only when you ask for it**: *"ask the council, using the llm-council skill: …"*, or `--skill llm-council` in the terminal. Both models (and the host, with `council_join`) get its instructions with the question and **decide for themselves at which steps it is needed**, following the skill's own guidance: a method like llm-council for a real decision or disagreement, a style like caveman (terse replies) or ponytail (the simplest solution that works) on every reply. When a model uses a skill, it follows it fully, including sub-agents, which are read-only too. The discussion's rules come first, and each answer comes back in the format its step asks for.
+**A skill is used only when you ask for it**: *"ask the council, using the llm-council skill: …"*, or `--skill llm-council` in the terminal. For several, name them all: *"using the llm-council and caveman skills"*, `skill: "llm-council, caveman"`, or `--skill llm-council --skill caveman`. Both models (and the host, with `council_join`) get its instructions with the question and **decide for themselves at which steps it is needed**, following the skill's own guidance: a method like llm-council for a real decision or disagreement, a style like caveman (terse replies) or ponytail (the simplest solution that works) on every reply. When a model uses a skill, it follows it fully, including sub-agents, which are read-only too. The discussion's rules come first, and each answer comes back in the format its step asks for.
 
 **graphify** builds its knowledge graph by running a Python tool that writes `graphify-out/`, which the members cannot do. Build it yourself first (`pip install graphifyy`, then `graphify .` in the project); the members then read `graphify-out/GRAPH_REPORT.md` and `graph.json`, and Codex can run `graphify query`.
 
@@ -387,6 +388,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace       
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web                # no web search
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --network               # Codex's commands may reach the network
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council     # with an installed skill
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council,caveman  # with several
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --claude-session <uuid> --codex-session <id>  # your sessions
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --session <id>        # your Codex session
 ```

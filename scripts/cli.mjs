@@ -38,7 +38,8 @@ Model and effort (omit to use your config):
                    --no-web           no web search or web pages (default: on, "web_search" in the config)
                    --network          let Codex's commands reach the network, still read-only on disk
                                       (default: off, "network" in the config; not for the claude command)
-                   --skill <name>     both models may use this installed skill where a step needs it
+                   --skill <name>     both models may use this installed skill where a step needs it;
+                                      repeat it, or separate names with commas, for several
   codex, claude:   --session <id|name>  continue your own Codex / Claude Code session in place (keeps its memory);
                                         its id from /status, or the name you gave it with /rename
   ask, debate:     --codex-session <id|name>  --claude-session <id|name>   the same, per side
@@ -66,7 +67,7 @@ const OPTIONS = {
   'no-workspace': { type: 'boolean' },
   'no-web': { type: 'boolean' },
   network: { type: 'boolean' },
-  skill: { type: 'string' },
+  skill: { type: 'string', multiple: true },
   session: { type: 'string' },
   'codex-session': { type: 'string' },
   'claude-session': { type: 'string' },

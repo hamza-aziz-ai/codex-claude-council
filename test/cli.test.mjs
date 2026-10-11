@@ -76,8 +76,10 @@ test('skills from the terminal: add, list, use with --skill, remove', () => {
   assert.match(cli(['skill', 'list']).stdout, /^my-skill\n  Mine\.$/m);
   fake.clearCalls();
   assert.equal(cli(['claude', 'q', '--skill', 'my-skill', '--no-workspace']).status, 0);
+  assert.equal(cli(['claude', 'q', '--skill', 'my-skill', '--skill', 'my-skill,my-skill', '--no-workspace']).status, 0, 'repeated and comma-separated');
   const call = fake.questionCalls().at(-1);
   assert.ok(call.input.includes('<skill name="my-skill">\nDo it well.\n</skill>'));
+  assert.match(call.input, /^For this question, the "my-skill" skill is available/, 'each skill once');
   assert.ok(!call.args.includes('Agent'), 'Claude keeps its sub-agent tool');
   assert.match(cli(['skill', 'remove', 'my-skill']).stdout, /Removed skill "my-skill"/);
   assert.match(cli(['claude', 'q', '--skill', 'my-skill']).stderr, /skill "my-skill" is not installed/);
