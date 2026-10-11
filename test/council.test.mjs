@@ -409,7 +409,7 @@ test('with a skill, both models get its instructions first, use it where a step 
   mkdirSync(`${fake.dir}/skills/test-skill`, { recursive: true });
   writeFileSync(`${fake.dir}/skills/test-skill/SKILL.md`, '---\nname: test-skill\ndescription: "A test skill."\n---\n\n# Test skill\nConsult five advisors.\n');
   const result = JSON.parse(await invoke('debate', 'q', { skill: 'test-skill', max_rounds: 1 }));
-  assert.equal(result.settings.skill, 'test-skill');
+  assert.deepEqual(result.settings.skill, ['test-skill']);
   for (const cli of ['codex', 'claude']) {
     const [first, ...later] = callsOf(cli);
     assert.match(first.input, /^For this question, the "test-skill" skill is available; its instructions are below\. The user asked for this skill, so use it at the steps where it fits/);
@@ -432,6 +432,26 @@ test('with a skill, both models get its instructions first, use it where a step 
   fake.clearCalls();
   await assert.rejects(invoke('council_ask', 'q', { skill: 'no-such-skill' }), /skill "no-such-skill" is not installed \(installed: test-skill\)/);
   assert.equal(fake.calls().length, 0, 'an unknown skill is rejected before any CLI runs');
+
+  // Several skills: names separated by commas, or a list; each once, in the order given.
+  mkdirSync(`${fake.dir}/skills/second-skill`, { recursive: true });
+  writeFileSync(`${fake.dir}/skills/second-skill/SKILL.md`, '---\nname: second-skill\ndescription: "Another."\n---\n\nAnswer tersely.\n');
+  resetSessions();
+  const both = JSON.parse(await invoke('debate', 'q', { skill: 'test-skill, Second-Skill,test-skill', max_rounds: 1 }));
+  assert.deepEqual(both.settings.skill, ['test-skill', 'second-skill']);
+  for (const cli of ['codex', 'claude']) {
+    const [first, ...later] = callsOf(cli);
+    assert.match(first.input, /^For this question, the "test-skill" and "second-skill" skills are available; their instructions are below\./);
+    assert.match(first.input, /<skill name="test-skill">[\s\S]*Consult five advisors[\s\S]*<skill name="second-skill">\nAnswer tersely\.\n<\/skill>\n\nYou are /);
+    for (const call of later) assert.match(call.input, /^The "test-skill" and "second-skill" skills are still available .*; use them for this step only if the step needs them\./);
+  }
+  fake.clearCalls();
+  await invoke('ask_codex', 'q', { skill: ['second-skill', 'test-skill'] });
+  assert.match(fake.questionCalls()[0].input, /^For this question, the "second-skill" and "test-skill" skills are available/);
+  fake.clearCalls();
+  await assert.rejects(invoke('council_ask', 'q', { skill: ['test-skill', 'no-such-skill'] }), /skill "no-such-skill" is not installed/);
+  await assert.rejects(invoke('council_ask', 'q', { skill: 5 }), /skill must be a skill name/);
+  assert.equal(fake.calls().length, 0);
 });
 
 test('an invalid workspace is rejected before any CLI runs', async () => {

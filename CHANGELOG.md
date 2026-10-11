@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.2 (2026-10-11)
+
+- **Several skills at once.** `skill` takes several names separated by commas (`"llm-council, caveman"`) or a list, on every tool that takes it; in the terminal, repeat `--skill` or separate names with commas. Each is checked before anything runs, used once, in the order given. Both models get each skill's instructions in the first prompt, and each later step names them all as still available. One skill works as before, word for word.
+- In `debate`'s JSON, `settings.skill` is now a list of names (or `null`).
+
 ## 0.9.1 (2026-10-10)
 
 - **A job waiting for a session now says so.** Each session takes one council or question at a time, and a job queued behind another one reported "starting" until it got the session, with no reason given. It now reports "Waiting for the Codex (ChatGPT) session …: another council or question is using it". If a `council_join` is holding the session while it waits for the host's reply, the message names that job and how to release it (`council_turn` or `council_cancel`). Found in a real run: a `council_join` whose host lost track of its turn held a ChatGPT Work session for its full 30-minute wait, and a second council on that session showed "starting" for 25 minutes.

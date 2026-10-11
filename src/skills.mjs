@@ -81,6 +81,14 @@ export function loadSkill(name, { native = true } = {}) {
   return skill;
 }
 
+/** Installed skills: a name, names separated by commas, or a list of names; each once, in the order given. */
+export function loadSkills(names) {
+  const list = [names ?? []].flat();
+  if (list.some(name => typeof name !== 'string')) throw new Error('skill must be a skill name, names separated by commas, or a list of names');
+  const wanted = new Set(list.flatMap(name => name.split(',')).map(name => name.trim().toLowerCase()).filter(Boolean));
+  return [...wanted].map(name => loadSkill(name));
+}
+
 /**
  * A GitHub repository URL's parts: clone URL, branch or tag (if any) and path inside the repository.
  * In …/tree/<ref>/<path> a branch name may itself contain "/" (feature/foo), so the URL alone is
@@ -264,22 +272,40 @@ async function defaultFetch(url) {
 }
 
 /**
- * What a model is told when a skill is in use. first: the first prompt of a question, which carries the
- * skill's full instructions; later steps say it is still there to use (the session remembers it). The model
- * decides at which steps the skill is needed, rather than running it at every step.
+ * What a model is told when skills are in use (skill: one skill, a list of them, or null). first: the first
+ * prompt of a question, which carries each skill's full instructions; later steps say they are still there to
+ * use (the session remembers them). The model decides at which steps a skill is needed, rather than running
+ * it at every step.
  */
 export function skillNote(skill, first) {
-  if (!skill) return '';
-  const when = 'The user asked for this skill, so use it at the steps where it fits, judged by the skill\'s own guidance on when to use it: '
+  const skills = [skill ?? []].flat();
+  if (!skills.length) return '';
+  const one = skills.length === 1;
+  const names = new Intl.ListFormat('en', { type: 'conjunction' }).format(skills.map(s => `"${s.name}"`));
+  const these = one ? `the ${names} skill is` : `the ${names} skills are`;
+  const when = `The user asked for ${one ? 'this skill, so use it' : 'these skills, so use each'} at the steps where it fits, judged by ${one ? 'the' : 'each'} skill's own guidance on when to use it: `
     + 'for example a decision, trade-off or disagreement that its method is made for, even if you already lean one way. At steps that do not need it, '
-    + 'such as checking a fact, accepting a point or a small correction, answer directly without it. When you use it, follow it fully, '
+    + `such as checking a fact, accepting a point or a small correction, answer directly without it. When you use ${one ? 'it' : 'one'}, follow it fully, `
     + 'including any sub-agents it calls for (spawn them with your sub-agent tool), and adapt it to the step.';
-  const files = skill.dir ? ` Files the skill mentions (such as references or scripts) are in its folder, ${skill.dir}; read them from there when you need them.` : '';
-  const rules = 'Where the skill conflicts with this discussion\'s rules, the rules win: you cannot write or change files (skip any step that would, '
+  const dirs = skills.filter(s => s.dir);
+  const files = !dirs.length ? ''
+    : one ? ` Files the skill mentions (such as references or scripts) are in its folder, ${dirs[0].dir}; read them from there when you need them.`
+      : ` Files a skill mentions (such as references or scripts) are in its folder (${dirs.map(s => `"${s.name}": ${s.dir}`).join('; ')}); read them from there when you need them.`;
+  const rules = `Where ${one ? 'the' : 'a'} skill conflicts with this discussion's rules, the rules win: you cannot write or change files (skip any step that would, `
     + 'such as saving a transcript or report or building an index, and say so), '
     + 'and give your result in your reply, in the format this step asks for. Only your final message is passed on, so put your complete result in it '
     + '(for example the full verdict), not a reference to an earlier message.';
-  return first
-    ? `For this question, the "${skill.name}" skill is available; its instructions are below. ${when}${files} ${rules}\n\n<skill name="${skill.name}">\n${skill.body}\n</skill>\n\n`
-    : `The "${skill.name}" skill is still available (its instructions are earlier in this conversation); use it for this step only if the step needs it. ${rules}\n\n`;
+  if (!first) {
+    return `${these[0].toUpperCase()}${these.slice(1)} still available (${one ? 'its' : 'their'} instructions are earlier in this conversation); use ${one ? 'it' : 'them'} for this step only if the step needs ${one ? 'it' : 'them'}. ${rules}
+
+`;
+  }
+  const bodies = skills.map(s => `<skill name="${s.name}">
+${s.body}
+</skill>
+
+`).join('');
+  return `For this question, ${these} available; ${one ? 'its' : 'their'} instructions are below. ${when}${files} ${rules}
+
+${bodies}`;
 }
