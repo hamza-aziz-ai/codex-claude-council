@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -125,7 +126,7 @@ test('council_join as Codex: Claude\'s session runs the other side, and the coun
 });
 
 test('tools/call answers, and runs concurrent calls in parallel', async () => {
-  const started = Date.now();
+  fake.clearCalls();
   const [a, b] = await Promise.all([
     call('ask_claude', { question: 'one', model: 'sonnet', effort: 'low' }),
     call('ask_codex', { question: 'two', effort: 'medium' }),
@@ -133,7 +134,11 @@ test('tools/call answers, and runs concurrent calls in parallel', async () => {
   assert.equal(a.result.content[0].text, 'claude[sonnet|low] one');
   assert.equal(b.result.content[0].text, 'codex[-|medium] two');
   assert.ok(!a.result.isError && !b.result.isError);
-  assert.ok(Date.now() - started < 2500, 'calls should overlap');
+  // The two questions overlap in time: each started before the other ended (not a wall-clock limit, which a slow machine misses).
+  const ends = new Map(readFileSync(`${fake.env.FAKE_LOG}.ends`, 'utf8').trim().split('\n').map(line => line.split(' ').map(Number)));
+  const spans = fake.questionCalls().map(c => [c.at, ends.get(c.pid)]);
+  assert.equal(spans.length, 2);
+  assert.ok(Math.max(spans[0][0], spans[1][0]) < Math.min(spans[0][1], spans[1][1]), `calls should overlap: ${JSON.stringify(spans)}`);
 });
 
 test('tool errors come back as isError results', async () => {
