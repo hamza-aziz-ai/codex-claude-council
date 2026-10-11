@@ -9,7 +9,10 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
 const [cli, ...args] = process.argv.slice(2);
 const input = readFileSync(0, 'utf8');
-if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ cli, args, input, cwd: process.cwd(), pid: process.pid, env: { CODEX_CLAUDE_COUNCIL_MEMBER: process.env.CODEX_CLAUDE_COUNCIL_MEMBER } })}\n`);
+const id = randomUUID(); // this call, in the log and the ends file: Windows reuses pids quickly
+if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ cli, args, input, cwd: process.cwd(), pid: process.pid, id, at: Date.now(), env: { CODEX_CLAUDE_COUNCIL_MEMBER: process.env.CODEX_CLAUDE_COUNCIL_MEMBER } })}\n`);
+// When each call ends, in $FAKE_LOG.ends (`<id> <time>` lines), so tests can tell whether calls overlapped.
+if (process.env.FAKE_LOG) process.on('exit', () => appendFileSync(`${process.env.FAKE_LOG}.ends`, `${id} ${Date.now()}\n`));
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const lastLine = input.split(/\r?\n/).filter(line => line.trim()).pop() || '';
 let failing = process.env.FAKE_FAIL === cli;
@@ -18,9 +21,10 @@ let failing = process.env.FAKE_FAIL === cli;
 let reply = lastLine;
 if (input.includes('VERDICT: AGREE or VERDICT: DISAGREE')) {
   const state = process.env.FAKE_STATE;
-  // Each call appends its own line, so two calls at once still get different counts.
-  if (state) appendFileSync(state, `${process.pid}\n`);
-  const count = state ? readFileSync(state, 'utf8').split('\n').indexOf(String(process.pid)) + 1 : 1;
+  // Each call appends its own line, so two calls at once still get different counts. A random token, not the pid:
+  // Windows reuses process ids quickly.
+  if (state) appendFileSync(state, `${id}\n`);
+  const count = state ? readFileSync(state, 'utf8').split('\n').indexOf(id) + 1 : 1;
   const agreeAt = Number(process.env.FAKE_AGREE_AT ?? 1);
   if (Number(process.env.FAKE_FAIL_REVIEW_AT) === count) failing = true;
   reply = agreeAt > 0 && count >= agreeAt ? `review ${count}: looks right\nVERDICT: AGREE` : `review ${count}: objection ${count}\nVERDICT: DISAGREE`;
