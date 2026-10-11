@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 (2026-10-12)
+
+- **A clearer installer.** `install`, `update`, `uninstall` and `doctor` now show their progress as a rail of steps (`◇` done, `▲` warning, `■` failed), with a spinner while each `claude` / `codex` command runs, the commands' own output dimmed under them, and boxed summaries: what was installed, the next steps, the config. `install` and `update` open with a banner of the council: Codex's and Claude's lines crossing until they meet in one answer. No new dependencies (`src/ui.mjs`). Colors and the spinner only on a terminal; piped output (and `NO_COLOR`) is plain text with the same layout, wrapped to 100 columns.
+
 ## 0.10.0 (2026-10-11)
 
 - **The models now discuss until they agree, not just once.** Before, each model critiqued the other's answer and replied to the critique once; then one drafted a joint answer and the other only reviewed it, so the exchange of ideas happened in the first round only and the drafter held the pen. Now, after the two independent answers, they **exchange**: each gets the other's latest message (first its answer, then its replies) and replies point by point, with its current answer and `VERDICT: AGREE` or `VERDICT: DISAGREE`. Both replies are sent at once and cross over, and the exchange repeats until both agree in the same exchange. Only then does the synthesizer write the final answer, and the other checks that it matches what they agreed (revised once if not).

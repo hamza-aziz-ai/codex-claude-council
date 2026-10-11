@@ -46,8 +46,8 @@ test('the terminal lets both models read the git repository you are in, unless t
 test('update refreshes the marketplace and the plugin in both apps', () => {
   const result = cli(['update', '--dry-run']);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /Updating codex-claude-council \(dry run\)/);
-  const commands = result.stdout.split('\n').filter(line => line.trim().startsWith('$ ')).map(line => line.trim().slice(2));
+  assert.match(result.stdout, /┌  Updating codex-claude-council  \(dry run: nothing is changed\)/);
+  const commands = result.stdout.split('\n').filter(line => line.startsWith('◇  $ ')).map(line => line.slice(5));
   assert.deepEqual(commands, [
     'claude plugin marketplace update codex-claude-council',
     'claude plugin update codex-claude-council@codex-claude-council',
@@ -95,8 +95,12 @@ test('wrong flags for a command are rejected', () => {
 test('install checks for both CLIs first, then shows the plugin commands', () => {
   const result = cli(['install', '--dry-run', '--source', 'someone/fork']);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /\[ok\] Claude Code CLI: 0\.0\.0 \(Claude Code fake\)/);
-  assert.match(result.stdout, /\[ok\] Codex CLI: codex-cli 0\.0\.0-fake/);
+  assert.match(result.stdout, /◇  Claude Code CLI: 0\.0\.0 \(Claude Code fake\)/);
+  assert.match(result.stdout, /◇  Codex CLI: codex-cli 0\.0\.0-fake/);
+  assert.match(result.stdout, /╳/, 'the banner');
+  assert.match(result.stdout, /◇  Dry run complete ─+╮\n│ +│\n│  Version: +\d+\.\d+\.\d+ +│/, 'the summary box');
+  assert.match(result.stdout, /└  Try it: "Ask the council: <your question>"\n$/);
+  assert.ok(!/\x1b\[/.test(result.stdout), 'no colors when the output is not a terminal');
   for (const line of [
     'claude plugin marketplace add someone/fork',
     'claude plugin install codex-claude-council@codex-claude-council --scope user',
@@ -110,7 +114,8 @@ test('install stops before changing anything when a CLI is missing', () => {
   try {
     const result = cli(['install', '--dry-run']);
     assert.equal(result.status, 1);
-    assert.match(result.stdout, /\[x\]  Codex CLI: not found/);
+    assert.match(result.stdout, /■  Codex CLI: not found/);
+    assert.match(result.stdout, /└  Nothing was changed\.\n$/);
     assert.match(result.stdout, /needs both the Claude Code CLI and the Codex CLI/);
     assert.match(result.stdout, /npm install -g @openai\/codex/);
     assert.ok(!result.stdout.includes('plugin marketplace add'));
