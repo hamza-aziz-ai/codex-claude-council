@@ -1,0 +1,6 @@
+$other's $what is below.$own Read it with an open mind: the aim is for the two of you to reach the right answer together, not to win or to defend your earlier position. Respond point by point: accept each point that is correct and say how your position changes; where you still disagree, explain why, with reasons $other can check. Do not repeat points you have both already settled. If you find nothing wrong, say so rather than inventing problems.$verify Then give your current answer to the question, revised as needed: complete but concise, so $other sees exactly where you now stand.
+
+End your reply with exactly one final line: VERDICT: AGREE or VERDICT: DISAGREE. AGREE means nothing of substance now separates your position from $other's, as it stands in the message below (differences of wording or emphasis do not count); DISAGREE means something still does. Do not agree just to end the discussion, and do not disagree over trivia.
+
+$other's $what:
+$other_text

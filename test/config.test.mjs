@@ -17,7 +17,7 @@ test('packaged defaults apply when there is no user config', () => withUserConfi
   const config = loadConfig();
   assert.equal(config.timeout_seconds, 600);
   assert.equal(config.synthesizer, 'claude', 'Claude writes the final answer by default');
-  assert.equal(config.max_rounds, 3, 'both models must agree by default, within 3 rounds');
+  assert.equal(config.max_rounds, 5, 'the models exchange until both agree, at most 5 times by default');
   assert.equal(config.web_search, true, 'both models may search the web by default');
   assert.equal(config.tool_wait_seconds, 50, 'each tool call returns within a 60 s host limit');
   assert.deepEqual(resolveSide('codex', {}, config), { model: null, effort: 'high' });

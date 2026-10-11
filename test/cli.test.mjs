@@ -126,14 +126,14 @@ test('config and doctor', () => {
   assert.match(doctor.stdout, /codex: model=\(CLI default\) effort=high/);
 });
 
-test('--max-rounds runs the agreement loop and reports progress on stderr', () => {
+test('--max-rounds limits the exchange, and progress goes to stderr', () => {
   const state = join(fake.dir, 'cli-reviews');
   const result = spawnSync(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'ask', 'Which?', '--max-rounds', '0'], {
-    encoding: 'utf8', env: { ...process.env, ...fake.env, FAKE_STATE: state, FAKE_AGREE_AT: '2' },
+    encoding: 'utf8', env: { ...process.env, ...fake.env, FAKE_STATE: state, FAKE_AGREE_AT: '3' },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /both agree with this answer \(2 rounds\)/);
-  assert.match(result.stderr, /\[council\] Round 2: Codex \(ChatGPT\) agrees/);
+  assert.match(result.stdout, /both agree with this answer \(they converged after 2 exchanges\)/);
+  assert.match(result.stderr, /\[council\] Exchange 2: Codex \(ChatGPT\) agrees, Claude agrees/);
   const wrong = cli(['claude', 'q', '--max-rounds', '2']);
   assert.equal(wrong.status, 1);
   assert.match(wrong.stderr, /does not take --max-rounds/);

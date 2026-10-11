@@ -251,12 +251,12 @@ test('a session the user passes is continued in place, in the folder it was star
 test('council_ask: by default both models sign the final answer; overrides reach every call on their side only', async () => {
   const answer = await invoke('council_ask', 'Which is better?', { codex_effort: 'low', claude_model: 'sonnet' });
   assert.match(answer, /^claude\[sonnet\|high\]/, 'Claude writes the final answer by default');
-  assert.match(answer, /Codex \(ChatGPT\) and Claude both agree with this answer \(1 round\)\.$/);
+  assert.match(answer, /Codex \(ChatGPT\) and Claude both agree with this answer \(they converged after 1 exchange\)\.$/);
   const calls = fake.questionCalls();
   const codexCalls = calls.filter(c => c.cli === 'codex');
   const claudeCalls = calls.filter(c => c.cli === 'claude');
-  assert.equal(codexCalls.length, 4, 'answer, critique, reply, review');
-  assert.equal(claudeCalls.length, 4, 'answer, critique, reply, draft');
+  assert.equal(codexCalls.length, 3, 'answer, exchange, check of the final answer');
+  assert.equal(claudeCalls.length, 3, 'answer, exchange, final answer');
   for (const c of codexCalls) assert.ok(configValues(c).includes('model_reasoning_effort=low'));
   for (const c of claudeCalls) {
     assert.equal(c.args[c.args.indexOf('--model') + 1], 'sonnet');
@@ -264,41 +264,48 @@ test('council_ask: by default both models sign the final answer; overrides reach
   }
 });
 
-test('debate returns answers, critiques, replies, rounds and the settings used', async () => {
+test('debate returns both answers, every exchange, the final check and the settings used', async () => {
   const result = JSON.parse(await invoke('debate', 'Pick one', { claude_effort: 'max' }));
-  assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'claude_critique', 'claude_reply',
-    'codex', 'codex_critique', 'codex_reply', 'rounds', 'rounds_run', 'settings']);
+  assert.deepEqual(Object.keys(result).sort(), ['agreed', 'answer', 'claude', 'codex', 'converged', 'exchanges', 'rounds', 'settings']);
   assert.deepEqual(result.settings, {
-    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 3, workspace: null, web_search: true, network: false, skill: null, sessions: { codex: null, claude: null },
+    codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'max' }, synthesizer: 'claude', max_rounds: 5, workspace: null, web_search: true, network: false, skill: null, sessions: { codex: null, claude: null },
   });
   assert.equal(result.agreed, true);
+  assert.equal(result.converged, true);
   assert.match(result.answer, /^claude\[opus\|max\]/);
-  assert.match(result.codex_critique, /^codex.*claude\[opus\|max\] Pick one$/, 'codex critiques claude\'s answer');
-  assert.equal(fake.questionCalls().filter(c => c.cli === 'claude').length, 4);
+  assert.deepEqual(Object.keys(result.exchanges[0]), ['round', 'codex', 'claude', 'codex_agrees', 'claude_agrees']);
+  assert.match(result.exchanges[0].codex, /^codex\[/);
+  assert.equal(fake.questionCalls().filter(c => c.cli === 'claude').length, 3);
 });
 
 const NAME = { codex: 'Codex', claude: 'Claude' };
+const OWN = ' Your own answer is earlier in this conversation: judge theirs on its merits, not on whether it matches yours.';
 const callsOf = cli => fake.questionCalls().filter(c => c.cli === cli);
 
 for (const synthesizer of ['claude', 'codex']) {
-  test(`critiques are swapped and each model replies to the critique of its answer (single pass, ${synthesizer} synthesizes)`, async () => {
-    fake.writeConfig({ max_rounds: null });
+  test(`each model replies to the other's latest message in every exchange until both agree (${synthesizer} writes the final answer)`, () => withEnv(loopEnv({ FAKE_AGREE_AT: '3' }), async () => {
     const r = JSON.parse(await invoke('debate', 'q', { synthesizer }));
+    assert.deepEqual(r.exchanges.map(e => [e.codex_agrees, e.claude_agrees]), [[false, false], [true, true]], 'no agreement in the first exchange, both in the second');
     // Each text came from the model it is filed under.
-    for (const key of ['codex', 'codex_critique', 'codex_reply']) assert.match(r[key], /^codex\[/, key);
-    for (const key of ['claude', 'claude_critique', 'claude_reply']) assert.match(r[key], /^claude\[/, key);
-    // Each model works in one session, so every prompt carries only what it has not seen yet.
+    for (const side of ['codex', 'claude']) {
+      for (const text of [r[side], ...r.exchanges.map(e => e[side])]) assert.match(text, new RegExp(`^${side}\\[`));
+    }
+    // Each model works in one session, so every prompt carries only what it has not seen yet: the other's latest message.
+    const verify = verifyNote(undefined, true);
     for (const [me, them] of [['codex', 'claude'], ['claude', 'codex']]) {
-      const [answer, critique, reply, ...rest] = callsOf(me);
+      const [answer, first, second, ...rest] = callsOf(me);
       assert.equal(answer.input, prompt('answer', { question: 'q', access: accessNote(undefined, true), self: NAME[me], other: NAME[them] }));
-      assert.equal(critique.input, prompt('critique', { other: NAME[them], other_answer: r[them], verify: verifyNote(undefined, true) }), `${me} critiques ${them}'s answer`);
-      assert.equal(reply.input, prompt('reply', { other: NAME[them], other_critique: r[`${them}_critique`] }), `${me} replies to ${them}'s critique`);
-      assert.deepEqual(rest.map(c => c.input), me === synthesizer ? [prompt('synthesize', { other: NAME[them], other_reply: r[`${them}_reply`] })] : []);
+      assert.equal(first.input, prompt('exchange', { other: NAME[them], what: 'answer', other_text: r[them], verify, own: OWN }), `${me} replies to ${them}'s answer`);
+      assert.equal(second.input, prompt('exchange', { other: NAME[them], what: 'reply to your last message', other_text: r.exchanges[0][them], verify, own: '' }),
+        `${me} replies to ${them}'s reply`);
+      assert.deepEqual(rest.map(c => c.input), me === synthesizer
+        ? [prompt('draft', { other: NAME[them], other_text: r.exchanges[1][them] })]
+        : [prompt('review', { other: NAME[them], context: `${NAME[them]}'s last message, which agreed with you:\n${r.exchanges[1][them]}\n`, draft: r.rounds[0].draft, notes: 'none', verify })]);
     }
     for (const call of fake.questionCalls().slice(2)) {
       assert.ok(call.cli === 'codex' ? call.args[1] === 'resume' : call.args.includes('--resume'), 'every step after the answers resumes its session');
     }
-  });
+  }));
 }
 
 test('the next question continues the same sessions', async () => {
@@ -323,9 +330,9 @@ test('two councils at once in the same sessions take turns instead of interleavi
   assert.ok(!steps[0].some(m => m.startsWith('Waiting for')), 'the first council takes the sessions at once');
   assert.match(steps[1][0], /^Waiting for the (Claude|Codex \(ChatGPT\)) session: another council or question is using it/, 'the second says why it waits');
   for (const cli of ['codex', 'claude']) {
-    // Each council's four turns in a session are consecutive: answer, critique, reply, then draft or review.
+    // Each council's three turns in a session are consecutive: answer, exchange, then the final answer or its check.
     const turns = callsOf(cli).map(c => (c.input.startsWith('You are ') ? 'answer' : 'turn'));
-    assert.deepEqual(turns, ['answer', 'turn', 'turn', 'turn', 'answer', 'turn', 'turn', 'turn'], cli);
+    assert.deepEqual(turns, ['answer', 'turn', 'turn', 'answer', 'turn', 'turn'], cli);
   }
 }));
 
@@ -360,17 +367,16 @@ test('a council with a workspace tells both models they can read the project, an
   const text = await invoke('council_ask', 'Is src/ tidy?', { workspace: fake.dir });
   assert.match(text, /both agree/);
   const calls = fake.questionCalls();
-  assert.equal(calls.length, 8);
+  assert.equal(calls.length, 6);
   for (const call of calls) assert.equal(call.cwd, workspace);
   for (const cli of ['codex', 'claude']) {
     assert.ok(callsOf(cli)[0].input.includes(accessNote(workspace, true)));
     assert.match(accessNote(workspace, true), /working in the project at .*You are in plan mode: you cannot change anything/);
   }
   // Only a model that can read the project is asked to check claims against it.
-  const kindOf = c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'review' : c.input.includes('answered the same question independently') ? 'critique' : 'other');
-  const checked = calls.filter(c => kindOf(c) !== 'other');
-  assert.equal(checked.length, 3, 'two critiques and one review');
-  for (const call of checked) assert.ok(call.input.includes(verifyNote(workspace, true)), kindOf(call));
+  const checked = calls.filter(c => c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE'));
+  assert.equal(checked.length, 3, 'two exchange replies and one check of the final answer');
+  for (const call of checked) assert.ok(call.input.includes(verifyNote(workspace, true)), call.input.slice(0, 60));
   fake.clearCalls();
   await invoke('council_ask', 'q');
   for (const call of fake.questionCalls()) assert.doesNotMatch(call.input, /project/, 'no workspace, so no mention of a project');
@@ -414,7 +420,7 @@ test('with a skill, both models get its instructions first, use it where a step 
     const [first, ...later] = callsOf(cli);
     assert.match(first.input, /^For this question, the "test-skill" skill is available; its instructions are below\. The user asked for this skill, so use it at the steps where it fits/);
     assert.match(first.input, /<skill name="test-skill">\n# Test skill\nConsult five advisors\.\n<\/skill>\n\nYou are /, 'the skill comes before the step prompt');
-    assert.equal(later.length, 3, 'critique, reply, and draft or review');
+    assert.equal(later.length, 2, 'an exchange, then the final answer or its check');
     for (const call of later) assert.match(call.input, /^The "test-skill" skill is still available .*; use it for this step only if the step needs it\./);
     for (const call of later) assert.doesNotMatch(call.input, /Consult five advisors/, 'later steps do not resend the instructions');
   }
@@ -587,13 +593,17 @@ test('a missing CLI gives install guidance', async () => {
 import { mkdtempSync as mkTemp, readFileSync } from 'node:fs';
 import { tmpdir as tmp } from 'node:os';
 import { join as joinPath } from 'node:path';
-import { readVerdict, splitDraft } from '../src/council.mjs';
+import { councilText, readVerdict, splitDraft } from '../src/council.mjs';
 
 const loopEnv = extra => ({ FAKE_STATE: joinPath(mkTemp(joinPath(tmp(), 'council-state-')), 'reviews'), ...extra });
-const kinds = calls => calls.map(c => (c.input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? `review:${c.cli}`
-  : c.input.includes('reviewed your draft and did not agree') ? `redraft:${c.cli}`
-    : c.input.includes('Write one final answer that both of you could sign') ? `draft:${c.cli}`
-      : c.input.startsWith('Give the user a final answer') ? `synthesize:${c.cli}` : `other:${c.cli}`));
+const kinds = calls => calls.map(c => (c.input.startsWith('You are ') ? `answer:${c.cli}`
+  : c.input.includes('Read it with an open mind') ? `exchange:${c.cli}`
+    : c.input.includes('reviewed your draft and did not agree') ? `redraft:${c.cli}`
+      : c.input.includes('has drafted a final answer') ? `review:${c.cli}`
+        : c.input.includes(' now agree: in your last exchange') ? `draft:${c.cli}`
+          : c.input.includes('ended without full agreement') ? `synthesize:${c.cli}` : `other:${c.cli}`));
+// The steps after the exchanges, in order (the two replies of an exchange run at once, so their order varies).
+const afterExchanges = calls => kinds(calls).filter(k => !k.startsWith('answer') && !k.startsWith('exchange'));
 
 test('verdict and notes parsing', () => {
   assert.equal(readVerdict('fine\nVERDICT: AGREE'), true);
@@ -604,19 +614,16 @@ test('verdict and notes parsing', () => {
   assert.deepEqual(splitDraft('Only an answer'), { answer: 'Only an answer', notes: 'none' });
 });
 
-test('both models must agree by default; the config can change the rounds or ask for a single pass', async () => {
+test('by default the exchange goes on until both agree, up to 5 exchanges; the config can change the limit', async () => {
   const agreed = JSON.parse(await invoke('debate', 'q'));
   assert.equal(agreed.agreed, true);
-  assert.equal(agreed.settings.max_rounds, 3);
-  assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['draft:claude', 'review:codex']);
-  fake.clearCalls();
+  assert.equal(agreed.settings.max_rounds, 5);
+  assert.deepEqual(kinds(fake.questionCalls()).filter(k => k.startsWith('exchange')).sort(), ['exchange:claude', 'exchange:codex']);
+  assert.deepEqual(afterExchanges(fake.questionCalls()), ['draft:claude', 'review:codex']);
   fake.writeConfig({ max_rounds: null });
-  const single = JSON.parse(await invoke('debate', 'q'));
-  assert.equal(single.agreed, undefined);
-  assert.equal(single.settings.max_rounds, null);
-  assert.deepEqual(kinds(fake.questionCalls()).filter(k => !k.startsWith('other')), ['synthesize:claude']);
-  fake.writeConfig({ max_rounds: 5 });
-  assert.equal(JSON.parse(await invoke('debate', 'q')).settings.max_rounds, 5);
+  assert.equal(JSON.parse(await invoke('debate', 'q')).settings.max_rounds, null, 'null: one exchange');
+  fake.writeConfig({ max_rounds: 2 });
+  assert.equal(JSON.parse(await invoke('debate', 'q')).settings.max_rounds, 2);
   assert.equal(JSON.parse(await invoke('debate', 'q', { max_rounds: 1 })).settings.max_rounds, 1, 'a per-call value wins');
 });
 
@@ -632,67 +639,95 @@ test('who writes the final answer: config default, then per-call override (ChatG
   await assert.rejects(invoke('ask_claude', 'q', { synthesizer: 'codex' }), /does not accept: synthesizer/);
 });
 
-test('max_rounds N stops as soon as both agree', () => withEnv(loopEnv({ FAKE_AGREE_AT: '2' }), async () => {
-  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 5 }));
+test('max_rounds N stops the exchange as soon as both agree in the same exchange', () => withEnv(loopEnv({ FAKE_AGREE_AT: '5' }), async () => {
+  const steps = [];
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 5 }, { onProgress: m => steps.push(m) }));
   assert.equal(result.agreed, true);
-  assert.equal(result.rounds_run, 2);
-  assert.deepEqual(result.rounds.map(r => r.verdict), ['disagree', 'agree']);
-  assert.deepEqual(result.rounds.map(r => [r.drafter, r.reviewer]), [['claude', 'codex'], ['claude', 'codex']]);
+  assert.deepEqual(result.exchanges.map(e => e.round), [1, 2, 3], 'they agree in the third exchange');
+  assert.ok(steps.includes('Exchange 2 of 5: each model is replying to the other\'s latest reply'), JSON.stringify(steps));
+  assert.ok(steps.includes('Exchange 3 of 5: Codex (ChatGPT) agrees, Claude agrees'), JSON.stringify(steps));
+  assert.deepEqual(afterExchanges(fake.questionCalls()), ['draft:claude', 'review:codex']);
+  assert.match(councilText(result), /they converged after 3 exchanges\)\.$/);
+}));
+
+test('max_rounds N stops at the limit without agreement, and the final answer sets out the points in dispute', () => withEnv(loopEnv({ FAKE_AGREE_AT: '0' }), async () => {
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: '3' }));
+  assert.equal(result.exchanges.length, 3);
+  assert.equal(result.converged, false);
+  assert.equal(result.agreed, false);
   const calls = fake.questionCalls();
-  assert.deepEqual(kinds(calls).slice(6), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
-  const [draft, review1, redraft, review2] = calls.slice(6).map(c => c.input);
-  assert.equal(draft, prompt('draft', { other: 'Codex', other_reply: result.codex_reply }), 'the drafter gets the reply it has not seen');
-  assert.equal(review1, prompt('review', { other: 'Claude', context: `Claude's reply to your critique:\n${result.claude_reply}\n`, draft: result.rounds[0].draft, notes: 'none', verify: verifyNote(undefined, true) }),
-    'the reviewer gets the drafter\'s reply it has not seen, then the draft');
+  assert.deepEqual(afterExchanges(calls), ['synthesize:claude'], 'no check: there is nothing agreed to check against');
+  assert.equal(calls.at(-1).input, prompt('synthesize', { other: 'Codex', other_text: result.exchanges[2].codex, why: 'after 3 exchanges' }));
+  assert.match(councilText(result), /did not fully agree after 3 exchanges \(the limit of 3 exchanges was reached\); the answer above sets out the points still in dispute\.$/);
+}));
+
+test('max_rounds 0 keeps the exchange going until both agree', () => withEnv(loopEnv({ FAKE_AGREE_AT: '13' }), async () => {
+  const text = await invoke('council_ask', 'q', { max_rounds: 0 });
+  assert.match(text, /both agree with this answer \(they converged after 7 exchanges\)/);
+  assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('exchange')).length, 14);
+}));
+
+test('a final answer the other model rejects is revised once, then reported with the objections', () => withEnv(loopEnv({ FAKE_FINAL: 'disagree' }), async () => {
+  const result = JSON.parse(await invoke('debate', 'q'));
+  assert.equal(result.converged, true);
+  assert.equal(result.agreed, false);
+  const calls = fake.questionCalls();
+  assert.deepEqual(afterExchanges(calls), ['draft:claude', 'review:codex', 'redraft:claude', 'review:codex']);
+  const [, , redraft, review2] = calls.slice(-4).map(c => c.input);
   assert.equal(redraft, prompt('redraft', { other: 'Codex', objections: result.rounds[0].review }), 'the redraft gets the objections');
   assert.equal(review2, prompt('review', { other: 'Claude', context: '', draft: result.rounds[1].draft, notes: 'none', verify: verifyNote(undefined, true) }),
-    'a later review gets only the new draft: the reviewer\'s earlier objections are in its session');
-  assert.equal(result.settings.max_rounds, 5);
+    'a later check gets only the new draft: the checker\'s earlier objections are in its session');
+  const text = councilText(result);
+  assert.match(text, /converged after 1 exchange, but the final answer was not confirmed \(Codex \(ChatGPT\) did not accept the final text\)\.\n\nCodex \(ChatGPT\)'s remaining objections:\n.*final objection/);
+  assert.ok(!/VERDICT/.test(text.split('remaining objections:')[1]), 'the verdict line is stripped from the objections');
 }));
 
-test('max_rounds N stops at the limit without agreement and says so', () => withEnv(loopEnv({ FAKE_AGREE_AT: '0' }), async () => {
-  const text = await invoke('council_ask', 'q', { max_rounds: '3' });
-  assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('review')).length, 3);
-  assert.match(text, /Not agreed after 3 rounds \(round limit of 3 reached\)/);
-  assert.match(text, /Codex \(ChatGPT\)'s remaining objections:\n.*objection 3/);
-  assert.ok(!/VERDICT/.test(text.split('remaining objections:')[1]), 'verdict line is stripped from the objections');
-}));
-
-test('max_rounds 0 keeps going until both agree', () => withEnv(loopEnv({ FAKE_AGREE_AT: '7' }), async () => {
-  const text = await invoke('council_ask', 'q', { max_rounds: 0 });
-  assert.match(text, /both agree with this answer \(7 rounds\)/);
-  assert.equal(kinds(fake.questionCalls()).filter(k => k.startsWith('review')).length, 7);
-}));
-
-test('with council_join, the host writes the final answer unless the caller names another synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
+test('with council_join, the host takes part in every exchange and writes the final answer unless the caller names another synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
   const run = async options => {
     const asked = [];
     const hostTurn = async message => {
-      asked.push(message.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'review' : message.includes('---NOTES---') ? 'draft' : 'other');
-      return asked.at(-1) === 'review' ? 'fine\nVERDICT: AGREE' : asked.at(-1) === 'draft' ? 'HOST DRAFT\n---NOTES---\nnone' : 'HOST TEXT';
+      asked.push(message.includes('Read it with an open mind') ? 'exchange' : message.includes('has drafted a final answer') ? 'review' : message.includes('---NOTES---') ? 'draft' : 'other');
+      return { exchange: 'HOST VIEW\nVERDICT: AGREE', review: 'fine\nVERDICT: AGREE', draft: 'HOST DRAFT\n---NOTES---\nnone' }[asked.at(-1)] ?? 'HOST TEXT';
     };
-    return { text: await invoke('council_join', 'q', { me: 'codex', max_rounds: 1, ...options }, { hostTurn }), asked };
+    return { text: await invoke('council_join', 'q', { me: 'codex', ...options }, { hostTurn }), asked };
   };
   const hosted = await run({}); // the config's synthesizer is Claude, the other model here
   assert.match(hosted.text, /^HOST DRAFT/);
-  assert.ok(hosted.asked.includes('draft') && !hosted.asked.includes('review'), 'the host drafts; Claude reviews');
+  assert.deepEqual(hosted.asked, ['other', 'exchange', 'draft'], 'the host answers, exchanges and writes; Claude checks');
   const named = await run({ synthesizer: 'claude' });
-  assert.ok(named.asked.includes('review') && !named.asked.includes('draft'), 'a named synthesizer wins: Claude drafts, the host reviews');
+  assert.deepEqual(named.asked, ['other', 'exchange', 'review'], 'a named synthesizer wins: Claude writes, the host checks');
 }));
 
-test('the reviewer is the non-synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
+test('the checker is the non-synthesizer', () => withEnv(loopEnv({ FAKE_AGREE_AT: '1' }), async () => {
   const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 1, synthesizer: 'codex' }));
   assert.deepEqual([result.rounds[0].drafter, result.rounds[0].reviewer], ['codex', 'claude']);
   assert.equal(result.agreed, true);
 }));
 
-test('a failure mid-loop returns the latest draft with the reason', () => withEnv(loopEnv({ FAKE_AGREE_AT: '0', FAKE_FAIL_REVIEW_AT: '2' }), async () => {
-  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 0 }));
-  assert.equal(result.agreed, false);
-  assert.equal(result.rounds_run, 1);
-  assert.match(result.stopped_reason, /codex failed/);
-  assert.match(result.answer, /^claude/);
-}));
+test('a failure in a later exchange ends the discussion with what was said; one in the check keeps the final answer', async () => {
+  await withEnv(loopEnv({ FAKE_AGREE_AT: '0', FAKE_FAIL_REVIEW_AT: '3' }), async () => {
+    const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 0 }));
+    assert.equal(result.exchanges.length, 1, 'the second exchange failed');
+    assert.equal(result.agreed, false);
+    assert.match(result.stopped_reason, /failed/);
+    assert.match(result.answer, /^claude/, 'Claude still writes the final answer with the points in dispute');
+    assert.match(councilText(result), /did not fully agree after 1 exchange \(stopped early: /);
+  });
+  fake.clearCalls();
+  resetSessions();
+  await withEnv(loopEnv({ FAKE_AGREE_AT: '1', FAKE_FAIL_REVIEW_AT: '3' }), async () => {
+    const result = JSON.parse(await invoke('debate', 'q'));
+    assert.equal(result.converged, true);
+    assert.equal(result.agreed, false);
+    assert.match(result.stopped_reason, /codex failed/);
+    assert.match(result.answer, /^claude/, 'the final answer written before the check failed');
+  });
+  fake.clearCalls();
+  resetSessions();
+  await withEnv(loopEnv({ FAKE_FAIL_REVIEW_AT: '1' }), async () => {
+    await assert.rejects(invoke('debate', 'q'), /failed/, 'a failure in the first exchange fails the council');
+  });
+});
 
 test('max_rounds is validated and only offered on council tools', async () => {
   for (const bad of [-1, 1.5, 'two', true]) await assert.rejects(invoke('council_ask', 'q', { max_rounds: bad }), /max_rounds must be a whole number/);

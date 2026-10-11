@@ -1,5 +1,5 @@
-// The council: two independent answers, two cross-critiques, each model's reply to the critique of
-// its answer, then either one synthesis (single pass) or a draft/review loop that runs until both agree.
+// The council: two independent answers, then an exchange in which each model replies to the other's latest message,
+// round after round, until both agree; then one writes the final answer and the other checks it.
 // Each model keeps one session (see adapters.mjs), so every prompt carries only what it has not seen yet.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
@@ -25,6 +25,8 @@ const waitingFor = (side, session) => `${WAITING}${LABEL[side]} session${session
 const SPEAKER = { codex: 'Codex', claude: 'Claude' }; // names used inside prompts
 const OTHER = { codex: 'claude', claude: 'codex' };
 const SIDES_ORDER = ['codex', 'claude'];
+// After the models agree, how many times the final answer may be written before the other model accepts it.
+const FINAL_ROUNDS = 2;
 
 export function prompt(name, values) {
   const template = readFileSync(join(PACKAGE_ROOT, 'src', 'prompts', `${name}.txt`), 'utf8');
@@ -38,12 +40,12 @@ function checkQuestion(question) {
   return question.trim();
 }
 
-/** undefined = not given (use the config); 0 = until both agree (no limit); N = at most N draft/review rounds. */
+/** undefined = not given (use the config); 0 = until both agree (no limit); N = at most N exchanges. */
 export function parseMaxRounds(value) {
   if (value === undefined || value === null || value === '') return undefined;
   const number = typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value;
   if (!Number.isInteger(number) || number < 0) {
-    throw new Error('max_rounds must be a whole number: 0 = until both agree, N = at most N rounds (omit for the configured default)');
+    throw new Error('max_rounds must be a whole number: 0 = until both agree, N = at most N exchanges (omit for the configured default)');
   }
   return number;
 }
@@ -197,8 +199,8 @@ export function splitDraft(text) {
 
 /**
  * codex / claude: optional { model, effort } overrides for that side.
- * maxRounds: 0 for no limit, N for at most N draft/review rounds; default from config (null there = single pass).
- * synthesizer: "claude" or "codex" writes the final answer (drafts, in the loop); default from config.
+ * maxRounds: 0 for no limit, N for at most N exchanges; default from config (null there = one exchange).
+ * synthesizer: "claude" or "codex" writes the final answer, which the other checks; default from config.
  * workspace: the project folder both models work in and may read (never write); default: the folder of a
  * session passed in sessions, else none.
  * webSearch: whether both models may search the web; default from config.
@@ -257,72 +259,102 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     progress('Codex (ChatGPT) and Claude are answering independently');
     const access = side => (side === host?.side ? hostAccessNote(workspace, web) : accessNote(workspace, web) + (side === 'codex' && net ? networkNote(config.network_domains) : ''));
     const answers = await bothSides((me, them) => withSkill(me, prompt('answer', { question, access: access(me), self: SPEAKER[me], other: SPEAKER[them] }), true));
-    progress('Each model is critiquing the other');
     const verify = verifyNote(workspace, web);
-    const critiques = await bothSides((me, them) => withSkill(me, prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify })));
-    // The critiques are swapped: each model sees what the other said about its answer, and replies.
-    progress('Each model is replying to the critique of its answer');
-    const replies = await bothSides((me, them) => withSkill(me, prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] })));
+
+    // The exchange: each model gets the other's latest message (first its answer, then its replies) and replies to it,
+    // with its current position and a verdict. They go on until both agree in the same exchange, or up to the limit.
+    const limit = maxRounds ?? 1;
+    const of = limit === 0 ? '' : ` of ${limit}`;
+    const exchanges = [];
+    let latest = answers;
+    let stoppedReason = null;
+    for (let round = 1; limit === 0 || round <= limit; round += 1) {
+      progress(`Exchange ${round}${of}: each model is replying to the other's ${round === 1 ? 'answer' : 'latest reply'}`);
+      let said;
+      try {
+        said = await bothSides((me, them) => withSkill(me, prompt('exchange', {
+          other: SPEAKER[them], what: round === 1 ? 'answer' : 'reply to your last message', other_text: latest[them], verify,
+          own: round === 1 ? ' Your own answer is earlier in this conversation: judge theirs on its merits, not on whether it matches yours.' : '',
+        })));
+      } catch (error) {
+        // After a first exchange, a failure (for example a usage limit) ends the discussion with what was said so far.
+        if (signal?.aborted || round === 1) throw error;
+        stoppedReason = error.message;
+        break;
+      }
+      const agrees = { codex: readVerdict(said.codex), claude: readVerdict(said.claude) };
+      exchanges.push({ round, codex: said.codex, claude: said.claude, codex_agrees: agrees.codex, claude_agrees: agrees.claude });
+      latest = said;
+      const stance = side => `${LABEL[side]} ${agrees[side] ? 'agrees' : 'does not agree yet'}`;
+      progress(`Exchange ${round}${of}: ${stance('codex')}, ${stance('claude')}`);
+      if (agrees.codex && agrees.claude) break;
+    }
+    const converged = !stoppedReason && exchanges.at(-1).codex_agrees && exchanges.at(-1).claude_agrees;
     const base = {
-      codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
-      codex_reply: replies.codex, claude_reply: replies.claude,
+      codex: answers.codex, claude: answers.claude, exchanges, converged,
       settings: { ...settings, synthesizer: writer, max_rounds: maxRounds ?? null, workspace: workspace ?? null, web_search: web, network: net, skill: skill ? skills.map(s => s.name) : null,
         sessions: { codex: sessions.codex ?? null, claude: sessions.claude ?? null }, ...(host ? { host: host.side } : {}) },
     };
+    const other = OTHER[writer];
+    // Both latest positions: the answer when no final answer could be written.
+    const positions = () => SIDES_ORDER.map(side => `${LABEL[side]}'s latest position:\n${withoutVerdict(latest[side])}`).join('\n\n');
 
-    if (maxRounds === undefined) {
-      progress(`${LABEL[writer]} is writing the final answer`);
-      const other = OTHER[writer];
-      return { answer: await ask(writer, withSkill(writer, prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] }))), ...base };
+    if (!converged) {
+      progress(`${LABEL[writer]} is writing the final answer, with the points still in dispute`);
+      const why = stoppedReason ? `stopped early: ${stoppedReason}` : `after ${exchanges.length} exchange${exchanges.length === 1 ? '' : 's'}`;
+      try {
+        const answer = await ask(writer, withSkill(writer, prompt('synthesize', { other: SPEAKER[other], other_text: latest[other], why })));
+        return { answer, agreed: false, stopped_reason: stoppedReason, ...base };
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        return { answer: positions(), agreed: false, stopped_reason: stoppedReason ?? error.message, ...base };
+      }
     }
 
-    // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
-    // The drafter endorses its own draft, so the reviewer's AGREE means both agree.
-    const drafter = writer;
-    const reviewer = OTHER[drafter];
+    // They agree: the synthesizer writes the final answer and the other checks that it matches what they agreed.
     const rounds = [];
     let draft = null;
     let notes = 'none';
     let objections = '';
-    let stoppedReason = null;
-    for (let round = 1; maxRounds === 0 || round <= maxRounds; round += 1) {
-      const limit = maxRounds === 0 ? '' : ` of ${maxRounds}`;
+    for (let round = 1; round <= FINAL_ROUNDS; round += 1) {
       try {
-        progress(`Round ${round}${limit}: ${LABEL[drafter]} is drafting the joint answer`);
-        const text = await ask(drafter, withSkill(drafter, round === 1
-          ? prompt('draft', { other: SPEAKER[reviewer], other_reply: replies[reviewer] })
-          : prompt('redraft', { other: SPEAKER[reviewer], objections })));
+        progress(round === 1 ? `They agree: ${LABEL[writer]} is writing the final answer` : `${LABEL[writer]} is revising the final answer`);
+        const text = await ask(writer, withSkill(writer, round === 1
+          ? prompt('draft', { other: SPEAKER[other], other_text: latest[other] })
+          : prompt('redraft', { other: SPEAKER[other], objections })));
         ({ answer: draft, notes } = splitDraft(text));
-        progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
-        // The reviewer has not seen the drafter's reply yet; its own earlier objections are in its session.
-        const context = round === 1 ? `${SPEAKER[drafter]}'s reply to your critique:\n${replies[drafter]}\n` : '';
-        const review = await ask(reviewer, withSkill(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify })));
+        progress(`${LABEL[other]} is checking the final answer`);
+        // The checker has not seen the writer's last message yet; its own earlier objections are in its session.
+        const context = round === 1 ? `${SPEAKER[writer]}'s last message, which agreed with you:\n${latest[writer]}\n` : '';
+        const review = await ask(other, withSkill(other, prompt('review', { other: SPEAKER[writer], context, draft, notes, verify })));
         const agreed = readVerdict(review);
-        rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
-        progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);
-        if (agreed) return { answer: draft, agreed: true, rounds_run: rounds.length, rounds, ...base };
+        rounds.push({ round, drafter: writer, reviewer: other, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
+        if (agreed) return { answer: draft, agreed: true, rounds, ...base };
         objections = review;
       } catch (error) {
-        // Keep the latest draft if a later call fails (for example a usage limit); cancelling still aborts.
-        if (signal?.aborted || draft === null) throw error;
+        // Keep what was reached if a later call fails (for example a usage limit); cancelling still aborts.
+        if (signal?.aborted) throw error;
         stoppedReason = error.message;
         break;
       }
     }
-    return { answer: draft, agreed: false, rounds_run: rounds.length, rounds, stopped_reason: stoppedReason, ...base };
+    return { answer: draft ?? positions(), agreed: false, rounds, stopped_reason: stoppedReason, ...base };
   }, { signal, onWait: (side, waiting) => waiting && onProgress?.(waitingFor(side, sessions[side])) });
 }
 
 /** Plain-text answer for council_ask and the terminal. */
 export function councilText(result) {
-  if (result.agreed === undefined) return result.answer;
-  const reviewer = LABEL[OTHER[result.settings.synthesizer]];
-  const rounds = `${result.rounds_run} round${result.rounds_run === 1 ? '' : 's'}`;
-  if (result.agreed) return `${result.answer}\n\n---\nCodex (ChatGPT) and Claude both agree with this answer (${rounds}).`;
-  const why = result.stopped_reason ? `stopped early: ${result.stopped_reason}` : `round limit of ${result.settings.max_rounds} reached`;
+  const exchanges = `${result.exchanges.length} exchange${result.exchanges.length === 1 ? '' : 's'}`;
+  if (result.agreed) return `${result.answer}\n\n---\nCodex (ChatGPT) and Claude both agree with this answer (they converged after ${exchanges}).`;
+  if (!result.converged) {
+    const why = result.stopped_reason ? `stopped early: ${result.stopped_reason}` : `the limit of ${result.settings.max_rounds ?? 1} exchange${result.settings.max_rounds === 1 || result.settings.max_rounds === null ? '' : 's'} was reached`;
+    return `${result.answer}\n\n---\nCodex (ChatGPT) and Claude did not fully agree after ${exchanges} (${why}); the answer above sets out the points still in dispute.`;
+  }
+  const checker = LABEL[OTHER[result.settings.synthesizer]];
   const last = result.rounds.at(-1);
-  const objections = last ? `\n\n${reviewer}'s remaining objections:\n${withoutVerdict(last.review)}` : '';
-  return `${result.answer}\n\n---\nNot agreed after ${rounds} (${why}).${objections}`;
+  const why = result.stopped_reason ? `stopped early: ${result.stopped_reason}` : `${checker} did not accept the final text`;
+  const objections = last && last.verdict === 'disagree' ? `\n\n${checker}'s remaining objections:\n${withoutVerdict(last.review)}` : '';
+  return `${result.answer}\n\n---\nCodex (ChatGPT) and Claude converged after ${exchanges}, but the final answer was not confirmed (${why}).${objections}`;
 }
 
 /**

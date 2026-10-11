@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 (2026-10-11)
+
+- **The models now discuss until they agree, not just once.** Before, each model critiqued the other's answer and replied to the critique once; then one drafted a joint answer and the other only reviewed it, so the exchange of ideas happened in the first round only and the drafter held the pen. Now, after the two independent answers, they **exchange**: each gets the other's latest message (first its answer, then its replies) and replies point by point, with its current answer and `VERDICT: AGREE` or `VERDICT: DISAGREE`. Both replies are sent at once and cross over, and the exchange repeats until both agree in the same exchange. Only then does the synthesizer write the final answer, and the other checks that it matches what they agreed (revised once if not).
+- `max_rounds` now limits the exchanges: **5 by default** (was 3 draft/review rounds), `0` for no limit, `null` in the config for one. If the limit is reached without agreement, the final answer sets out what they agree on and each point still in dispute, with both positions, and is marked as not agreed. A failure after the first exchange (for example a usage limit) ends the discussion with what was reached.
+- The draft prompt no longer tells the writer that the other model "must agree with it"; the writer only turns an agreement both reached into the final text.
+- `debate`'s JSON has `exchanges` (each with both replies and verdicts) and `converged` instead of the critiques and replies; `rounds` is the check of the final answer.
+- `council_join`: the host takes part in every exchange like any member.
+
 ## 0.9.3 (2026-10-11)
 
 - **A skill a member already has is named, not sent.** Before, every skill's full `SKILL.md` went into each member's first prompt. Now each member is checked: a skill installed for its own CLI (Claude Code: `~/.claude/skills`, the project's `.claude/skills`, enabled plugins; Codex: `~/.codex/skills`, `~/.agents/skills`, the project's `.agents/skills`, enabled plugins) is named, and the member loads it the way it loads any of its skills. Only the skills it lacks are sent in full. For llm-council and graphify, installed for both CLIs here, the first prompt's skill part drops from 60,716 to 1,075 characters. The host of a `council_join` still gets every skill's instructions. Checked with the real Codex CLI, which found its llm-council skill by name.
