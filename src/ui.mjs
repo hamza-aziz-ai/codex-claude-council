@@ -56,34 +56,64 @@ function wrap(line, max) {
 }
 
 /**
- * The banner: Codex's line and Claude's line cross, cross again and meet in one answer, like a council.
- * Each row is [color, text] pieces: Codex in green, Claude in orange.
+ * The banner. Codex's prompt (>_) and Claude's spark each send out a line; the lines cross, cross again and meet
+ * in one answer (◆), over COUNCIL shaded from Codex green to Claude orange. A narrow terminal gets a smaller one.
  */
 export function banner(version) {
-  const X = c.codex;
-  const L = c.claude;
-  const art = [
-    [[X, '●'], [null, '           '], [L, '●']],
-    [[null, ' '], [X, '╲'], [null, '         '], [L, '╱']],
-    [[null, '  '], [X, '╲'], [null, '       '], [L, '╱']],
-    [[null, '   '], [X, '╲'], [null, '     '], [L, '╱']],
-    [[null, '    '], [X, '╲'], [null, '   '], [L, '╱']],
-    [[null, '     '], [X, '╲'], [null, ' '], [L, '╱']],
-    [[null, '      '], [c.bold, '╳']],
-    [[null, '     '], [L, '╱'], [null, ' '], [X, '╲']],
-    [[null, '     '], [L, '╲'], [null, ' '], [X, '╱']],
-    [[null, '      '], [c.bold, '●']],
+  const width = process.stdout.columns || 100;
+  out('');
+  for (const line of width >= 60 ? bigBanner(version) : smallBanner(version)) out(line);
+  out('');
+}
+
+const CODEX_RGB = [16, 163, 127];
+const CLAUDE_RGB = [217, 119, 87];
+// The nearest of the 256 terminal colors (its 6x6x6 cube), which every color terminal shows.
+const to256 = ([r, g, b]) => 16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51) + Math.round(b / 51);
+const shade = t => paint(`38;5;${to256(CODEX_RGB.map((from, i) => from + (CLAUDE_RGB[i] - from) * t))}`);
+
+// "COUNCIL" in the ANSI Shadow figlet font, letter by letter.
+const LETTERS = {
+  C: [' ██████╗', '██╔════╝', '██║     ', '██║     ', '╚██████╗', ' ╚═════╝'],
+  O: [' ██████╗ ', '██╔═══██╗', '██║   ██║', '██║   ██║', '╚██████╔╝', ' ╚═════╝ '],
+  U: ['██╗   ██╗', '██║   ██║', '██║   ██║', '██║   ██║', '╚██████╔╝', ' ╚═════╝ '],
+  N: ['███╗   ██╗', '████╗  ██║', '██╔██╗ ██║', '██║╚██╗██║', '██║ ╚████║', '╚═╝  ╚═══╝'],
+  I: ['██╗', '██║', '██║', '██║', '██║', '╚═╝'],
+  L: ['██╗     ', '██║     ', '██║     ', '██║     ', '███████╗', '╚══════╝'],
+};
+
+function bigBanner(version) {
+  const title = [...'COUNCIL'].reduce((rows, letter) => rows.map((row, i) => row + LETTERS[letter][i]), Array(6).fill(''));
+  const span = title[0].length;
+  // The emblem on a grid of [char, color] cells; its answer (◆, column 14) sits over the middle of the title.
+  const grid = Array.from({ length: 13 }, () => Array.from({ length: 28 }, () => [' ', null]));
+  const put = (row, col, text, color) => [...text].forEach((ch, i) => { grid[row][col + i] = [ch, color]; });
+  const [X, L, W] = [c.codex, c.claude, c.bold];
+  put(0, 1, 'Codex', X);
+  put(0, 19, 'Claude', L);
+  put(1, 0, '╭───────╮', X); put(2, 0, '│ >_    │', X); put(3, 0, '╰───────╯', X);
+  put(1, 20, '╲ │ ╱', L); put(2, 20, '─ ● ─', L); put(3, 20, '╱ │ ╲', L);
+  for (let k = 0; k < 5; k += 1) { put(4 + k, 9 + k, '╲', X); put(4 + k, 19 - k, '╱', L); }
+  put(9, 14, '╳', W);
+  put(10, 13, '╱', L); put(10, 15, '╲', X);
+  put(11, 13, '╲', L); put(11, 15, '╱', X);
+  put(12, 14, '◆', W); put(12, 17, 'one answer', c.dim);
+  const indent = ' '.repeat(Math.floor(span / 2) - 14 + 2);
+  const emblem = grid.map(row => `${indent}${row.map(([ch, color]) => (color ? color(ch) : ch)).join('')}`.trimEnd());
+  const shaded = title.map(row => `  ${[...row].map((ch, i) => (ch === ' ' ? ch : shade(i / (span - 1))(ch))).join('')}`);
+  const tagline = `${X('Codex (ChatGPT)')}  ${c.dim('×')}  ${L('Claude')}`;
+  const motto = c.dim(`they reply to each other until they agree${version ? `  ·  v${version}` : ''}`);
+  const pad = text => ' '.repeat(Math.max(2, 2 + Math.floor((span - visible(text)) / 2))) + text;
+  return [...emblem, '', ...shaded, '', pad(tagline), pad(motto)];
+}
+
+function smallBanner(version) {
+  const [X, L] = [c.codex, c.claude];
+  return [
+    `  ${X('>_')}  ${X('╲')} ${L('╱')}  ${L('●')}   ${c.bold('codex-claude-council')}${version ? c.dim(`  v${version}`) : ''}`,
+    `       ${c.bold('╳')}       ${X('Codex (ChatGPT)')} ${c.dim('×')} ${L('Claude')}`,
+    `      ${L('╱')} ${X('╲')}`,
+    `      ${L('╲')} ${X('╱')}      ${c.dim('reply to each other until they agree')}`,
+    `       ${c.bold('◆')}`,
   ];
-  const side = {
-    2: c.bold('codex-claude-council') + (version ? c.dim(`  v${version}`) : ''),
-    3: `${X('●')} Codex (ChatGPT)   ${L('●')} Claude`,
-    5: c.dim('Both answer, then reply to each other'),
-    6: c.dim('until they agree on one answer.'),
-  };
-  out('');
-  art.forEach((pieces, row) => {
-    const text = pieces.map(([color, piece]) => (color ? color(piece) : piece)).join('');
-    out(`  ${text}${side[row] ? `${' '.repeat(16 - visible(text))}${side[row]}` : ''}`);
-  });
-  out('');
 }

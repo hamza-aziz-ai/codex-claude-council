@@ -2,7 +2,7 @@
 
 ## 0.10.1 (2026-10-12)
 
-- **A clearer installer.** `install`, `update`, `uninstall` and `doctor` now show their progress as a rail of steps (`◇` done, `▲` warning, `■` failed), with a spinner while each `claude` / `codex` command runs, the commands' own output dimmed under them, and boxed summaries: what was installed, the next steps, the config. `install` and `update` open with a banner of the council: Codex's and Claude's lines crossing until they meet in one answer. No new dependencies (`src/ui.mjs`). Colors and the spinner only on a terminal; piped output (and `NO_COLOR`) is plain text with the same layout, wrapped to 100 columns.
+- **A clearer installer.** `install`, `update`, `uninstall` and `doctor` now show their progress as a rail of steps (`◇` done, `▲` warning, `■` failed), with a spinner while each `claude` / `codex` command runs, the commands' own output dimmed under them, and boxed summaries: what was installed, the next steps, the config. `install` and `update` open with a banner of the council: Codex's prompt (`>_`) and Claude's spark each send out a line, and the lines cross until they meet in one answer, over COUNCIL in block letters shaded from Codex green to Claude orange (a smaller banner on narrow terminals). No new dependencies (`src/ui.mjs`). Colors and the spinner only on a terminal; piped output (and `NO_COLOR`) is plain text with the same layout, wrapped to 100 columns.
 
 ## 0.10.0 (2026-10-11)
 
