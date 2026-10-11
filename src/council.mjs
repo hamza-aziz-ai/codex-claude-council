@@ -5,7 +5,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { askClaude, askCodex, checkSessionRef, holdSessions, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
-import { loadSkills, skillNote } from './skills.mjs';
+import { installedFor, loadSkills, skillNote } from './skills.mjs';
 
 const COUNCIL_OPTIONS = ['codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'network', 'skill',
   'codex_session_id', 'claude_session_id'];
@@ -229,7 +229,10 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   const skills = loadSkills(skillName);
   const skill = skills.length > 0;
   // With skills, the first prompt of the question carries their instructions and each later step says they are still available.
-  const withSkill = (text, first = false) => skillNote(skills, first) + text;
+  // A skill installed for a member's own CLI is named instead, and the member loads it itself. The host gets every skill's
+  // instructions: a desktop app may not load the skills installed for the CLI.
+  const own = Object.fromEntries(SIDES_ORDER.map(side => [side, side === host?.side ? new Set() : installedFor(side, skills, workspace)]));
+  const withSkill = (side, text, first = false) => skillNote(skills, first, own[side]) + text;
   const task = {
     codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, network: net, skill, resume: sessions.codex, held: true }),
     claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill, resume: sessions.claude, held: true }),
@@ -253,13 +256,13 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
     const access = side => (side === host?.side ? hostAccessNote(workspace, web) : accessNote(workspace, web) + (side === 'codex' && net ? networkNote(config.network_domains) : ''));
-    const answers = await bothSides((me, them) => withSkill(prompt('answer', { question, access: access(me), self: SPEAKER[me], other: SPEAKER[them] }), true));
+    const answers = await bothSides((me, them) => withSkill(me, prompt('answer', { question, access: access(me), self: SPEAKER[me], other: SPEAKER[them] }), true));
     progress('Each model is critiquing the other');
     const verify = verifyNote(workspace, web);
-    const critiques = await bothSides((me, them) => withSkill(prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify })));
+    const critiques = await bothSides((me, them) => withSkill(me, prompt('critique', { other: SPEAKER[them], other_answer: answers[them], verify })));
     // The critiques are swapped: each model sees what the other said about its answer, and replies.
     progress('Each model is replying to the critique of its answer');
-    const replies = await bothSides((me, them) => withSkill(prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] })));
+    const replies = await bothSides((me, them) => withSkill(me, prompt('reply', { other: SPEAKER[them], other_critique: critiques[them] })));
     const base = {
       codex: answers.codex, claude: answers.claude, codex_critique: critiques.codex, claude_critique: critiques.claude,
       codex_reply: replies.codex, claude_reply: replies.claude,
@@ -270,7 +273,7 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     if (maxRounds === undefined) {
       progress(`${LABEL[writer]} is writing the final answer`);
       const other = OTHER[writer];
-      return { answer: await ask(writer, withSkill(prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] }))), ...base };
+      return { answer: await ask(writer, withSkill(writer, prompt('synthesize', { other: SPEAKER[other], other_reply: replies[other] }))), ...base };
     }
 
     // Agreement loop: the synthesizer drafts one joint answer, the other model reviews it.
@@ -286,14 +289,14 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
       const limit = maxRounds === 0 ? '' : ` of ${maxRounds}`;
       try {
         progress(`Round ${round}${limit}: ${LABEL[drafter]} is drafting the joint answer`);
-        const text = await ask(drafter, withSkill(round === 1
+        const text = await ask(drafter, withSkill(drafter, round === 1
           ? prompt('draft', { other: SPEAKER[reviewer], other_reply: replies[reviewer] })
           : prompt('redraft', { other: SPEAKER[reviewer], objections })));
         ({ answer: draft, notes } = splitDraft(text));
         progress(`Round ${round}${limit}: ${LABEL[reviewer]} is reviewing the draft`);
         // The reviewer has not seen the drafter's reply yet; its own earlier objections are in its session.
         const context = round === 1 ? `${SPEAKER[drafter]}'s reply to your critique:\n${replies[drafter]}\n` : '';
-        const review = await ask(reviewer, withSkill(prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify })));
+        const review = await ask(reviewer, withSkill(reviewer, prompt('review', { other: SPEAKER[drafter], context, draft, notes, verify })));
         const agreed = readVerdict(review);
         rounds.push({ round, drafter, reviewer, draft, notes, review, verdict: agreed ? 'agree' : 'disagree' });
         progress(`Round ${round}${limit}: ${LABEL[reviewer]} ${agreed ? 'agrees' : 'disagrees'}`);
@@ -355,7 +358,7 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
   const skills = loadSkills(clean.skill);
   if (tool === 'ask_codex' || tool === 'ask_claude') {
     const one = tool.slice(4);
-    const single = skillNote(skills, true) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
+    const single = skillNote(skills, true, installedFor(one, skills, workspace)) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
     const answering = () => onProgress?.(`${LABEL[one]} is answering`);
     const singleOptions = { signal, workspace, web, network: net, skill: skills.length > 0, resume: clean.session_id,
       onWait: waiting => (waiting ? onProgress?.(waitingFor(one, clean.session_id)) : answering()) };

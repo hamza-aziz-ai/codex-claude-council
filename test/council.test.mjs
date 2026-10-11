@@ -452,6 +452,40 @@ test('with a skill, both models get its instructions first, use it where a step 
   await assert.rejects(invoke('council_ask', 'q', { skill: ['test-skill', 'no-such-skill'] }), /skill "no-such-skill" is not installed/);
   await assert.rejects(invoke('council_ask', 'q', { skill: 5 }), /skill must be a skill name/);
   assert.equal(fake.calls().length, 0);
+
+  // A skill installed for a member's own CLI is named, not sent: test-skill is Claude Code's own here, second-skill
+  // the project's own for Codex (.agents/skills). The host of a council_join still gets every skill's instructions.
+  const project = mkdtempSync(join(tmpdir(), 'council-project-'));
+  mkdirSync(`${fake.dir}/claude-home/skills/test-skill`, { recursive: true });
+  writeFileSync(`${fake.dir}/claude-home/skills/test-skill/SKILL.md`, '---\nname: test-skill\ndescription: "A test skill."\n---\n\nConsult five advisors.\n');
+  mkdirSync(`${project}/.agents/skills/second-skill`, { recursive: true });
+  writeFileSync(`${project}/.agents/skills/second-skill/SKILL.md`, '---\nname: second-skill\ndescription: "Another."\n---\n\nAnswer tersely.\n');
+  try {
+    resetSessions();
+    await invoke('debate', 'q', { skill: 'test-skill, second-skill', max_rounds: 1, workspace: project });
+    const [claudeFirst, ...claudeLater] = callsOf('claude');
+    assert.match(claudeFirst.input, /^For this question, the "test-skill" and "second-skill" skills are available; "test-skill" is installed for you, so load it by name, as you load any of your skills; the instructions of "second-skill" are below\./);
+    assert.ok(!claudeFirst.input.includes('Consult five advisors') && claudeFirst.input.includes('Answer tersely'));
+    for (const call of claudeLater) assert.match(call.input, /^The "test-skill" and "second-skill" skills are still available \(as set out earlier in this conversation\)/);
+    const codexFirst = callsOf('codex')[0];
+    assert.match(codexFirst.input, /"second-skill" is installed for you[\s\S]*<skill name="test-skill">\n# Test skill\nConsult five advisors/);
+    assert.ok(!codexFirst.input.includes('Answer tersely'));
+    fake.clearCalls();
+    await invoke('ask_claude', 'q', { skill: 'test-skill', workspace: project });
+    assert.match(fake.questionCalls()[0].input, /^For this question, the "test-skill" skill is available; it is installed for you, so load it by name/);
+    fake.clearCalls();
+    resetSessions();
+    const asked = [];
+    const hostTurn = async message => {
+      asked.push(message);
+      return message.includes('---NOTES---') ? 'HOST DRAFT\n---NOTES---\nnone' : 'HOST TEXT';
+    };
+    await invoke('council_join', 'q', { me: 'claude', skill: 'test-skill', max_rounds: 1, workspace: project }, { hostTurn });
+    assert.ok(asked[0].includes('<skill name="test-skill">\n# Test skill\nConsult five advisors'), 'the host gets the instructions');
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(`${fake.dir}/claude-home/skills`, { recursive: true, force: true });
+  }
 });
 
 test('an invalid workspace is rejected before any CLI runs', async () => {

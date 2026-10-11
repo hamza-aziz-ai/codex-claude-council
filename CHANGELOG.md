@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3 (2026-10-11)
+
+- **A skill a member already has is named, not sent.** Before, every skill's full `SKILL.md` went into each member's first prompt. Now each member is checked: a skill installed for its own CLI (Claude Code: `~/.claude/skills`, the project's `.claude/skills`, enabled plugins; Codex: `~/.codex/skills`, `~/.agents/skills`, the project's `.agents/skills`, enabled plugins) is named, and the member loads it the way it loads any of its skills. Only the skills it lacks are sent in full. For llm-council and graphify, installed for both CLIs here, the first prompt's skill part drops from 60,716 to 1,075 characters. The host of a `council_join` still gets every skill's instructions. Checked with the real Codex CLI, which found its llm-council skill by name.
+- Skills of Claude Code's and Codex's enabled plugins can be named in `skill` (enabled: `enabledPlugins` in Claude Code's `settings.json`, `[plugins."…"] enabled = true` in Codex's `config.toml`). The tool descriptions do not list them, since there can be hundreds.
+
 ## 0.9.2 (2026-10-11)
 
 - **Several skills at once.** `skill` takes several names separated by commas (`"llm-council, caveman"`) or a list, on every tool that takes it; in the terminal, repeat `--skill` or separate names with commas. Each is checked before anything runs, used once, in the order given. Both models get each skill's instructions in the first prompt, and each later step names them all as still available. One skill works as before, word for word.

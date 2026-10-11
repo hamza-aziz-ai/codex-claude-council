@@ -2,7 +2,7 @@
 // (~/.codex-claude-council/skills/<name>/SKILL.md, with any files the skill comes with). Nothing
 // third-party ships with the plugin. Skills installed natively for Claude Code or Codex can be named too.
 import { execFile } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { userConfigPath } from './config.mjs';
@@ -57,15 +57,44 @@ export function listSkills() {
   return skillsIn(skillsDir(), 'council');
 }
 
-/** Skills installed natively for Claude Code (~/.claude/skills) or Codex (~/.codex/skills, ~/.agents/skills). */
-export function nativeSkills() {
-  const roots = [
-    join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'skills'),
-    join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'skills'),
-    join(homedir(), '.agents', 'skills'),
-  ];
+// Where each CLI finds the skills installed for it: the project's own, the user's, then its enabled plugins' skills.
+function nativeRoots(side, workspace, plugins = true) {
+  const home = side === 'claude' ? process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude') : process.env.CODEX_HOME || join(homedir(), '.codex');
+  const roots = [join(home, 'skills'), ...(side === 'codex' ? [join(homedir(), '.agents', 'skills')] : []), ...(plugins ? pluginRoots(side, home) : [])];
+  return workspace ? [join(workspace, side === 'claude' ? '.claude' : '.agents', 'skills'), ...roots] : roots;
+}
+
+// The skills folders of a CLI's enabled plugins, kept at <home>/plugins/cache/<marketplace>/<plugin>/<version>/skills.
+// Enabled: "enabledPlugins" in Claude Code's settings.json, [plugins."<plugin>@<marketplace>"] enabled = true in Codex's config.toml.
+function pluginRoots(side, home) {
+  let enabled = [];
+  try {
+    enabled = side === 'claude'
+      ? Object.entries(JSON.parse(readFileSync(join(home, 'settings.json'), 'utf8')).enabledPlugins ?? {}).filter(([, on]) => on === true).map(([id]) => id)
+      : [...readFileSync(join(home, 'config.toml'), 'utf8').matchAll(/^\s*\[plugins\."([^"]+)"\]\s*\r?\n\s*enabled\s*=\s*true\b/gm)].map(match => match[1]);
+  } catch { return []; }
+  return enabled.flatMap(id => {
+    const [plugin, marketplace] = id.split('@');
+    if (!plugin || !marketplace) return [];
+    const dir = join(home, 'plugins', 'cache', marketplace, plugin);
+    try { return readdirSync(dir).map(version => join(dir, version, 'skills')); } catch { return []; }
+  });
+}
+
+/**
+ * Skills installed natively for Claude Code (~/.claude/skills) or Codex (~/.codex/skills, ~/.agents/skills), and with
+ * plugins (default true), those of their enabled plugins. The tool descriptions list them without plugins, which can bring hundreds.
+ */
+export function nativeSkills({ plugins = true } = {}) {
+  const roots = [...nativeRoots('claude', undefined, plugins), ...nativeRoots('codex', undefined, plugins)];
   const seen = new Set(listSkills().map(skill => skill.name));
   return roots.flatMap(root => skillsIn(root, root)).filter(skill => !seen.has(skill.name) && seen.add(skill.name));
+}
+
+/** The names of these skills that are installed for that CLI itself (side: codex or claude), so it loads them by name. */
+export function installedFor(side, skills, workspace) {
+  const roots = nativeRoots(side, workspace);
+  return new Set(skills.filter(skill => roots.some(root => existsSync(join(root, skill.name, 'SKILL.md')))).map(skill => skill.name));
 }
 
 /** An installed skill by name: the council's own first, then a native one. */
@@ -274,20 +303,23 @@ async function defaultFetch(url) {
 /**
  * What a model is told when skills are in use (skill: one skill, a list of them, or null). first: the first
  * prompt of a question, which carries each skill's full instructions; later steps say they are still there to
- * use (the session remembers them). The model decides at which steps a skill is needed, rather than running
- * it at every step.
+ * use (the session remembers them). native: names of skills installed for that model's own CLI, which it
+ * loads by name, so their instructions are not sent. The model decides at which steps a skill is needed,
+ * rather than running it at every step.
  */
-export function skillNote(skill, first) {
+export function skillNote(skill, first, native = new Set()) {
   const skills = [skill ?? []].flat();
   if (!skills.length) return '';
   const one = skills.length === 1;
-  const names = new Intl.ListFormat('en', { type: 'conjunction' }).format(skills.map(s => `"${s.name}"`));
-  const these = one ? `the ${names} skill is` : `the ${names} skills are`;
+  const list = group => new Intl.ListFormat('en', { type: 'conjunction' }).format(group.map(s => `"${s.name}"`));
+  const these = one ? `the ${list(skills)} skill is` : `the ${list(skills)} skills are`;
+  const own = skills.filter(s => native.has(s.name));
+  const sent = skills.filter(s => !native.has(s.name));
   const when = `The user asked for ${one ? 'this skill, so use it' : 'these skills, so use each'} at the steps where it fits, judged by ${one ? 'the' : 'each'} skill's own guidance on when to use it: `
     + 'for example a decision, trade-off or disagreement that its method is made for, even if you already lean one way. At steps that do not need it, '
     + `such as checking a fact, accepting a point or a small correction, answer directly without it. When you use ${one ? 'it' : 'one'}, follow it fully, `
     + 'including any sub-agents it calls for (spawn them with your sub-agent tool), and adapt it to the step.';
-  const dirs = skills.filter(s => s.dir);
+  const dirs = sent.filter(s => s.dir);
   const files = !dirs.length ? ''
     : one ? ` Files the skill mentions (such as references or scripts) are in its folder, ${dirs[0].dir}; read them from there when you need them.`
       : ` Files a skill mentions (such as references or scripts) are in its folder (${dirs.map(s => `"${s.name}": ${s.dir}`).join('; ')}); read them from there when you need them.`;
@@ -296,16 +328,14 @@ export function skillNote(skill, first) {
     + 'and give your result in your reply, in the format this step asks for. Only your final message is passed on, so put your complete result in it '
     + '(for example the full verdict), not a reference to an earlier message.';
   if (!first) {
-    return `${these[0].toUpperCase()}${these.slice(1)} still available (${one ? 'its' : 'their'} instructions are earlier in this conversation); use ${one ? 'it' : 'them'} for this step only if the step needs ${one ? 'it' : 'them'}. ${rules}
-
-`;
+    const where = own.length ? 'as set out earlier in this conversation' : `${one ? 'its' : 'their'} instructions are earlier in this conversation`;
+    return `${these[0].toUpperCase()}${these.slice(1)} still available (${where}); use ${one ? 'it' : 'them'} for this step only if the step needs ${one ? 'it' : 'them'}. ${rules}\n\n`;
   }
-  const bodies = skills.map(s => `<skill name="${s.name}">
-${s.body}
-</skill>
-
-`).join('');
-  return `For this question, ${these} available; ${one ? 'its' : 'their'} instructions are below. ${when}${files} ${rules}
-
-${bodies}`;
+  const installed = own.length === 1 ? `${list(own)} is installed for you, so load it by name, as you load any of your skills`
+    : `${list(own)} are installed for you, so load them by name, as you load any of your skills`;
+  const how = !own.length ? `${one ? 'its' : 'their'} instructions are below`
+    : !sent.length ? (one ? 'it is installed for you, so load it by name, as you load any of your skills' : `they are installed for you, so load them by name, as you load any of your skills`)
+      : `${installed}; the instructions of ${list(sent)} are below`;
+  const bodies = sent.map(s => `<skill name="${s.name}">\n${s.body}\n</skill>\n\n`).join('');
+  return `For this question, ${these} available; ${how}. ${when}${files} ${rules}\n\n${bodies}`;
 }

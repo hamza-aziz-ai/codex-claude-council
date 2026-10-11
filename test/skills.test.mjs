@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { addSkill, findSkills, listSkills, loadSkill, nativeSkills, parseGitHubUrl, parseSkill, rawSkillUrl, removeSkill, resolveRef, skillNote, skillsDir } from '../src/skills.mjs';
+import { addSkill, findSkills, installedFor, listSkills, loadSkill, nativeSkills, parseGitHubUrl, parseSkill, rawSkillUrl, removeSkill, resolveRef, skillNote, skillsDir } from '../src/skills.mjs';
 
 let dir;
 const saved = {};
@@ -129,6 +129,39 @@ test('skills installed natively for Claude Code or Codex can be used by name, bu
   } finally {
     if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved;
   }
+});
+
+test('which skills each CLI has itself: its own folder, the project\'s, and its enabled plugins\'', () => {
+  const claudeHome = join(dir, 'claude-home');
+  const codexHome = join(dir, 'codex-home');
+  const project = join(dir, 'project');
+  put(join(codexHome, 'plugins', 'cache', 'market', 'kit', '1.0.0', 'skills', 'plugin-one', 'SKILL.md'), skillText('plugin-one'));
+  put(join(codexHome, 'plugins', 'cache', 'market', 'off', '1.0.0', 'skills', 'plugin-off', 'SKILL.md'), skillText('plugin-off'));
+  put(join(codexHome, 'config.toml'), '[plugins."kit@market"]\r\n  enabled = true\n\n[plugins."off@market"]\nenabled = false\n');
+  put(join(claudeHome, 'plugins', 'cache', 'market', 'kit', '2.0.0', 'skills', 'plugin-one', 'SKILL.md'), skillText('plugin-one'));
+  put(join(claudeHome, 'settings.json'), JSON.stringify({ enabledPlugins: { 'kit@market': true, 'off@market': false } }));
+  put(join(project, '.claude', 'skills', 'project-one', 'SKILL.md'), skillText('project-one'));
+  try {
+    const skills = ['plugin-one', 'plugin-off', 'project-one', 'native-one'].map(name => ({ name }));
+    assert.deepEqual([...installedFor('codex', skills, project)], ['plugin-one']);
+    assert.deepEqual([...installedFor('claude', skills, project)], ['plugin-one', 'project-one', 'native-one']);
+    assert.equal(loadSkill('plugin-one').name, 'plugin-one', 'a plugin\'s skill can be named');
+    assert.throws(() => loadSkill('plugin-off'), /not installed/);
+    assert.ok(!nativeSkills({ plugins: false }).some(s => s.name === 'plugin-one'), 'the tool descriptions do not list plugin skills');
+  } finally {
+    for (const path of [join(codexHome, 'plugins'), join(codexHome, 'config.toml'), join(claudeHome, 'plugins'), join(claudeHome, 'settings.json'), project]) rmSync(path, { recursive: true, force: true });
+  }
+});
+
+test('a skill a model has itself is named, not sent; the others\' instructions are', () => {
+  const kit = { ...parseSkill(SKILL), dir: '/skills/llm-council' };
+  const other = { name: 'other', body: 'Other body.', dir: '/skills/other' };
+  const first = skillNote([kit, other], true, new Set(['llm-council']));
+  assert.match(first, /^For this question, the "llm-council" and "other" skills are available; "llm-council" is installed for you, so load it by name, as you load any of your skills; the instructions of "other" are below\./);
+  assert.ok(!first.includes('Five advisors') && first.includes('<skill name="other">\nOther body.\n</skill>'));
+  assert.ok(first.includes('in its folder ("other": /skills/other)') && !first.includes('/skills/llm-council'), 'only the sent skill\'s folder is named');
+  assert.match(skillNote(kit, true, new Set(['llm-council'])), /^For this question, the "llm-council" skill is available; it is installed for you, so load it by name[^]*message\.\n\n$/);
+  assert.match(skillNote(kit, false, new Set(['llm-council'])), /^The "llm-council" skill is still available \(as set out earlier in this conversation\)/);
 });
 
 test('the skill note: full instructions first, a reminder afterwards, used where needed, the discussion\'s rules first', () => {

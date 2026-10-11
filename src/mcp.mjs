@@ -60,12 +60,14 @@ const webField = {
     + 'Pass false only when the user asks for no internet access.',
 };
 // Installed skills are listed when the server starts; a skill installed later is available after a restart.
-const installedSkills = [...listSkills(), ...nativeSkills()].map(skill => skill.name);
+// Skills of the CLIs' plugins can be named too, but are not listed: there can be hundreds.
+const installedSkills = [...listSkills(), ...nativeSkills({ plugins: false })].map(skill => skill.name);
 const skillField = {
   type: 'string',
   description: 'Optional: the name of an installed skill both models may use for this question, at the steps where they judge it is needed, including any sub-agents it calls for; '
     + 'for several skills, their names separated by commas ("llm-council, caveman"). '
     + 'Pass only skills the user asks to use (by name, or by a phrase the skill says triggers it). '
+    + 'Skills of Claude Code\'s and Codex\'s enabled plugins can be named too. '
     + `Installed: ${installedSkills.length ? installedSkills.join(', ') : 'none (install with `codex-claude-council skill add <GitHub URL>`)'}. `
     + 'A step that uses it takes much longer and uses much more of both plans.',
 };
