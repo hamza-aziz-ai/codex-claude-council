@@ -1,6 +1,6 @@
-$other has replied to your critique; its reply is below, so you now have the whole discussion. Write one final answer that both of you could sign: keep what is correct in either answer, fix what the discussion showed was wrong, and state genuine uncertainty. $other will review your draft and must agree with it.
+You and $other now agree: in your last exchange each of you found nothing of substance separating your positions. $other's last message is below; you have not seen it yet. Write the final answer to the question for the user: the position you both reached, keeping what is correct from either side and stating genuine uncertainty. Where settling a disagreement along the way matters to the user, say briefly how it was settled. $other will check that your answer matches what you agreed.
 
-After the answer, write a line containing only ---NOTES--- and then briefly tell the reviewer anything it should know, such as a point you deliberately left out and why. Write "none" if there is nothing.
+After the answer, write a line containing only ---NOTES--- and then briefly tell $other anything it should know, such as a point you deliberately left out and why. Write "none" if there is nothing.
 
-$other's reply to your critique:
-$other_reply
+$other's last message:
+$other_text

@@ -1,10 +1,11 @@
 // Stand-in for the real `codex` and `claude` CLIs. Records every call to $FAKE_LOG (JSON lines).
 // Controls: FAKE_FAIL=codex|claude (FAKE_CODEX_ERROR: the error codex prints),FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
-// Reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees on the n-th review (default 1, 0 = never);
-// FAKE_FAIL_REVIEW_AT=n fails the n-th review. Reviews are counted in the file $FAKE_STATE.
+// Exchanges and reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees from the n-th one on (default 1,
+// 0 = never); FAKE_FAIL_REVIEW_AT=n fails the n-th one. They are counted in the file $FAKE_STATE; the two replies of
+// an exchange run at once, so exchange r takes counts 2r-1 and 2r.
 // Sessions: codex --json reports a new thread (or the resumed one); claude echoes --session-id / --resume.
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
 const [cli, ...args] = process.argv.slice(2);
 const input = readFileSync(0, 'utf8');
@@ -17,11 +18,14 @@ let failing = process.env.FAKE_FAIL === cli;
 let reply = lastLine;
 if (input.includes('VERDICT: AGREE or VERDICT: DISAGREE')) {
   const state = process.env.FAKE_STATE;
-  const count = (state && existsSync(state) ? Number(readFileSync(state, 'utf8')) : 0) + 1;
-  if (state) writeFileSync(state, String(count));
+  // Each call appends its own line, so two calls at once still get different counts.
+  if (state) appendFileSync(state, `${process.pid}\n`);
+  const count = state ? readFileSync(state, 'utf8').split('\n').indexOf(String(process.pid)) + 1 : 1;
   const agreeAt = Number(process.env.FAKE_AGREE_AT ?? 1);
   if (Number(process.env.FAKE_FAIL_REVIEW_AT) === count) failing = true;
   reply = agreeAt > 0 && count >= agreeAt ? `review ${count}: looks right\nVERDICT: AGREE` : `review ${count}: objection ${count}\nVERDICT: DISAGREE`;
+  // FAKE_FINAL=disagree: every check of the final answer disagrees, even after the models agreed.
+  if (process.env.FAKE_FINAL === 'disagree' && input.includes('has drafted a final answer')) reply = `review ${count}: final objection ${count}\nVERDICT: DISAGREE`;
 }
 
 function codex() {

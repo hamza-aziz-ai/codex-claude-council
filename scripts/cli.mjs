@@ -19,8 +19,8 @@ Usage:
   ${NAME} skill list               List installed skills
   ${NAME} skill remove <name>      Remove an installed skill
   ${NAME} config [--init]          Show the effective config, or create an editable config file
-  ${NAME} ask "question"           Both answer, critique each other, reply, then agree on one final answer
-  ${NAME} debate "question"        Same, printing answers, critiques, replies, rounds and settings as JSON
+  ${NAME} ask "question"           Both answer, then reply to each other until they agree on one final answer
+  ${NAME} debate "question"        Same, printing the answers, every exchange and the settings as JSON
   ${NAME} codex "question"         Codex (ChatGPT) only
   ${NAME} claude "question"        Claude only
   ${NAME} mcp                      Run the MCP server on stdio
@@ -29,8 +29,8 @@ Model and effort (omit to use your config):
   codex, claude:   --model <name>  --effort <level>
   ask, debate:     --codex-model <name>  --codex-effort <level>  --claude-model <name>  --claude-effort <level>
                    --synthesizer <claude|codex>   who writes the final answer (default: claude; chatgpt = codex)
-                   --max-rounds <n>   draft/review until both agree: n = at most n rounds, 0 = no limit
-                                      (default: 3; "max_rounds": null in the config for a single pass)
+                   --max-rounds <n>   exchanges until both agree: n = at most n, 0 = no limit
+                                      (default: 5, "max_rounds" in the config)
   all four:        --workspace <dir>  project folder both models work in, in plan mode (read, never change);
                                       default: the session's folder with a session id, else the git
                                       repository you are in, if any

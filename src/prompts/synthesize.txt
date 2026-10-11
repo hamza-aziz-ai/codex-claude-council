@@ -1,4 +1,4 @@
-Give the user a final answer to the question you have been discussing. $other has replied to your critique; its reply is below, so you now have the whole discussion: both answers, both critiques and both replies. Resolve disagreements where evidence allows, noting what each of you conceded or defended; otherwise say what remains uncertain. Do not mention a council unless useful.
+The discussion has ended without full agreement ($why). $other's latest message is below; you have not seen it yet. Give the user the final answer: first what you both agree on, then each point still in dispute, with both positions and the reasons each of you gave, and your recommendation where the evidence supports one. Be fair to $other's position. Do not mention a council unless useful.
 
-$other's reply to your critique:
-$other_reply
+$other's latest message:
+$other_text

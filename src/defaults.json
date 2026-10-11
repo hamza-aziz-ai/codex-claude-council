@@ -3,7 +3,7 @@
   "skill_timeout_seconds": 1800,
   "tool_wait_seconds": 50,
   "synthesizer": "claude",
-  "max_rounds": 3,
+  "max_rounds": 5,
   "web_search": true,
   "network": false,
   "network_domains": [],

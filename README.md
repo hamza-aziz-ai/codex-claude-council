@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/node-20%2B-brightgreen)
 
-Ask **ChatGPT (through Codex)** and **Claude** the same question. Each gives its own answer, hears the other's critique of it and replies, and together they settle on one answer that both agree with, using the subscriptions you already have. No API keys.
+Ask **ChatGPT (through Codex)** and **Claude** the same question. Each gives its own answer, then they reply to each other, round after round, until they agree on one answer, using the subscriptions you already have. No API keys.
 
 Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **ChatGPT desktop app** and your **terminal**, on Windows, macOS and Linux.
 
@@ -36,22 +36,21 @@ Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **Chat
 flowchart LR
     Q[Your question] --> CA[Codex answers]
     Q --> LA[Claude answers]
-    LA --> CC[Codex critiques Claude's answer]
-    CA --> LC[Claude critiques Codex's answer]
-    CC --> LRe[Claude replies to Codex's critique]
-    LC --> CRe[Codex replies to Claude's critique]
-    CRe & LRe --> D[Draft one joint answer]
-    D --> R{Other model reviews}
-    R -- disagrees --> D
-    R -- agrees --> A[Answer both agree with]
+    CA -- to Claude --> L1[Claude replies]
+    LA -- to Codex --> C1[Codex replies]
+    L1 -- to Codex --> C2[Codex replies]
+    C1 -- to Claude --> L2[Claude replies]
+    C2 & L2 --> V{Both agree?}
+    V -- no: exchange again --> V
+    V -- yes --> F[One writes the final answer, the other checks it]
 ```
 
 1. **Answer**: both models answer on their own, without seeing each other.
-2. **Critique**: each reviews the other's answer.
-3. **Reply**: the critiques are swapped. Each model reads what the other said about its answer and replies: it accepts the points that are right and explains where it still disagrees.
-4. **Agree**: one model drafts a joint answer from the whole discussion and the other reviews it. They repeat until both agree (at most 3 rounds by default).
+2. **Exchange**: each model gets the other's latest message (first its answer, then its replies) and replies point by point: what it accepts and how its position changes, where it still disagrees and why, then its current answer and a verdict, `AGREE` or `DISAGREE`. The two replies cross over, and the exchange repeats: a crossed zig-zag that narrows round after round.
+3. **Converge**: as soon as both say `AGREE` in the same exchange, one model writes the final answer and the other checks that it matches what they agreed (at most 5 exchanges by default; `max_rounds: 0` for no limit).
+4. **No agreement**: if the limit is reached first, the final answer sets out what they agree on and each point still in dispute, with both positions.
 
-The conversation goes both ways whoever writes the final answer, and from step 2 on each model sees the whole discussion so far. Each model keeps its session between questions, so it remembers the discussion and what it has already read, and each prompt carries only what that model has not seen yet.
+Neither model leads the discussion: in every exchange both reply to each other at the same time, and only after they agree does one of them write the final text. Each model keeps its session between questions, so it remembers the discussion and what it has already read, and each prompt carries only what that model has not seen yet.
 
 ## Requirements
 
@@ -134,8 +133,8 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 
 | You say | What runs |
 |---|---|
-| "Ask the council: should I use Postgres or MongoDB for this?" | `council_ask`: both answer, critique, reply, then agree on one final answer |
-| "Run a council **debate** on this migration plan." | `debate`: the final answer plus every answer, critique, reply and draft/review round |
+| "Ask the council: should I use Postgres or MongoDB for this?" | `council_ask`: both answer, then reply to each other until they agree on one final answer |
+| "Run a council **debate** on this migration plan." | `debate`: the final answer plus both answers, every exchange and the final check |
 | "Get **Codex's** second opinion on this function." | `ask_codex` (or `ask_claude` for Claude alone) |
 | "**Discuss with my Codex session 019a…** whether this refactor is safe." (asked in Claude Code) | `council_join`: this session takes part itself; Codex continues session 019a… |
 | "Ask the council, continuing **my Claude session 3f2a…** and **my Codex session "auth refactor"**: is my plan sound?" | `council_ask` with `claude_session_id` and `codex_session_id` |
@@ -149,7 +148,7 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 
 In a project, the host passes its folder as the `workspace`, and the models read what they need themselves: point them at files, functions, the failing test or the error rather than pasting whole files. They cannot see the host's conversation (unless the host takes part itself), so the host states the task and any context that is not in the project.
 
-**Long runs.** A council takes several minutes: six CLI calls (answers, critiques, replies) plus two per agreement round, all counting against both plans' limits. Some apps end a tool call after about 60 seconds (Claude Desktop does), so every tool returns within about 50 seconds, with the answer or with "still working", the current step and a `job_id`; the host then calls `council_result` until the answer is ready, while the council keeps running. `council_cancel` stops a job.
+**Long runs.** A council takes several minutes: two CLI calls for the answers, two per exchange and two for the final answer and its check, all counting against both plans' limits. Some apps end a tool call after about 60 seconds (Claude Desktop does), so every tool returns within about 50 seconds, with the answer or with "still working", the current step and a `job_id`; the host then calls `council_result` until the answer is ready, while the council keeps running. `council_cancel` stops a job.
 
 ## Examples and best practices
 
@@ -285,7 +284,7 @@ Say your repository has a Claude Code session `abcd` and a Codex session `efgh`,
 
 - **`abcd` itself is the Claude member.** No second Claude session is started. `council_join` hands `abcd` each of Claude's turns (the same prompts a Claude member gets); `abcd` writes them in its own conversation, with everything it already knows, and sends each back with `council_turn`.
 - **Codex continues `efgh`** in place, read-only. Without a session id, Codex starts a new session.
-- The steps are the same as `council_ask`, and the agreed answer lands in `abcd`. **`abcd` drafts the final answer** and Codex reviews it, unless you name another synthesizer.
+- The steps are the same as `council_ask`: `abcd` and Codex exchange replies until both agree, and the agreed answer lands in `abcd`. **`abcd` writes the final answer** and Codex checks it, unless you name another synthesizer.
 
 It works the other way round too: from a Codex session, `council_join` makes that session the Codex member, and Claude continues the Claude Code session you name (or a new one).
 
@@ -307,17 +306,19 @@ Skills that a step would use to change something (saving a report, building an i
 
 ## Options
 
-### Agreement: `synthesizer` and `max_rounds`
-
-**Claude** drafts the joint answer by default and Codex reviews it; pass `synthesizer: "codex"` (or change it in your config) to swap. With `council_join`, the **host** drafts it by default, whichever model it is, since it has the whole context; pass `synthesizer` to have the other model draft instead. Either way both models answer, critique and reply first.
+### Agreement: `max_rounds` and `synthesizer`
 
 | `max_rounds` | What happens |
 |---|---|
-| omitted | the configured default: **at most 3 rounds** |
-| `N` (1 or more) | draft and review for **at most N rounds**, stopping as soon as both agree |
-| `0` | **no round limit**: it runs until both agree (can take long and use a lot of both plans) |
+| omitted | the configured default: **at most 5 exchanges**, stopping as soon as both agree |
+| `N` (1 or more) | **at most N exchanges**, stopping as soon as both agree |
+| `0` | **no limit**: they exchange until both agree (can take long and use a lot of both plans) |
 
-The drafter endorses its own draft, so the reviewer's `AGREE` means both agree with the exact final text. The reviewer sees the whole discussion and its earlier objections, so it can check they were answered. If the limit is reached, you get the latest draft and the remaining objections; if a call fails partway (for example a usage limit), the latest draft and the reason. For a single pass (the synthesizer writes the final answer alone, with no sign-off), set `"max_rounds": null` in your config.
+Each exchange is one reply from each model, sent at the same time, each to the other's latest message. They have agreed when both end the same exchange with `AGREE`. Then the **synthesizer** writes the final answer and the other model checks that it matches what they agreed; if it does not, the writer revises it once.
+
+**Claude** writes the final answer by default; pass `synthesizer: "codex"` (or change it in your config) to swap. With `council_join`, the **host** writes it by default, whichever model it is, since it has the whole context; pass `synthesizer` to have the other model write it instead. The writer only turns an agreement into text: the discussion itself is symmetric.
+
+If the limit is reached without agreement, the synthesizer writes a final answer that sets out what they agree on and each point still in dispute, with both positions; it is marked as not agreed. If a call fails partway (for example a usage limit), you get what was reached and the reason.
 
 ### Web search: `web_search`
 
@@ -410,7 +411,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
   "skill_timeout_seconds": 1800,
   "tool_wait_seconds": 50,
   "synthesizer": "claude",
-  "max_rounds": 3,
+  "max_rounds": 5,
   "web_search": true,
   "network": false,
   "network_domains": [],
@@ -426,7 +427,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | `skill_timeout_seconds` | limit for each CLI call when a skill is in use, and for each of the host's turns with `council_join` (default `1800`) |
 | `tool_wait_seconds` | how long one tool call waits before returning "still working" and a `job_id` (default `50`, under the 60-second limit some apps have); `0` waits until the answer is ready |
 | `synthesizer` | which model drafts the final answer: `claude` (default) or `codex` (ChatGPT). Not used by `council_join`, where the host drafts |
-| `max_rounds` | draft/review rounds: `3` (default), `0` for no limit, `null` for a single pass without agreement |
+| `max_rounds` | exchanges until both agree: `5` (default), `0` for no limit, `null` for one |
 | `web_search` | whether the models may search the web and read pages: `true` (default) or `false` |
 | `network` | whether Codex's commands may reach the network, read-only on disk: `false` (default) or `true` |
 | `network_domains` | with `network`, the only domains Codex may connect to, such as `["api.github.com", "*.example.com"]`; `[]` (default) allows any |

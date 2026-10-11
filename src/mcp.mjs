@@ -22,16 +22,16 @@ const schema = extra => ({
 const roundsField = {
   type: 'integer',
   minimum: 0,
-  description: 'Optional limit on the agreement loop. After the answers, critiques and replies, the synthesizer drafts one joint answer '
-    + 'and the other model reviews it, until both agree. N (1 or more): at most N rounds. 0: no round limit '
-    + '(can take a long time and use a lot of both plans\' usage). Omit to use the configured default (3 rounds unless the user changed it). '
+  description: 'Optional limit on the exchange. After the two independent answers, each model replies to the other\'s latest message, '
+    + 'round after round, until both agree; then the synthesizer writes the final answer and the other checks it. N (1 or more): at most N exchanges. '
+    + '0: no limit (can take a long time and use a lot of both plans\' usage). Omit to use the configured default (5 unless the user changed it). '
     + 'Set only when the user asks for a number of rounds or for agreement without a limit.',
 };
 const synthesizerField = {
   type: 'string',
   enum: ['claude', 'codex'],
-  description: 'Optional: which model writes the final answer ("codex" is ChatGPT). With max_rounds it drafts the joint answer '
-    + 'and the other model reviews it. Omit to use the configured default (Claude unless the user changed it).',
+  description: 'Optional: which model writes the final answer ("codex" is ChatGPT); the other checks it. '
+    + 'Omit to use the configured default (Claude unless the user changed it).',
 };
 const workspaceField = {
   type: 'string',
@@ -88,7 +88,7 @@ const joinFields = {
   },
   other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
   other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },
-  synthesizer: { ...synthesizerField, description: 'Optional: which model drafts the final answer, "claude" or "codex" (you or the other model); the other reviews it. Omit to draft it yourself (the host); pass it only when the user names who should write it.' },
+  synthesizer: { ...synthesizerField, description: 'Optional: which model writes the final answer, "claude" or "codex" (you or the other model); the other checks it. Omit to write it yourself (the host); pass it only when the user names who should write it.' },
   max_rounds: roundsField, workspace: workspaceField, web_search: webField, network: networkField, skill: skillField,
 };
 
@@ -100,12 +100,12 @@ const jobField = {
 export const TOOLS = [
   {
     name: 'council_ask', title: 'Ask the Codex–Claude council',
-    description: 'Ask Codex (ChatGPT) and Claude independently; each critiques the other\'s answer, then replies to the critique of its own. They then draft and review one final answer until both agree with it. With workspace, both can read the project (never change it). Each model keeps its session between calls. Takes minutes at high effort. Optional per-side model/effort overrides.',
+    description: 'Ask Codex (ChatGPT) and Claude independently; then each replies to the other\'s latest message, round after round, until both agree, and one writes the final answer that the other checks. With workspace, both can read the project (never change it). Each model keeps its session between calls. Takes minutes at high effort. Optional per-side model/effort overrides.',
     inputSchema: schema(councilFields), annotations,
   },
   {
     name: 'debate', title: 'Codex–Claude debate transcript',
-    description: 'Run the council and return JSON with the final answer, whether both models agree with it, both answers, both critiques, both replies, every draft/review round and the settings used. Optional per-side model/effort overrides.',
+    description: 'Run the council and return JSON with the final answer, whether both models agree with it, both answers, every exchange (each model\'s reply and verdict), the check of the final answer and the settings used. Optional per-side model/effort overrides.',
     inputSchema: schema(councilFields), annotations,
   },
   {
@@ -122,7 +122,7 @@ export const TOOLS = [
     name: 'council_join', title: 'Discuss with the other model yourself',
     description: 'Take part in the council yourself, in this conversation, with everything you already know, instead of a separate session of your model: '
       + 'you are one member and the plugin runs the other model (Codex if you are Claude, Claude if you are Codex), optionally continuing the user\'s own session of it. '
-      + 'The steps are the same as council_ask (answer independently, critique each other, reply, then draft and review until both agree). '
+      + 'The steps are the same as council_ask (answer independently, then reply to each other\'s latest message until both agree, then write and check the final answer). '
       + 'Whenever it is your turn, this tool (or council_turn / council_result) returns the council\'s message to you: write your reply yourself and send it with council_turn. '
       + 'Use this when the user wants you to discuss with the other model, or gives the id of their session of the other model.',
     inputSchema: schema(joinFields), annotations,
@@ -158,7 +158,7 @@ export const TOOLS = [
 
 const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
-  + 'Pass max_rounds only when the user asks for a number of rounds (0 = until they agree, with no limit). '
+  + 'Pass max_rounds only when the user asks for a number of rounds (exchanges; 0 = until they agree, with no limit). '
   + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they run in plan mode and cannot change it. '
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
   + 'If the user gives the id or name of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on ask_claude / ask_codex) to continue that session. '

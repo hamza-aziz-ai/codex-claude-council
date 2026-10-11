@@ -73,10 +73,10 @@ test('council_ask with max_rounds sends progress notifications when asked', asyn
   const response = await request('tools/call', { name: 'council_ask', arguments: { question: 'q', max_rounds: 2 }, _meta: { progressToken: 'p1' } });
   unexpected.slice(before).forEach(listener);
   assert.ok(!response.result.isError, response.result.content[0].text);
-  assert.match(response.result.content[0].text, /both agree with this answer \(1 round\)/);
+  assert.match(response.result.content[0].text, /both agree with this answer \(they converged after 1 exchange\)/);
   assert.ok(progress.length >= 4 && progress.every(p => p.progressToken === 'p1'));
   assert.deepEqual(progress.map(p => p.progress), progress.map((_, i) => i + 1));
-  assert.ok(progress.some(p => /Round 1 of 2: Codex \(ChatGPT\) agrees/.test(p.message)), JSON.stringify(progress));
+  assert.ok(progress.some(p => /Exchange 1 of 2: Codex \(ChatGPT\) agrees, Claude agrees/.test(p.message)), JSON.stringify(progress));
 });
 
 test('council_join: the caller takes part itself; each of its turns comes back to it, and only the other model runs a CLI', async () => {
@@ -94,18 +94,15 @@ test('council_join: the caller takes part itself; each of its turns comes back t
   const sent = [];
   const reply = async body => { sent.push(body); return text(await call('council_turn', { council_id: id, text: body })); };
   turn = await reply('HOST ANSWER');
-  assert.match(messageOf(turn), /^Codex answered the same question independently; its answer is below[\s\S]*codex\[-\|high\] Which is better\?$/, 'critique Codex\'s answer');
-  turn = await reply('HOST CRITIQUE');
-  assert.match(messageOf(turn), /^Codex reviewed your answer; its critique is below[\s\S]*HOST ANSWER$/, 'reply to Codex\'s critique of the host answer');
-  turn = await reply('HOST REPLY');
-  assert.match(messageOf(turn), /^Codex has replied to your critique[\s\S]*HOST CRITIQUE$/, 'the host drafts the final answer');
+  assert.match(messageOf(turn), /^Codex's answer is below\. Your own answer is earlier[\s\S]*codex\[-\|high\] Which is better\?\s*$/, 'reply to Codex\'s answer');
+  turn = await reply('HOST VIEW\nVERDICT: AGREE');
+  assert.match(messageOf(turn), /^You and Codex now agree[\s\S]*VERDICT: AGREE\s*$/, 'both agreed: the host writes the final answer');
   const final = await reply('THE JOINT ANSWER\n---NOTES---\nnone');
-  assert.match(final, /^THE JOINT ANSWER\n\n---\nCodex \(ChatGPT\) and Claude both agree with this answer \(1 round\)\.$/);
+  assert.match(final, /^THE JOINT ANSWER\n\n---\nCodex \(ChatGPT\) and Claude both agree with this answer \(they converged after 1 exchange\)\.$/);
   const calls = fake.questionCalls();
-  assert.deepEqual(calls.map(c => c.cli), ['codex', 'codex', 'codex', 'codex'], 'answer, critique, reply, review: no Claude CLI at all');
-  assert.match(calls[1].input, /HOST ANSWER\s*$/);
-  assert.match(calls[2].input, /HOST CRITIQUE\s*$/);
-  assert.match(calls[3].input, /Draft answer:\nTHE JOINT ANSWER\n/);
+  assert.deepEqual(calls.map(c => c.cli), ['codex', 'codex', 'codex'], 'answer, exchange, check: no Claude CLI at all');
+  assert.match(calls[1].input, /HOST ANSWER\s*$/, 'Codex replies to the host\'s answer');
+  assert.match(calls[2].input, /HOST VIEW[\s\S]*Draft answer:\nTHE JOINT ANSWER\n/, 'Codex checks the final answer, with the host\'s last message');
   assert.ok(!fake.calls().some(c => c.cli === 'claude'), 'Claude Code\'s sign-in is not even checked');
   // A turn sent when none is due is refused; the job is gone once answered.
   assert.match((await call('council_turn', { council_id: id, text: 'late' })).result.content[0].text, /No job job-\d+/);
