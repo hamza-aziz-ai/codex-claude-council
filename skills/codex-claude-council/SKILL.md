@@ -63,5 +63,5 @@ A council takes minutes, and some apps end tool calls after about 60 seconds. So
 ## Problems
 
 - Before a council, the CLIs it runs are checked for a sign-in, and nothing is sent until they are signed in. If one is not, the tool names it and its login command (`codex login` and choose "Sign in with ChatGPT", or `claude auth login`): relay that to the user, then try again.
-- For a missing CLI, a sign-in problem or a usage limit, tell the user plainly and suggest `npx -y github:hamza-aziz-ai/codex-claude-council doctor`. Do not retry in a loop.
+- For a missing CLI, a sign-in problem or a usage limit, tell the user plainly and suggest `npx -y codex-claude-council doctor`. Do not retry in a loop.
 - The server runs on the user's own computer; it does not work from cloud-only sessions without their machine.

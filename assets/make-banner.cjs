@@ -92,6 +92,6 @@ fs.writeFileSync('assets/social-preview.svg', `<svg xmlns="http://www.w3.org/200
   <rect x="0" y="0" width="1280" height="6" fill="url(#brand)"/>
   <g transform="translate(140,110)">${body}
   </g>
-  <text x="640" y="575" text-anchor="middle" font-size="22" fill="#9198A1" font-family="ui-monospace, 'Cascadia Mono', Consolas, monospace">npx -y github:hamza-aziz-ai/codex-claude-council install</text>
+  <text x="640" y="575" text-anchor="middle" font-size="22" fill="#9198A1" font-family="ui-monospace, 'Cascadia Mono', Consolas, monospace">npx -y codex-claude-council install</text>
 </svg>
 `);

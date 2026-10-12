@@ -105,7 +105,7 @@ export function loadSkill(name, { native = true } = {}) {
   if (!skill) {
     const installed = all.map(s => s.name);
     throw new Error(`skill "${wanted}" is not installed${installed.length ? ` (installed: ${installed.join(', ')})` : ''}. `
-      + 'Install one with: npx -y github:hamza-aziz-ai/codex-claude-council skill add <GitHub URL or SKILL.md path>');
+      + 'Install one with: npx -y codex-claude-council skill add <GitHub URL or SKILL.md path>');
   }
   return skill;
 }

@@ -3,7 +3,8 @@
 // It runs your own Codex and Claude Code CLIs, so it uses both plans: a council is several calls per question.
 //
 //   node bench/run.mjs --verify                   check the answer key by running every program (no models)
-//   node bench/run.mjs [--effort low] [--only id,id] [--max-rounds 5]
+//   node bench/run.mjs [--set hard|classic|all] [--effort low] [--only id,id] [--max-rounds 5]
+// The hard set (the default) chains several traps per program; the classic set has one trap each.
 //
 // Each call starts fresh sessions (no member remembers another call) in an empty folder (no member can read the
 // answer key), without web search. Results: a table on stdout and bench/results/<date>-<effort>.json.
@@ -15,12 +16,16 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { resetSessions } from '../src/adapters.mjs';
 import { invoke } from '../src/council.mjs';
+import { HARD } from './hard.mjs';
 import { QUESTIONS } from './questions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const { values } = parseArgs({ options: { effort: { type: 'string' }, only: { type: 'string' }, 'max-rounds': { type: 'string' }, verify: { type: 'boolean' } } });
+const { values } = parseArgs({ options: { effort: { type: 'string' }, only: { type: 'string' }, 'max-rounds': { type: 'string' }, verify: { type: 'boolean' }, set: { type: 'string' } } });
 const only = values.only ? new Set(values.only.split(',')) : null;
-const questions = QUESTIONS.filter(q => !only || only.has(q.id));
+const SETS = { hard: HARD, classic: QUESTIONS, all: [...HARD, ...QUESTIONS] };
+const set = values.set ?? (only ? 'all' : 'hard');
+if (!SETS[set]) throw new Error('--set must be hard, classic or all');
+const questions = SETS[set].filter(q => !only || only.has(q.id));
 
 /** What a program prints, its lines joined with single spaces. */
 function runProgram(q) {
@@ -92,12 +97,12 @@ const lines = [
   `|---|---|---|---|---|`,
   ...results.map(r => `| ${r.id} | \`${r.expected}\` | ${cell(r.codex)} | ${cell(r.claude)} | ${cell(r.council)} |`),
   '',
-  `**Right answers** (${questions.length} questions${effort ? `, effort ${effort}` : ''}): Codex alone ${score('codex')}, Claude alone ${score('claude')}, council ${score('council')}.`,
+  `**Right answers** (${questions.length} questions, ${set} set${effort ? `, effort ${effort}` : ''}): Codex alone ${score('codex')}, Claude alone ${score('claude')}, council ${score('council')}.`,
   `The council was right where at least one model alone was wrong: ${rescued.length} (${rescued.map(r => r.id).join(', ') || 'none'}).`,
   `The council was wrong where at least one model alone was right: ${lost.length} (${lost.map(r => r.id).join(', ') || 'none'}).`,
 ];
 console.log(lines.join('\n'));
 mkdirSync(join(HERE, 'results'), { recursive: true });
-const file = join(HERE, 'results', `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-${effort ?? 'default'}.json`);
+const file = join(HERE, 'results', `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-${set}-${effort ?? 'default'}.json`);
 writeFileSync(file, `${JSON.stringify({ date: new Date().toISOString(), effort: effort ?? null, results }, null, 2)}\n`);
 process.stderr.write(`Saved ${file}\n`);

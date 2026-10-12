@@ -7,6 +7,7 @@
   <a href="https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council"></a>
   <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img alt="Glama Score" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/score.svg"></a>
+  <a href="https://www.npmjs.com/package/codex-claude-council"><img alt="npm" src="https://img.shields.io/npm/v/codex-claude-council?color=CB3837"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-brightgreen">
   <img alt="No API keys" src="https://img.shields.io/badge/API%20keys-none-D97757">
@@ -53,7 +54,7 @@
 
 1. **Install** in Claude Code and Codex (this checks Node.js and both CLIs first; other ways under [Install](#install)):
    ```bash
-   npx -y github:hamza-aziz-ai/codex-claude-council install
+   npx -y codex-claude-council install
    ```
 2. **Restart** Claude Code and Codex, so they load the plugin.
 3. **Ask**, in a project: *"Ask the council: what does this project do, and what would you improve first?"*
@@ -153,7 +154,7 @@ irm https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/in
 **Any OS with Node.js**
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council install
+npx -y codex-claude-council install
 ```
 
 The installer checks Node.js and both CLIs (and whether each is signed in), then adds this repository's marketplace to Claude Code and Codex and installs the plugin in both (for Claude Code, for your user, so it works in every project). If the plugin is already installed, it updates it instead.
@@ -171,15 +172,15 @@ curl -fsSL https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/
 **Afterwards:**
 
 1. Fully quit and reopen Claude Code and Codex (and Claude Desktop), so they load the plugin.
-2. Check the setup: `npx -y github:hamza-aziz-ai/codex-claude-council doctor`.
+2. Check the setup: `npx -y codex-claude-council doctor`.
 3. Try it in a project: *"Ask the council: what does this project do, and what would you improve first?"*
 
 ### Update
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council update               # both apps
-npx -y github:hamza-aziz-ai/codex-claude-council update --only claude # or --only codex
-npx -y github:hamza-aziz-ai/codex-claude-council update --dry-run     # show the commands only
+npx -y codex-claude-council update               # both apps
+npx -y codex-claude-council update --only claude # or --only codex
+npx -y codex-claude-council update --dry-run     # show the commands only
 ```
 
 It refreshes the marketplace and updates the plugin in Claude Code and Codex; then fully quit and reopen both. Running the installer again does the same. [`CHANGELOG.md`](CHANGELOG.md) lists what changed. In Claude Desktop, updates arrive through **Sync automatically** (or **Sync** under **Settings → Plugins**); in the ChatGPT desktop app, update the plugin under **Settings → Plugins**.
@@ -194,7 +195,7 @@ It refreshes the marketplace and updates the plugin in Claude Code and Codex; th
 | **Claude Code** | `claude plugin marketplace add hamza-aziz-ai/codex-claude-council`<br>`claude plugin install codex-claude-council@codex-claude-council --scope user` |
 | **Codex** (CLI and IDE extension) | `codex plugin marketplace add hamza-aziz-ai/codex-claude-council`<br>`codex plugin add codex-claude-council@codex-claude-council` |
 | **Claude Desktop** (Cowork and Code) | **Settings → Customize → Plugins → + Add → Add marketplace → Add from a repository**, enter `hamza-aziz-ai/codex-claude-council`, turn **Sync automatically** on, click **Sync**, then install **codex-claude-council** |
-| **Claude Desktop, Chat tab** | `npx -y github:hamza-aziz-ai/codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop |
+| **Claude Desktop, Chat tab** | `npx -y codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop |
 | **ChatGPT desktop app** | **Settings → Plugins → Add → + Add a marketplace**, enter `https://github.com/hamza-aziz-ai/codex-claude-council.git` in **Source**, click **Add marketplace**, then install **codex-claude-council** |
 
 > [!NOTE]
@@ -414,12 +415,12 @@ By default Codex's commands have no network access (its web search still works).
 Skills are `SKILL.md` folders with a method or style the models can follow. Install a repository's skills once:
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/aiwithremy/claude-skills-llm-council
-npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/JuliusBrussee/caveman.git
-npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/DietrichGebert/ponytail.git
-npx -y github:hamza-aziz-ai/codex-claude-council skill add https://github.com/Graphify-Labs/graphify.git
-npx -y github:hamza-aziz-ai/codex-claude-council skill list
-npx -y github:hamza-aziz-ai/codex-claude-council skill remove caveman-stats
+npx -y codex-claude-council skill add https://github.com/aiwithremy/claude-skills-llm-council
+npx -y codex-claude-council skill add https://github.com/JuliusBrussee/caveman.git
+npx -y codex-claude-council skill add https://github.com/DietrichGebert/ponytail.git
+npx -y codex-claude-council skill add https://github.com/Graphify-Labs/graphify.git
+npx -y codex-claude-council skill list
+npx -y codex-claude-council skill remove caveman-stats
 ```
 
 - `skill add` clones the repository and installs **every skill in it**, each with its files (references, scripts): caveman brings 20 (`caveman`, `caveman-review`, `caveman-compress`, …), ponytail 6 (`ponytail`, `ponytail-review`, …), graphify and llm-council one each. It also takes one folder of a repository (`…/tree/<branch>/<folder>`), a local folder or a `SKILL.md` file. Without git, it installs a repository's top-level `SKILL.md` only.
@@ -453,29 +454,29 @@ A step that uses a skill with sub-agents can take several minutes and uses much 
 ## From the terminal
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council ask "Which is faster for 10M rows, A or B?"
-npx -y github:hamza-aziz-ai/codex-claude-council debate "..." --codex-effort xhigh --claude-model opus
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --max-rounds 0          # until both agree
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --synthesizer codex     # ChatGPT writes the final answer
-npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --effort low          # Codex only
-npx -y github:hamza-aziz-ai/codex-claude-council claude "..." --model sonnet       # Claude only
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --workspace ~/code/app  # this project
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-workspace          # no project folder
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web                # no web search
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --network               # Codex's commands may reach the network
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council     # with an installed skill
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council,caveman  # with several
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --html council.html  # also save the discussion as a page to share
-npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --claude-session <uuid> --codex-session <id>  # your sessions
-npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --session <id>        # your Codex session
+npx -y codex-claude-council ask "Which is faster for 10M rows, A or B?"
+npx -y codex-claude-council debate "..." --codex-effort xhigh --claude-model opus
+npx -y codex-claude-council ask "..." --max-rounds 0          # until both agree
+npx -y codex-claude-council ask "..." --synthesizer codex     # ChatGPT writes the final answer
+npx -y codex-claude-council codex "..." --effort low          # Codex only
+npx -y codex-claude-council claude "..." --model sonnet       # Claude only
+npx -y codex-claude-council ask "..." --workspace ~/code/app  # this project
+npx -y codex-claude-council ask "..." --no-workspace          # no project folder
+npx -y codex-claude-council ask "..." --no-web                # no web search
+npx -y codex-claude-council ask "..." --network               # Codex's commands may reach the network
+npx -y codex-claude-council ask "..." --skill llm-council     # with an installed skill
+npx -y codex-claude-council ask "..." --skill llm-council,caveman  # with several
+npx -y codex-claude-council ask "..." --html council.html  # also save the discussion as a page to share
+npx -y codex-claude-council ask "..." --claude-session <uuid> --codex-session <id>  # your sessions
+npx -y codex-claude-council codex "..." --session <id>        # your Codex session
 ```
 
-In the terminal, both models work in the git repository you run the command from (if any), unless you pass `--workspace`, `--no-workspace` or a session id. Each command is a new pair of sessions for that run, unless you pass session ids. Questions can also be piped on stdin. For a shorter command, install it globally (`npm install -g github:hamza-aziz-ai/codex-claude-council`) and use `codex-claude-council ask "..."`.
+In the terminal, both models work in the git repository you run the command from (if any), unless you pass `--workspace`, `--no-workspace` or a session id. Each command is a new pair of sessions for that run, unless you pass session ids. Questions can also be piped on stdin. For a shorter command, install it globally (`npm install -g codex-claude-council`) and use `codex-claude-council ask "..."`.
 
 ## Configure
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council config --init
+npx -y codex-claude-council config --init
 ```
 
 This creates `~/.codex-claude-council/config.json`. It is re-read on every call, so edits apply immediately:
@@ -532,7 +533,7 @@ Set `COUNCIL_CONFIG` to use a different config file.
 Run the doctor. It checks Node.js, both CLIs, their sign-ins and your effective config:
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council doctor
+npx -y codex-claude-council doctor
 ```
 
 - **"The council needs … signed in"**: nothing was sent. The message names each CLI with a problem and the fix: `codex login` (choose *Sign in with ChatGPT*) and/or `claude auth login`.
@@ -552,7 +553,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council doctor
 ## Uninstall
 
 ```bash
-npx -y github:hamza-aziz-ai/codex-claude-council uninstall
+npx -y codex-claude-council uninstall
 ```
 
 This removes the plugin from Claude Code and Codex and the Claude Desktop chat entry, and keeps your config file and installed skills. In the desktop apps, uninstall it under **Settings → Plugins**.
