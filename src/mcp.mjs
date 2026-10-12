@@ -81,6 +81,25 @@ const councilFields = {
 };
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
+// Every tool returns the same structured result beside its text: what happened, and the id to use next.
+const outputSchema = {
+  type: 'object',
+  properties: {
+    status: {
+      type: 'string', enum: ['done', 'working', 'your_turn', 'stopped'],
+      description: 'done: text is the answer. working: still running; call council_result with job_id. '
+        + 'your_turn (council_join): text is the council\'s message; reply with council_turn and council_id. stopped: council_cancel stopped job_id.',
+    },
+    text: { type: 'string', description: 'The answer (council_debate: its JSON), or the message to act on; the same as the text content.' },
+    job_id: { type: 'string', description: 'With working or stopped: the job to wait for, or the one stopped.' },
+    council_id: { type: 'string', description: 'With your_turn: the council to reply to with council_turn.' },
+  },
+  required: ['status', 'text'],
+  additionalProperties: false,
+};
+// The published tool names share the council_ prefix; the old names of the three renamed in 0.11.7 still work.
+const INTERNAL_NAME = { council_debate: 'debate', council_ask_codex: 'ask_codex', council_ask_claude: 'ask_claude' };
+
 const joinFields = {
   me: { type: 'string', enum: ['claude', 'codex'], description: 'Which model you are: "claude" if you are Claude (Claude Code, Claude Desktop), "codex" if you are Codex or ChatGPT. The other model is the one the plugin runs.' },
   other_session_id: {
@@ -103,22 +122,22 @@ export const TOOLS = [
   {
     name: 'council_ask', title: 'Ask the Codex–Claude council',
     description: 'Ask Codex (ChatGPT) and Claude independently; then each replies to the other\'s latest message, round after round, until both agree, and one writes the final answer that the other checks. With workspace, both can read the project (never change it). Each model keeps its session between calls. Takes minutes at high effort. Optional per-side model/effort overrides.',
-    inputSchema: schema(councilFields), annotations,
+    inputSchema: schema(councilFields), annotations, outputSchema,
   },
   {
-    name: 'debate', title: 'Codex–Claude debate transcript',
+    name: 'council_debate', title: 'Codex–Claude debate transcript',
     description: 'Run the council and return JSON with the final answer, whether both models agree with it, both answers, every exchange (each model\'s reply and verdict), the check of the final answer and the settings used. Optional per-side model/effort overrides.',
-    inputSchema: schema(councilFields), annotations,
+    inputSchema: schema(councilFields), annotations, outputSchema,
   },
   {
-    name: 'ask_codex', title: 'Ask Codex (ChatGPT) only',
+    name: 'council_ask_codex', title: 'Ask Codex (ChatGPT) only',
     description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, network: networkField, skill: skillField, session_id: sessionField('codex') }), annotations,
+    inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, network: networkField, skill: skillField, session_id: sessionField('codex') }), annotations, outputSchema,
   },
   {
-    name: 'ask_claude', title: 'Ask Claude only',
+    name: 'council_ask_claude', title: 'Ask Claude only',
     description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
-    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('claude') }), annotations,
+    inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('claude') }), annotations, outputSchema,
   },
   {
     name: 'council_join', title: 'Discuss with the other model yourself',
@@ -127,7 +146,7 @@ export const TOOLS = [
       + 'The steps are the same as council_ask (answer independently, then reply to each other\'s latest message until both agree, then write and check the final answer). '
       + 'Whenever it is your turn, this tool (or council_turn / council_result) returns the council\'s message to you: write your reply yourself and send it with council_turn. '
       + 'Use this when the user wants you to discuss with the other model, or gives the id of their session of the other model.',
-    inputSchema: schema(joinFields), annotations,
+    inputSchema: schema(joinFields), annotations, outputSchema,
   },
   {
     name: 'council_turn', title: 'Send your turn to the council',
@@ -142,28 +161,28 @@ export const TOOLS = [
       required: ['council_id', 'text'],
       additionalProperties: false,
     },
-    annotations,
+    annotations, outputSchema,
   },
   {
     name: 'council_result', title: 'Get a running council\'s answer',
-    description: 'Wait for the answer of a council_ask, debate, ask_codex, ask_claude or council_join call that returned a job_id because it was still working (for council_join: or for your next turn). '
+    description: 'Wait for the answer of a council_ask, council_debate, council_ask_codex, council_ask_claude or council_join call that returned a job_id because it was still working (for council_join: or for your next turn). '
       + 'Waits up to about a minute; returns the answer as soon as it is ready, or says it is still working (then call this again).',
-    inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false }, annotations,
+    inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false }, annotations, outputSchema,
   },
   {
     name: 'council_cancel', title: 'Stop a running council',
-    description: 'Stop a council_ask, debate, ask_codex or ask_claude call that is still working in the background.',
+    description: 'Stop a council_ask, council_debate, council_ask_codex or council_ask_claude call that is still working in the background.',
     inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false },
-    annotations: { ...annotations, readOnlyHint: false },
+    annotations: { ...annotations, readOnlyHint: false }, outputSchema,
   },
 ];
 
-const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, debate for the full transcript, or ask_codex / ask_claude for one model. '
+const INSTRUCTIONS = 'Use council_ask for a cross-checked two-model answer, council_debate for the full transcript, or council_ask_codex / council_ask_claude for one model. '
   + 'Model and effort come from the user\'s config; pass overrides only when the user asks for a specific model or effort. '
   + 'Pass max_rounds only when the user asks for a number of rounds (exchanges; 0 = until they agree, with no limit). '
   + 'When working in a project, always pass workspace (its absolute path) so both models can read it; they run in plan mode and cannot change it. '
   + 'Each model keeps its session for as long as this server runs, so it remembers earlier questions and what it has read. '
-  + 'If the user gives the id or name of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on ask_claude / ask_codex) to continue that session. '
+  + 'If the user gives the id or name of their own Claude Code or Codex session, pass it (claude_session_id / codex_session_id, or session_id on council_ask_claude / council_ask_codex) to continue that session. '
   + 'Calls run the user\'s local Codex and Claude Code CLIs under their own subscriptions and can take several minutes. '
   + 'Pass skill (an installed skill\'s name, or several separated by commas) only when the user asks to use those skills; each model then uses them at the steps that need them. '
   + 'If a call returns a job_id because it is still working, call council_result (again, until it returns the answer); do not start the same question again. '
@@ -250,11 +269,11 @@ async function waitForJob(job, { signal, onProgress }) {
       ...(seconds > 0 ? [new Promise(resolve => timers.push(setTimeout(resolve, seconds * 1000, null)))] : []),
       new Promise(resolve => signal?.addEventListener('abort', () => resolve(null), { once: true })),
     ]);
-    if (outcome === 'turn') return yourTurn(job);
-    if (!outcome) return stillWorking(job);
+    if (outcome === 'turn') return { status: 'your_turn', text: yourTurn(job), council_id: job.id };
+    if (!outcome) return { status: 'working', text: stillWorking(job), job_id: job.id };
     jobs.delete(job.id);
     if (outcome.isError) throw new Error(outcome.text);
-    return outcome.text;
+    return { status: 'done', text: outcome.text };
   } finally {
     timers.forEach(clearTimeout);
     job.listeners.delete(onProgress);
@@ -268,7 +287,8 @@ function findJob(id) {
   return job;
 }
 
-async function callCouncilTool(name, args, { signal, onProgress }) {
+async function callCouncilTool(published, args, { signal, onProgress }) {
+  const name = INTERNAL_NAME[published] ?? published;
   if (process.env[MEMBER_ENV]) throw new Error('This is a council member\'s own session: it cannot start another council. Answer the question yourself.');
   if (name === 'council_result') return waitForJob(findJob(args.job_id), { signal, onProgress });
   if (name === 'council_turn') {
@@ -284,7 +304,7 @@ async function callCouncilTool(name, args, { signal, onProgress }) {
     const job = findJob(args.job_id);
     job.controller.abort();
     jobs.delete(job.id);
-    return `Stopped ${job.id}.`;
+    return { status: 'stopped', text: `Stopped ${job.id}.`, job_id: job.id };
   }
   const job = startJob(name, args);
   // Cancelling the call that started a job stops the job; cancelling a council_result call only stops waiting.
@@ -298,8 +318,9 @@ const COUNCIL = {
 };
 
 /**
- * Serve tools over stdio. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text,
- * instructions }; the council's tools by default.
+ * Serve tools over stdio. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text or
+ * { text, ...structured fields }, instructions }; the council's tools by default. An object is also sent as the
+ * result's structuredContent.
  */
 export function serve({ input = process.stdin, output = process.stdout, server = COUNCIL } = {}) {
   const inFlight = new Map();
@@ -316,8 +337,9 @@ export function serve({ input = process.stdin, output = process.stdout, server =
       if (!controller.signal.aborted) send({ jsonrpc: '2.0', method: 'notifications/progress', params: { progressToken: token, progress: ++step, message } });
     };
     try {
-      const text = await server.call(params.name, params.arguments || {}, { signal: controller.signal, onProgress });
-      if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text }] });
+      const result = await server.call(params.name, params.arguments || {}, { signal: controller.signal, onProgress });
+      const text = typeof result === 'string' ? result : result.text;
+      if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text }], ...(typeof result === 'string' ? {} : { structuredContent: result }) });
     } catch (error) {
       if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text: error.message }], isError: true });
     } finally {

@@ -51,20 +51,24 @@ test('tools/list exposes the council tools, with per-tool model/effort inputs, c
   const { result } = await request('tools/list', {});
   const tools = Object.fromEntries(result.tools.map(tool => [tool.name, tool.inputSchema]));
   const councilFields = ['question', 'codex_model', 'codex_effort', 'claude_model', 'claude_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'network', 'skill', 'codex_session_id', 'claude_session_id'];
-  assert.deepEqual(Object.keys(tools).sort(), ['ask_claude', 'ask_codex', 'council_ask', 'council_cancel', 'council_join', 'council_result', 'council_turn', 'debate']);
+  assert.deepEqual(Object.keys(tools).sort(), ['council_ask', 'council_ask_claude', 'council_ask_codex', 'council_cancel', 'council_debate', 'council_join', 'council_result', 'council_turn']);
   assert.deepEqual(Object.keys(tools.council_join.properties), ['question', 'me', 'other_session_id', 'other_model', 'other_effort', 'synthesizer', 'max_rounds', 'workspace', 'web_search', 'network', 'skill']);
   assert.deepEqual(tools.council_join.properties.me.enum, ['claude', 'codex']);
   assert.deepEqual(tools.council_turn.required, ['council_id', 'text']);
   assert.deepEqual(Object.keys(tools.council_result.properties), ['job_id']);
   assert.deepEqual(Object.keys(tools.council_cancel.properties), ['job_id']);
   assert.deepEqual(Object.keys(tools.council_ask.properties), councilFields);
-  assert.deepEqual(Object.keys(tools.debate.properties), councilFields);
-  assert.deepEqual(Object.keys(tools.ask_codex.properties), ['question', 'model', 'effort', 'workspace', 'web_search', 'network', 'skill', 'session_id']);
-  assert.deepEqual(tools.ask_codex.properties.effort.enum, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
-  assert.deepEqual(tools.ask_claude.properties.effort.enum, ['low', 'medium', 'high', 'xhigh', 'max']);
-  assert.deepEqual(tools.debate.properties.synthesizer.enum, ['claude', 'codex']);
+  assert.deepEqual(Object.keys(tools.council_debate.properties), councilFields);
+  assert.deepEqual(Object.keys(tools.council_ask_codex.properties), ['question', 'model', 'effort', 'workspace', 'web_search', 'network', 'skill', 'session_id']);
+  assert.deepEqual(tools.council_ask_codex.properties.effort.enum, ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+  assert.deepEqual(tools.council_ask_claude.properties.effort.enum, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(tools.council_debate.properties.synthesizer.enum, ['claude', 'codex']);
   assert.deepEqual({ type: tools.council_ask.properties.max_rounds.type, minimum: tools.council_ask.properties.max_rounds.minimum }, { type: 'integer', minimum: 0 });
   for (const schema of Object.values(tools)) assert.equal(schema.additionalProperties, false);
+  for (const tool of result.tools) {
+    assert.deepEqual(tool.outputSchema.required, ['status', 'text'], tool.name);
+    assert.equal(typeof tool.annotations.readOnlyHint, 'boolean', tool.name);
+  }
 });
 
 test('council_ask with max_rounds sends progress notifications when asked', async () => {
@@ -86,7 +90,9 @@ test('council_join: the caller takes part itself; each of its turns comes back t
   const idOf = message => message.match(/council_id: (job-\d+)/)[1];
   const messageOf = turn => turn.match(/<council_message>\n([\s\S]*)\n<\/council_message>$/)[1];
   // The caller is Claude; Codex is the other member.
-  let turn = text(await call('council_join', { question: 'Which is better?', me: 'claude' }));
+  const joined = await call('council_join', { question: 'Which is better?', me: 'claude' });
+  let turn = text(joined);
+  assert.deepEqual(joined.result.structuredContent, { status: 'your_turn', text: turn, council_id: idOf(turn) });
   assert.match(turn, /^Your turn in the council \(council_id: job-\d+; now: .*\)\. You are Claude, discussing with Codex \(ChatGPT\)\./);
   assert.match(turn, /Do not change any files/);
   const id = idOf(turn);
@@ -128,10 +134,11 @@ test('council_join as Codex: Claude\'s session runs the other side, and the coun
 test('tools/call answers, and runs concurrent calls in parallel', async () => {
   fake.clearCalls();
   const [a, b] = await Promise.all([
-    call('ask_claude', { question: 'one', model: 'sonnet', effort: 'low' }),
-    call('ask_codex', { question: 'two', effort: 'medium' }),
+    call('council_ask_claude', { question: 'one', model: 'sonnet', effort: 'low' }),
+    call('ask_codex', { question: 'two', effort: 'medium' }), // the name before 0.11.7 still works
   ]);
   assert.equal(a.result.content[0].text, 'claude[sonnet|low] one');
+  assert.deepEqual(a.result.structuredContent, { status: 'done', text: 'claude[sonnet|low] one' });
   assert.equal(b.result.content[0].text, 'codex[-|medium] two');
   assert.ok(!a.result.isError && !b.result.isError);
   // The two questions overlap in time: each started before the other ended (not a wall-clock limit, which a slow machine misses).
@@ -183,6 +190,7 @@ test('a council that outlasts the wait window returns a job id, and council_resu
     const text = first.content[0].text;
     assert.match(text, /The council is still working \(\d+ s so far; now: .+\)/);
     const jobId = text.match(/job_id: (\S+)/)[1];
+    assert.deepEqual(first.structuredContent, { status: 'working', text, job_id: jobId });
     assert.match(text, new RegExp(`call council_result with \\{"job_id": "${jobId}"\\}`));
     let answer;
     for (let polls = 0; polls < 30 && !answer; polls += 1) {
@@ -202,7 +210,7 @@ test('a council that outlasts the wait window returns a job id, and council_resu
 test('council_cancel stops a running job', async () => {
   fake.writeConfig({ tool_wait_seconds: 1 });
   try {
-    const text = (await call('debate', { question: 'to cancel' })).result.content[0].text;
+    const text = (await call('council_debate', { question: 'to cancel' })).result.content[0].text;
     const jobId = text.match(/job_id: (\S+)/)[1];
     assert.match((await call('council_cancel', { job_id: jobId })).result.content[0].text, new RegExp(`Stopped ${jobId}`));
     assert.equal((await call('council_result', { job_id: jobId })).result.isError, true);
@@ -219,7 +227,7 @@ test('a job waiting for a session another job uses says so, and names a council_
     const joined = (await call('council_join', { question: 'q', me: 'claude', other_session_id: session })).result.content[0].text;
     const held = joined.match(/council_id: (job-\d+)/)[1];
     // A question in the same session waits, and says why instead of "starting".
-    const asked = (await call('ask_codex', { question: 'same session', session_id: session })).result.content[0].text;
+    const asked = (await call('council_ask_codex', { question: 'same session', session_id: session })).result.content[0].text;
     const waiting = asked.match(/job_id: (job-\d+)/)[1];
     assert.match(asked, new RegExp(`now: Waiting for the Codex \\(ChatGPT\\) session ${session}: another council or question is using it`));
     assert.match(asked, new RegExp(`${held} has been waiting \\d+ s for your reply to its turn, and keeps its sessions until then: `
@@ -240,7 +248,7 @@ test('a job waiting for a session another job uses says so, and names a council_
 test('with tool_wait_seconds 0, a call waits until the answer is ready', async () => {
   fake.writeConfig({ tool_wait_seconds: 0 });
   try {
-    const { result } = await call('ask_codex', { question: 'wait for me' });
+    const { result } = await call('council_ask_codex', { question: 'wait for me' });
     assert.equal(result.content[0].text, 'codex[-|high] wait for me');
   } finally {
     fake.writeConfig();
