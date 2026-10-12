@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-  <img alt="Codex–Claude Council: ChatGPT and Claude discuss with each other until they agree" src="assets/banner-light.svg" width="100%">
+  <img alt="Codex-Claude Council: ChatGPT and Claude discuss with each other until they agree" src="assets/banner-light.svg" width="100%">
 </picture>
 
 <p align="center">
