@@ -34,3 +34,13 @@ test('the skill frontmatter names the skill', () => {
   const skill = readFileSync(join(ROOT, 'skills', 'codex-claude-council', 'SKILL.md'), 'utf8');
   assert.match(skill, /^---\nname: codex-claude-council\ndescription: .{50,1024}\n---\n/);
 });
+
+test('the banner logos are 9 lines of 18 columns each, with color codes only', () => {
+  for (const name of ['openai', 'claude']) {
+    const text = readFileSync(join(ROOT, 'src', 'logos', `${name}.ans`), 'utf8');
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    assert.equal(lines.length, 9, name);
+    for (const line of lines) assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').length, 18, name);
+    assert.doesNotMatch(text, /\x1b\[[0-9;?]*[a-ln-zA-Z]/, `${name}: no escape codes other than colors`);
+  }
+});

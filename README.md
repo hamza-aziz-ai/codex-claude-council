@@ -494,7 +494,7 @@ The tests use fake `codex` / `claude` executables, so they make no model calls. 
 
 ## Disclaimer
 
-Not affiliated with, or endorsed by, OpenAI or Anthropic. Codex, ChatGPT, Claude and Claude Code are trademarks of their owners. Your use of each CLI is subject to its provider's terms and your plan's limits.
+Not affiliated with, or endorsed by, OpenAI or Anthropic. Codex, ChatGPT, Claude and Claude Code are trademarks of their owners. The OpenAI and Claude logos in the installer's banner (from [@lobehub/icons](https://github.com/lobehub/lobe-icons), drawn as terminal text with [chafa](https://hpjansson.org/chafa/)) only identify the two CLIs the plugin runs. Your use of each CLI is subject to its provider's terms and your plan's limits.
 
 ## License
 

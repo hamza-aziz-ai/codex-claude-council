@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 (2026-10-12)
+
+- **The banner shows the OpenAI and Claude logos.** `install` and `update` draw both logos (from @lobehub/icons, turned into terminal text once with chafa, so nobody needs chafa installed), and a line from each runs to the middle, where the two cross three times, each loop narrower, before they meet in one answer. Each crossing is marked as an exchange (`⇄ exchange 1`, `2`, `3`). The text has its own colors: ChatGPT in green and Claude in orange, the crossings and the answer in gold, and "they discuss with each other until they agree" shaded from green to orange. The logos need colors; piped output and `NO_COLOR` get the same picture with a prompt box and a spark instead.
+
 ## 0.10.1 (2026-10-12)
 
 - **A clearer installer.** `install`, `update`, `uninstall` and `doctor` now show their progress as a rail of steps (`◇` done, `▲` warning, `■` failed), with a spinner while each `claude` / `codex` command runs, the commands' own output dimmed under them, and boxed summaries: what was installed, the next steps, the config. `install` and `update` open with a banner of the council: Codex's prompt (`>_`) and Claude's spark each send out a line, and the lines cross until they meet in one answer, over COUNCIL in block letters shaded from Codex green to Claude orange (a smaller banner on narrow terminals). No new dependencies (`src/ui.mjs`). Colors and the spinner only on a terminal; piped output (and `NO_COLOR`) is plain text with the same layout, wrapped to 100 columns.
