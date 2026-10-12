@@ -12,10 +12,10 @@ This plugin's `council` MCP server runs the user's local Codex CLI (ChatGPT sign
 | The user wants | Tool |
 |---|---|
 | A cross-checked answer from both models (decisions, reviews, plans) | `council_ask` |
-| To see where the models agree or disagree: both answers and every exchange | `debate` (JSON; summarise the agreement and disagreements before quoting details) |
-| A quick second opinion from one model | `ask_codex` or `ask_claude` |
+| To see where the models agree or disagree: both answers and every exchange | `council_debate` (JSON; summarise the agreement and disagreements before quoting details) |
+| A quick second opinion from one model | `council_ask_codex` or `council_ask_claude` |
 | **You** to discuss with the other model, or names only **their session of the other model** (in Claude Code: "discuss with my Codex session 019a…" or "… my Codex session auth-refactor") | `council_join` (see below) |
-| Their existing Claude Code **and** Codex sessions to discuss with each other | `council_ask` / `debate` with `claude_session_id` and `codex_session_id` |
+| Their existing Claude Code **and** Codex sessions to discuss with each other | `council_ask` / `council_debate` with `claude_session_id` and `codex_session_id` |
 
 ## Always pass `workspace` in a project
 
@@ -36,13 +36,13 @@ With `council_join`, you are one of the two members, in this conversation, and t
 
 ## Continue the user's own sessions
 
-If the user gives Claude Code or Codex sessions they already have, by id or by the name they gave it with `/rename`, and wants those sessions to discuss, pass `claude_session_id` / `codex_session_id` on `council_ask` / `debate`, or `session_id` on `ask_claude` / `ask_codex`, exactly as the user wrote it. Each is continued in place, with everything it already knows, in plan mode / read-only; its own folder is the workspace unless you pass one. Never pass your own current session (use `council_join` instead), and never guess an id or name. If the tool says no session has that name, tell the user how to find it (`/status` shows the id, `/rename` sets a name). Remind the user not to type in those sessions while the council runs.
+If the user gives Claude Code or Codex sessions they already have, by id or by the name they gave it with `/rename`, and wants those sessions to discuss, pass `claude_session_id` / `codex_session_id` on `council_ask` / `council_debate`, or `session_id` on `council_ask_claude` / `council_ask_codex`, exactly as the user wrote it. Each is continued in place, with everything it already knows, in plan mode / read-only; its own folder is the workspace unless you pass one. Never pass your own current session (use `council_join` instead), and never guess an id or name. If the tool says no session has that name, tell the user how to find it (`/status` shows the id, `/rename` sets a name). Remind the user not to type in those sessions while the council runs.
 
 ## Options
 
 Pass options only when the user asks for them; the defaults come from the user's config (`codex-claude-council config`).
 
-- **Model and effort:** `model` / `effort` on `ask_codex` / `ask_claude`; `codex_model`, `codex_effort`, `claude_model`, `claude_effort` on `council_ask` / `debate`; `other_model` / `other_effort` on `council_join`. Codex effort: none, minimal, low, medium, high, xhigh. Claude effort: low, medium, high, xhigh, max. Claude models accept aliases such as opus, sonnet or fable. "ChatGPT" means the Codex side.
+- **Model and effort:** `model` / `effort` on `council_ask_codex` / `council_ask_claude`; `codex_model`, `codex_effort`, `claude_model`, `claude_effort` on `council_ask` / `council_debate`; `other_model` / `other_effort` on `council_join`. Codex effort: none, minimal, low, medium, high, xhigh. Claude effort: low, medium, high, xhigh, max. Claude models accept aliases such as opus, sonnet or fable. "ChatGPT" means the Codex side.
 - **`synthesizer`:** who writes the final answer once both agree, `claude` (default) or `codex`; the other checks it. With `council_join`, you (the host) write it by default. Pass it only when the user names who should write it ("let ChatGPT write the final answer").
 - **`max_rounds`:** the number of exchanges (each model replying to the other's latest message): by default at most 5, stopping as soon as both agree. `N` when the user names a number of rounds; `0` when they want agreement without a limit ("until they agree"), which can take a long time.
 - **`web_search`:** on by default, so the members can check current versions, APIs and docs. Pass `false` only when the user asks for no internet access.

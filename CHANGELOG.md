@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.7 (2026-10-12)
+
+- **Every tool name starts with `council_`:** `debate`, `ask_codex` and `ask_claude` are now `council_debate`, `council_ask_codex` and `council_ask_claude`. Calls by the old names still work; they are just no longer listed. The CLI commands (`ask`, `debate`, `codex`, `claude`) are unchanged.
+- **Structured results:** every tool declares an `outputSchema` and returns `structuredContent` beside its text: `status` (`done`, `working`, `your_turn` or `stopped`), the `text`, and the `job_id` or `council_id` to use next.
+- **The Smithery bundle's manifest carries each tool's title, output schema and annotations** (read-only, open world; `council_cancel` is not read-only) as well as its input schema, so Smithery can see them.
+
 ## 0.11.6 (2026-10-12)
 
 - **The installer's banner shows the icon twice as big** (440×440 px instead of 220×220), so the icon, not COUNCIL, leads the banner. The title now starts right under the image whatever the terminal's font size (the terminal moves the cursor below it as it draws), and a terminal narrower than 46 columns shows the banner without the image.

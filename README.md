@@ -214,8 +214,8 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 | You say | What runs |
 |---|---|
 | "Ask the council: should I use Postgres or MongoDB for this?" | `council_ask`: both answer, then reply to each other until they agree on one final answer |
-| "Run a council **debate** on this migration plan." | `debate`: the final answer plus both answers, every exchange and the final check |
-| "Get **Codex's** second opinion on this function." | `ask_codex` (or `ask_claude` for Claude alone) |
+| "Run a council **debate** on this migration plan." | `council_debate`: the final answer plus both answers, every exchange and the final check |
+| "Get **Codex's** second opinion on this function." | `council_ask_codex` (or `council_ask_claude` for Claude alone) |
 | "**Discuss with my Codex session 019a…** whether this refactor is safe." (asked in Claude Code) | `council_join`: this session takes part itself; Codex continues session 019a… |
 | "Ask the council, continuing **my Claude session 3f2a…** and **my Codex session "auth refactor"**: is my plan sound?" | `council_ask` with `claude_session_id` and `codex_session_id` |
 | "Council this with **ChatGPT on gpt-5.6-sol at xhigh** and **Claude on opus at max**: …" | `council_ask` with per-side model and effort |
@@ -237,12 +237,12 @@ In a project, the host passes its folder as the `workspace`, and the models read
 
 ```mermaid
 flowchart TD
-    S{What do you want?} -->|a quick second opinion| O[ask_codex / ask_claude]
+    S{What do you want?} -->|a quick second opinion| O[council_ask_codex / council_ask_claude]
     S -->|a cross-checked answer| W{Who should take part?}
     W -->|two fresh sessions| CA[council_ask]
     W -->|my existing Claude Code and Codex sessions| CS[council_ask with claude_session_id and codex_session_id]
     W -->|the session I am in, with the other model| CJ[council_join]
-    S -->|every step, to see where they disagree| D[debate]
+    S -->|every step, to see where they disagree| D[council_debate]
 ```
 
 The host picks the tool from your words. Name the tool if you want to be sure:
@@ -251,7 +251,7 @@ The host picks the tool from your words. Name the tool if you want to be sure:
 |---|---|---|
 | `council_join` (the session you are in takes part) | "**Discuss with** my Codex session 019a… whether …", "**take part yourself** as Claude, with my Codex session …", or "use **council_join** …" | "council_ask with my Codex session", which starts a separate Claude session instead |
 | `council_ask` with your own sessions | "Ask the council, continuing my Claude session … and my Codex session …" | naming the session you are asking from |
-| `debate` | "Run a council **debate** on …", "show me every step" | – |
+| `council_debate` | "Run a council **debate** on …", "show me every step" | – |
 
 ### Use it from the desktop apps
 
@@ -341,8 +341,8 @@ Pass sessions you already have, by id or by name, and the council continues **th
 
 | Tool | Inputs | Terminal |
 |---|---|---|
-| `council_ask`, `debate` | `claude_session_id`, `codex_session_id` (either or both) | `--claude-session <id\|name>`, `--codex-session <id\|name>` |
-| `ask_claude`, `ask_codex` | `session_id` | `--session <id\|name>` |
+| `council_ask`, `council_debate` | `claude_session_id`, `codex_session_id` (either or both) | `--claude-session <id\|name>`, `--codex-session <id\|name>` |
+| `council_ask_claude`, `council_ask_codex` | `session_id` | `--session <id\|name>` |
 
 **Finding a session's id or giving it a name:**
 
@@ -445,11 +445,12 @@ A step that uses a skill with sub-agents can take several minutes and uses much 
 | Tool | Does | Optional inputs (besides `question`) |
 |---|---|---|
 | `council_ask` | the full council; returns the agreed answer | `codex_model`, `codex_effort`, `claude_model`, `claude_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill`, `codex_session_id`, `claude_session_id` |
-| `debate` | the same; returns JSON with every step and the settings | as `council_ask` |
-| `ask_codex`, `ask_claude` | one model only | `model`, `effort`, `workspace`, `web_search`, `skill`, `session_id` |
+| `council_debate` | the same; returns JSON with every step and the settings | as `council_ask` |
+| `council_ask_codex`, `council_ask_claude` | one model only | `model`, `effort`, `workspace`, `web_search`, `skill`, `session_id` |
 | `council_join` | the host takes part as one member | `me` (required: `claude` or `codex`), `other_session_id`, `other_model`, `other_effort`, `synthesizer`, `max_rounds`, `workspace`, `web_search`, `skill` |
 | `council_turn` | sends the host's turn (`council_id`, `text`) | – |
 | `council_result` | waits for a running job's answer (or, with `council_join`, the host's next turn) | `job_id` |
+| `council_cancel` | stops a running job | `job_id` |
 | `council_cancel` | stops a running job | `job_id` |
 
 - `workspace`: the absolute path of the project folder both models work in. In Claude Code and Codex, the plugin's skill tells the host to pass the folder you are working in.

@@ -7,7 +7,8 @@
 // - codex-claude-council-<version>.mcpb: the standard bundle (packed and validated by the official mcpb tool), for
 //   Claude Desktop and the GitHub release.
 // - codex-claude-council-<version>-smithery.mcpb: the same files, but each tool in the manifest also carries its
-//   inputSchema, which Smithery requires and the MCPB manifest spec does not allow. Publish it with:
+//   title, inputSchema, outputSchema and annotations, which Smithery reads (it requires inputSchema) and the MCPB
+//   manifest spec does not allow. Publish it with:
 //   npx -y @smithery/cli mcp publish mcpb/dist/codex-claude-council-<version>-smithery.mcpb -n <namespace>/codex-claude-council
 import { execSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -45,13 +46,14 @@ execSync(`npx -y ${MCPB} validate "${join(stage, 'manifest.json')}"`, { stdio: '
 execSync(`npx -y ${MCPB} pack "${stage}" "${out}"`, { stdio: 'inherit' });
 console.log(`\nBuilt ${out}`);
 
-// The Smithery bundle: the same files; the manifest's tools gain the input schemas the server itself declares.
-const schemas = new Map(TOOLS.map(tool => [tool.name, tool.inputSchema]));
+// The Smithery bundle: the same files; the manifest's tools gain the title, schemas and annotations the server
+// itself declares.
+const declared = new Map(TOOLS.map(({ name, title, inputSchema, outputSchema, annotations }) => [name, { title, inputSchema, outputSchema, annotations }]));
 const smithery = {
   ...manifest,
   tools: manifest.tools.map(tool => {
-    if (!schemas.has(tool.name)) throw new Error(`mcpb/manifest.json lists ${tool.name}, which the server does not have`);
-    return { ...tool, inputSchema: schemas.get(tool.name) };
+    if (!declared.has(tool.name)) throw new Error(`mcpb/manifest.json lists ${tool.name}, which the server does not have`);
+    return { ...tool, ...declared.get(tool.name) };
   }),
 };
 const files = listFiles(stage).map(path => {
