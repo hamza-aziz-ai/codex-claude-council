@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.3 (2026-10-12)
+
+- **The final answer keeps to the length the question asks for**, also when the models did not agree. Asked for "under 60 words", an unresolved council wrote a long report of every point in dispute; now the writer leads with its recommendation and names the main point in dispute. The writer of an agreed answer is told the same.
+- **The VHS demo** (`assets/demo.tape`) plays at normal speed: the start live, the wait skipped, the exchanges and the answer on screen long enough to read. It asks a question that splits the models (UUIDv7 or integer keys for a multi-tenant SaaS), allows up to 8 exchanges, waits for the shell prompt whatever the outcome, and hides npm's notices.
+
 ## 0.11.2 (2026-10-12)
 
 - **Ready for the Official MCP Registry** (registry.modelcontextprotocol.io) as `io.github.hamza-aziz-ai/codex-claude-council`: `package.json` has the `mcpName` the registry checks on npm, and `server.json` describes the server (the npm package, started with `npx codex-claude-council mcp` over stdio). It passes `mcp-publisher validate`, and a test keeps the two files in step with the package version.

@@ -1,4 +1,4 @@
-The discussion has ended without full agreement ($why). $other's latest message is below; you have not seen it yet. Give the user the final answer: first what you both agree on, then each point still in dispute, with both positions and the reasons each of you gave, and your recommendation where the evidence supports one. Be fair to $other's position. Do not mention a council unless useful.
+The discussion has ended without full agreement ($why). $other's latest message is below; you have not seen it yet. Give the user the final answer: first what you both agree on, then each point still in dispute, with both positions and the reasons each of you gave, and your recommendation where the evidence supports one. Be fair to $other's position. Keep to any length or format the question asks for: if it asks for a short answer, lead with your recommendation and name only the main point in dispute. Do not mention a council unless useful.
 
 $other's latest message:
 $other_text
