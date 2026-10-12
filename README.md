@@ -454,7 +454,6 @@ A step that uses a skill with sub-agents can take several minutes and uses much 
 | `council_turn` | sends the host's turn (`council_id`, `text`) | – |
 | `council_result` | waits for a running job's answer (or, with `council_join`, the host's next turn) | `job_id` |
 | `council_cancel` | stops a running job | `job_id` |
-| `council_cancel` | stops a running job | `job_id` |
 
 - `workspace`: the absolute path of the project folder both models work in. In Claude Code and Codex, the plugin's skill tells the host to pass the folder you are working in.
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Claude effort: `low`, `medium`, `high`, `xhigh`, `max`.
