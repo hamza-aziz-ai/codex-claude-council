@@ -11,6 +11,8 @@
   <img alt="No API keys" src="https://img.shields.io/badge/API%20keys-none-D97757">
 </p>
 
+<h2 align="center">Two AIs. One answer.</h2>
+
 <h3 align="center">Ask <b>ChatGPT</b> (through Codex) and <b>Claude</b> the same question.<br>They discuss with each other, round after round, until they agree on one answer.</h3>
 
 <p align="center">
@@ -55,9 +57,28 @@
 > [!TIP]
 > Already in a session of one model? Say *"discuss with my Codex session 019a…"* (in Claude Code) and your session takes part itself, with everything it already knows. See [`council_join`](#take-part-yourself-council_join).
 
+## Why two models?
+
+One model answers with confidence, right or wrong. Two models that disagree, and must explain why to each other, catch what either misses alone, the way a second reviewer does.
+
+A real run (low effort): *"PostgreSQL or SQLite for a single-server internal tool with about 20 users?"*
+
+| | ChatGPT | Claude |
+|---|---|---|
+| **Opening answer** | SQLite | PostgreSQL |
+| **Exchange 1** | holds: "20 users alone does not establish write contention" | accepts most points and switches to SQLite, but keeps one objection |
+| **Exchanges 2–3** | sharpens when PostgreSQL *would* be right | withdraws "multiple app instances" as a reason |
+| **Exchange 4** | agrees | agrees |
+| **Final check** | rejects the first final text (over the 120-word limit, one unsupported claim); accepts the revision | |
+
+The final answer was sharper than either opening answer: SQLite, with the exact conditions under which to move to PostgreSQL. See the whole discussion as a page: [**open it**](https://htmlpreview.github.io/?https://github.com/hamza-aziz-ai/codex-claude-council/blob/main/docs/examples/postgres-or-sqlite.html) ([source](docs/examples/postgres-or-sqlite.html)) (make your own with `--html`, see [From the terminal](#from-the-terminal)).
+
+**Measure it yourself:** [`bench/`](bench) has 24 programs with classic traps, an answer key checked by running them, and a runner that asks Codex alone, Claude alone and the council, and scores all three.
+
 <details>
 <summary><b>Contents</b></summary>
 
+- [Why two models?](#why-two-models)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -440,6 +461,7 @@ npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --no-web             
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --network               # Codex's commands may reach the network
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council     # with an installed skill
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --skill llm-council,caveman  # with several
+npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --html council.html  # also save the discussion as a page to share
 npx -y github:hamza-aziz-ai/codex-claude-council ask "..." --claude-session <uuid> --codex-session <id>  # your sessions
 npx -y github:hamza-aziz-ai/codex-claude-council codex "..." --session <id>        # your Codex session
 ```
