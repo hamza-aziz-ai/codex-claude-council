@@ -12,7 +12,7 @@ Set Theme "GitHub Dark"
 Set TypingSpeed 35ms
 Set PlaybackSpeed 4
 
-Type `npx -y github:hamza-aziz-ai/codex-claude-council ask "Postgres or SQLite for a 20-user internal tool? Answer in under 60 words." --no-workspace --codex-effort low --claude-effort low`
+Type `npx -y codex-claude-council ask "Postgres or SQLite for a 20-user internal tool? Answer in under 60 words." --no-workspace --codex-effort low --claude-effort low`
 Sleep 500ms
 Enter
 Wait+Screen@240s /both agree|did not fully agree/

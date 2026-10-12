@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.hamza-aziz-ai/codex-claude-council",
+  "title": "Codex–Claude Council",
+  "description": "ChatGPT (Codex CLI) and Claude (Claude Code) discuss until they agree, on your own subscriptions.",
+  "repository": {
+    "url": "https://github.com/hamza-aziz-ai/codex-claude-council",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/hamza-aziz-ai/codex-claude-council#readme",
+  "version": "0.11.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "codex-claude-council",
+      "version": "0.11.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}
