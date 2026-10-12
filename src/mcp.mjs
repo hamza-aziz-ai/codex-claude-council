@@ -5,6 +5,8 @@ import { MEMBER_ENV } from './adapters.mjs';
 import { WAITING, invoke } from './council.mjs';
 import { listSkills, nativeSkills } from './skills.mjs';
 
+// The plugin's icon, served from the repository (MCP icons must be HTTPS URLs); clients that show server icons use it.
+const ICON_URL = 'https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/mcpb/icon.png';
 const DEFAULTS_NOTE = 'Omit to use the configured default; set only when the user asks for a specific one.';
 const MODEL_HINT = {
   codex: 'Codex (ChatGPT) model override, e.g. gpt-5.6-sol',
@@ -334,7 +336,7 @@ export function serve({ input = process.stdin, output = process.stdout, server =
         return reply(id, {
           protocolVersion: params?.protocolVersion || '2025-06-18',
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: server.name, title: server.title, version: packageVersion() },
+          serverInfo: { name: server.name, title: server.title, version: packageVersion(), icons: [{ src: ICON_URL, mimeType: 'image/png', sizes: ['1254x1254'] }] },
           instructions: server.instructions,
         });
       case 'ping':

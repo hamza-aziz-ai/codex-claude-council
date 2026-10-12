@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.5 (2026-10-12)
+
+- **A new icon**, `mcpb/icon.png`: the two council members, ChatGPT and Claude, discussing over one checked answer. It is now the plugin's picture everywhere: the installer's banner (as a sixel image, in the terminals that draw them; the others show the title alone), the README banner, the social preview, the Claude Desktop extension and Smithery, the Codex plugin card (`interface.logo` and `composerIcon`), the MCP Registry (`icons` in `server.json`) and the MCP server's `serverInfo.icons`. It replaces the OpenAI and Claude logos and the crossing lines in the banners; the npm package now includes it, and the old `mcpb/icon.svg` and the text logos are gone. A test keeps every manifest pointing at the one file.
+
 ## 0.11.4 (2026-10-12)
 
 - **An MCPB bundle** (`codex-claude-council-<version>.mcpb`, attached to each GitHub release): the MCP server packed for one-click install in Claude Desktop (open the file, or Settings → Extensions → Install Extension…) and for publishing to Smithery (`smithery mcp publish`). `node mcpb/build.mjs` builds it with the official `@anthropic-ai/mcpb` tool from `mcpb/manifest.json` (spec 0.3: Node 20+, the 8 tools, macOS, Windows and Linux) and an icon of the two lines crossing into one answer. A test keeps the manifest's version and tools in step with the code. The Codex and Claude Code CLIs still need to be installed and signed in. The build also writes a Smithery copy (`…-smithery.mcpb`) whose manifest gives each tool its input schema: Smithery requires one, and the MCPB manifest spec does not allow it.

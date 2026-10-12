@@ -35,22 +35,10 @@ test('the skill frontmatter names the skill', () => {
   assert.match(skill, /^---\nname: codex-claude-council\ndescription: .{50,1024}\n---\n/);
 });
 
-test('the banner logos are 7 lines of 14 columns each, with color codes only', () => {
-  for (const name of ['openai', 'claude', 'openai-256', 'claude-256']) {
-    const text = readFileSync(join(ROOT, 'src', 'logos', `${name}.ans`), 'utf8');
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    assert.equal(lines.length, 7, name);
-    for (const line of lines) assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').length, 14, name);
-    assert.doesNotMatch(text, /\x1b\[[0-9;?]*[a-ln-zA-Z]/, `${name}: no escape codes other than colors`);
-  }
-});
-
-test('the banner\'s sixel logos are complete images', () => {
-  for (const name of ['openai', 'claude']) {
-    const image = readFileSync(join(ROOT, 'src', 'logos', `${name}.six`), 'utf8').trimEnd();
-    assert.match(image, /^\x1bP[0-9;]*q"1;1;120;120/, `${name}: a 120x120 sixel image`);
-    assert.ok(image.endsWith('\x1b\\'), `${name}: ends the image`);
-  }
+test('the banner\'s sixel icon is a complete image', () => {
+  const image = readFileSync(join(ROOT, 'src', 'logos', 'icon.six'), 'utf8').trimEnd();
+  assert.match(image, /^\x1bP[0-9;]*q"1;1;220;220/, 'a 220x220 sixel image');
+  assert.ok(image.endsWith('\x1b\\'), 'ends the image');
 });
 
 test('the MCP Registry entry (server.json) matches the npm package', () => {
@@ -73,4 +61,11 @@ test('the MCPB bundle manifest matches the package and declares every tool', asy
   const { TOOLS } = await import('../src/mcp.mjs');
   assert.deepEqual(manifest.tools.map(tool => tool.name), TOOLS.map(tool => tool.name));
   assert.ok(existsSync(join(ROOT, 'mcpb', manifest.icon)), 'the icon is in mcpb/');
+});
+
+test('every manifest points at the one icon, mcpb/icon.png', () => {
+  const { interface: card } = json('.codex-plugin/plugin.json');
+  assert.deepEqual([card.logo, card.composerIcon], ['./mcpb/icon.png', './mcpb/icon.png']);
+  assert.ok(json('package.json').files.includes('mcpb/icon.png'), 'the npm package ships the icon the Codex card uses');
+  assert.match(json('server.json').icons[0].src, /^https:\/\/raw\.githubusercontent\.com\/hamza-aziz-ai\/codex-claude-council\/main\/mcpb\/icon\.png$/);
 });
