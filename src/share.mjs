@@ -95,7 +95,7 @@ ${exchanges.map(e => `
 
   <footer>
     Made with <a href="${REPO}">codex-claude-council</a>: ChatGPT and Claude discuss with each other until they agree.<br><br>
-    <code>npx -y github:hamza-aziz-ai/codex-claude-council install</code>
+    <code>npx -y codex-claude-council install</code>
   </footer>
 </main>
 </body>

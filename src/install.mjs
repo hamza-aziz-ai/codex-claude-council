@@ -253,7 +253,7 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
     `${c.gold('1.')} Restart ${c.claude('Claude Code')} and ${c.codex('Codex')} (and ${c.claude('Claude Desktop')}) so they load the plugin.`,
     `${c.gold('2.')} ${c.claude('Claude Desktop')}: ${menu(['Settings', 'Plugins (under Customize)', '+ Add', 'Add marketplace', 'Add from a repository', c.link(DEFAULT_SOURCE), 'Sync'])}, then install ${blend(NAME)}.`,
     `${c.gold('3.')} ${c.codex('ChatGPT desktop')}: ${menu(['Settings', 'Plugins', 'Add', '+ Add a marketplace', c.link(`https://github.com/${DEFAULT_SOURCE}.git`), 'Add marketplace'])}, then install ${blend(NAME)}.`,
-    `${c.gold('4.')} Optional defaults (model, effort, timeout): ${c.link(`npx -y github:${DEFAULT_SOURCE} config --init`)}, then edit ${c.link(userConfigPath())}`,
+    `${c.gold('4.')} Optional defaults (model, effort, timeout): ${c.link(`npx -y ${NAME} config --init`)}, then edit ${c.link(userConfigPath())}`,
   ]);
   signInReminder(check);
   ui.outro(`${c.dim('Try it:')} ${c.gold('"Ask the council: <your question>"')}`);
@@ -278,7 +278,7 @@ export async function update({ only, dryRun = false } = {}) {
   ui.gap();
   const check = await prerequisites();
   if (!check) return 1;
-  const notInstalled = error => new Error(`${error.message} If ${NAME} is not installed yet, run \`npx -y github:${DEFAULT_SOURCE} install\` instead.`);
+  const notInstalled = error => new Error(`${error.message} If ${NAME} is not installed yet, run \`npx -y ${NAME} install\` instead.`);
   const hosts = hostsFrom(only);
   try {
     if (hosts.includes('claude')) {

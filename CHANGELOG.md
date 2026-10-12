@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1 (2026-10-12)
+
+- **On npm:** `npx -y codex-claude-council install` (and `update`, `doctor`, `ask`, …) is now the documented command, in the README, the plugin's skill, the installer's messages, a shared discussion page and the social preview. The longer `npx -y github:hamza-aziz-ai/codex-claude-council …` still works, and the one-line install scripts still install from GitHub. The README has an npm version badge.
+- **A harder benchmark set** (`bench/hard.mjs`, now the default): 24 longer programs in which several traps interact, with an answer key checked by running them. `node bench/run.mjs --set hard|classic|all`.
+
 ## 0.11.0 (2026-10-12)
 
 - **Share a discussion as a page.** `ask` and `debate` take `--html <file>`: the question, both opening answers, every exchange (each side's reply with its "agrees" or "not yet") and the final answer, as one self-contained page that follows the reader's light or dark theme, with a link back to the plugin. An example is in `docs/examples/postgres-or-sqlite.html`.
