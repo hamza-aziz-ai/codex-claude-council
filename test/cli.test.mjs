@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { ROOT, setup } from './helpers.mjs';
@@ -142,4 +142,15 @@ test('--max-rounds limits the exchange, and progress goes to stderr', () => {
   const wrong = cli(['claude', 'q', '--max-rounds', '2']);
   assert.equal(wrong.status, 1);
   assert.match(wrong.stderr, /does not take --max-rounds/);
+});
+
+test('--html saves the whole discussion as a page, and the usual answer is still printed', () => {
+  const page = join(fake.dir, 'debate.html');
+  const result = cli(['ask', 'Which one?', '--no-workspace', '--html', page]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /both agree with this answer/);
+  assert.match(result.stderr, /saved the discussion to .*debate\.html/);
+  const html = readFileSync(page, 'utf8');
+  assert.ok(html.includes('Which one?') && html.includes('⇄ Exchange 1') && html.includes('One answer'));
+  assert.match(cli(['claude', 'q', '--html', page]).stderr, /does not take --html/);
 });

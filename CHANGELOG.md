@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 (2026-10-12)
+
+- **Share a discussion as a page.** `ask` and `debate` take `--html <file>`: the question, both opening answers, every exchange (each side's reply with its "agrees" or "not yet") and the final answer, as one self-contained page that follows the reader's light or dark theme, with a link back to the plugin. An example is in `docs/examples/postgres-or-sqlite.html`.
+- **A benchmark** in `bench/`: 24 programs with classic traps (the event loop, `sort()`, mutable defaults, `finally`, SQL's `NULL`), an answer key checked by running them (`--verify`), and a runner that asks Codex alone, Claude alone and the council, with fresh sessions, in an empty folder and without the web, and scores all three.
+- **README:** "Two AIs. One answer.", a "Why two models?" section with a real run, and an animated banner: the lines draw themselves and the exchanges light up in turn (the finished picture shows wherever animation does not run, or with reduced motion). `assets/make-banner.cjs` writes the banners and the social preview (`assets/social-preview.png`); `assets/demo.tape` records a demo with VHS.
+
 ## 0.10.2 (2026-10-12)
 
 - **A new look for the README.** A banner of the council (both logos, the lines crossing at each exchange and meeting in one answer, beside COUNCIL shaded from ChatGPT green to Claude orange) in a dark and a light version for GitHub's themes (`assets/banner-*.svg`), centered badges and links, a feature grid, a three-step quick start, and callouts for the notes that matter most.

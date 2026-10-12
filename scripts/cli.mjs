@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
-import { invoke } from '../src/council.mjs';
+import { councilText, invoke } from '../src/council.mjs';
+import { debateHtml } from '../src/share.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
 import { addSkill, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
@@ -43,6 +44,7 @@ Model and effort (omit to use your config):
   codex, claude:   --session <id|name>  continue your own Codex / Claude Code session in place (keeps its memory);
                                         its id from /status, or the name you gave it with /rename
   ask, debate:     --codex-session <id|name>  --claude-session <id|name>   the same, per side
+                   --html <file>      also save the whole discussion as a page to share
   Codex effort: none, minimal, low, medium, high, xhigh.  Claude effort: low, medium, high, xhigh, max.
 
 Install / update / uninstall options:
@@ -77,6 +79,7 @@ const OPTIONS = {
   'claude-desktop': { type: 'boolean' },
   'dry-run': { type: 'boolean' },
   init: { type: 'boolean' },
+  html: { type: 'string' },
 };
 const TOOLS = { ask: 'council_ask', debate: 'debate', codex: 'ask_codex', claude: 'ask_claude' };
 
@@ -148,6 +151,7 @@ async function main() {
   const wrong = single
     ? ['codex-model', 'codex-effort', 'claude-model', 'claude-effort', 'max-rounds', 'synthesizer', 'codex-session', 'claude-session'].filter(key => values[key] !== undefined)
     : ['model', 'effort', 'session'].filter(key => values[key] !== undefined);
+  if (single && values.html !== undefined) wrong.push('html');
   if (wrong.length) throw new Error(`${commandName} does not take --${wrong.join(', --')} (see --help)`);
   if (values.workspace !== undefined && values['no-workspace']) throw new Error('use --workspace or --no-workspace, not both');
   if (values['no-web']) pairs.web_search = false;
@@ -165,7 +169,16 @@ async function main() {
     process.stderr.write('[council] cancelled\n');
     setTimeout(() => process.exit(130), 500);
   });
-  console.log(await invoke(tool, question, options, { onProgress, signal: controller.signal }));
+  if (values.html === undefined) {
+    console.log(await invoke(tool, question, options, { onProgress, signal: controller.signal }));
+    return 0;
+  }
+  // The page needs the whole discussion, which the debate tool returns.
+  const json = await invoke('debate', question, options, { onProgress, signal: controller.signal });
+  const result = JSON.parse(json);
+  writeFileSync(resolve(values.html), debateHtml(result, question));
+  onProgress(`saved the discussion to ${resolve(values.html)}`);
+  console.log(tool === 'debate' ? json : councilText(result));
   return 0;
 }
 
