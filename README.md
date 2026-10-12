@@ -1,21 +1,63 @@
-# Codex–Claude Council
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+  <img alt="Codex–Claude Council: ChatGPT and Claude discuss with each other until they agree" src="assets/banner-light.svg" width="100%">
+</picture>
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council)](https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council)
-[![CI](https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml/badge.svg)](https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Node 20+](https://img.shields.io/badge/node-20%2B-brightgreen)
+<p align="center">
+  <a href="https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-brightgreen">
+  <img alt="No API keys" src="https://img.shields.io/badge/API%20keys-none-D97757">
+</p>
 
-Ask **ChatGPT (through Codex)** and **Claude** the same question. Each gives its own answer, then they reply to each other, round after round, until they agree on one answer, using the subscriptions you already have. No API keys.
+<h3 align="center">Ask <b>ChatGPT</b> (through Codex) and <b>Claude</b> the same question.<br>They discuss with each other, round after round, until they agree on one answer.</h3>
 
-Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **ChatGPT desktop app** and your **terminal**, on Windows, macOS and Linux.
+<p align="center">
+  Using the subscriptions you already have, in <b>Claude Code</b> · <b>Claude Desktop</b> (Cowork) · <b>Codex</b> · the <b>ChatGPT desktop app</b> · your <b>terminal</b>,<br>
+  on Windows, macOS and Linux.
+</p>
 
-- **Both work in your project, in plan mode.** They read files, search and run read-only commands such as `git log` and `git diff`, but neither can change anything.
-- **With your own setup.** Your skills, plugins, MCP servers and `CLAUDE.md` / `AGENTS.md` apply to both.
-- **With the sessions you choose.** New sessions, your existing Claude Code and Codex sessions (with everything they already know), or the session you are asking from as one of the two members.
-- **With the web.** Both check current versions, APIs and docs instead of relying on memory.
-- **With skills on request**, such as [llm-council](https://github.com/aiwithremy/claude-skills-llm-council), [caveman](https://github.com/JuliusBrussee/caveman), [ponytail](https://github.com/DietrichGebert/ponytail) or [graphify](https://github.com/Graphify-Labs/graphify).
+<p align="center">
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#how-it-works"><b>How it works</b></a> ·
+  <a href="#use-it"><b>Use it</b></a> ·
+  <a href="#examples-and-best-practices"><b>Examples</b></a> ·
+  <a href="#options"><b>Options</b></a> ·
+  <a href="#configure"><b>Configure</b></a> ·
+  <a href="#troubleshooting"><b>Troubleshooting</b></a>
+</p>
 
-**Contents:**
+<table>
+  <tr>
+    <td width="50%" valign="top">🔍 <b>Both work in your project, in plan mode</b><br>They read files, search and run read-only commands such as <code>git log</code> and <code>git diff</code>, but neither can change anything.</td>
+    <td width="50%" valign="top">🧰 <b>With your own setup</b><br>Your skills, plugins, MCP servers and <code>CLAUDE.md</code> / <code>AGENTS.md</code> apply to both.</td>
+  </tr>
+  <tr>
+    <td valign="top">🔁 <b>With the sessions you choose</b><br>New sessions, your existing Claude Code and Codex sessions (with everything they already know), or the session you are asking from as one of the two members.</td>
+    <td valign="top">🌐 <b>With the web</b><br>Both check current versions, APIs and docs instead of relying on memory.</td>
+  </tr>
+  <tr>
+    <td valign="top">🧩 <b>With skills on request</b><br>Such as <a href="https://github.com/aiwithremy/claude-skills-llm-council">llm-council</a>, <a href="https://github.com/JuliusBrussee/caveman">caveman</a>, <a href="https://github.com/DietrichGebert/ponytail">ponytail</a> or <a href="https://github.com/Graphify-Labs/graphify">graphify</a>.</td>
+    <td valign="top">🔑 <b>No API keys</b><br>It runs your own Codex CLI (signed in with ChatGPT) and Claude Code CLI (signed in with your Claude plan) on your computer.</td>
+  </tr>
+</table>
+
+## Quick start
+
+1. **Install** in Claude Code and Codex (this checks Node.js and both CLIs first; other ways under [Install](#install)):
+   ```bash
+   npx -y github:hamza-aziz-ai/codex-claude-council install
+   ```
+2. **Restart** Claude Code and Codex, so they load the plugin.
+3. **Ask**, in a project: *"Ask the council: what does this project do, and what would you improve first?"*
+
+> [!TIP]
+> Already in a session of one model? Say *"discuss with my Codex session 019a…"* (in Claude Code) and your session takes part itself, with everything it already knows. See [`council_join`](#take-part-yourself-council_join).
+
+<details>
+<summary><b>Contents</b></summary>
+
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -29,6 +71,8 @@ Works inside **Claude Code**, **Claude Desktop** (Cowork), **Codex**, the **Chat
 - [Configure](#configure)
 - [Security and privacy](#security-and-privacy)
 - [Troubleshooting](#troubleshooting)
+
+</details>
 
 ## How it works
 
@@ -62,8 +106,10 @@ Neither model leads the discussion: in every exchange both reply to each other a
 | [Git](https://git-scm.com) (recommended) | usually already installed | – |
 
 - **Both CLIs are required.** The installer checks for them and stops, with these install steps, if either is missing. Before each council, the CLIs it runs are checked for a sign-in, and nothing is sent until they are signed in.
-- **Keep both CLIs up to date.** The council uses recent options: Claude Code's plan mode and `stream-json` output, and Codex's `exec resume` and web search. If a run fails with "unknown option" or "unexpected argument", update the CLI it names: `claude update`, or `npm install -g @openai/codex@latest`.
 - **Git** lets both models look at your project's history, changes and blame, and `skill add` uses it to download a repository's skills.
+
+> [!IMPORTANT]
+> **Keep both CLIs up to date.** The council uses recent options: Claude Code's plan mode and `stream-json` output, and Codex's `exec resume` and web search. If a run fails with "unknown option" or "unexpected argument", update the CLI it names: `claude update`, or `npm install -g @openai/codex@latest`.
 
 ## Install
 
@@ -113,7 +159,8 @@ npx -y github:hamza-aziz-ai/codex-claude-council update --dry-run     # show the
 
 It refreshes the marketplace and updates the plugin in Claude Code and Codex; then fully quit and reopen both. Running the installer again does the same. [`CHANGELOG.md`](CHANGELOG.md) lists what changed. In Claude Desktop, updates arrive through **Sync automatically** (or **Sync** under **Settings → Plugins**); in the ChatGPT desktop app, update the plugin under **Settings → Plugins**.
 
-**Windows:** if Codex fails with *"failed to back up plugin cache entry: Access is denied. (os error 5)"*, a running app still has the plugin's folder open (versions up to 0.5.1 did this). Quit every Codex and Claude session, IDE extension and desktop app, then update again.
+> [!WARNING]
+> **Windows:** if Codex fails with *"failed to back up plugin cache entry: Access is denied. (os error 5)"*, a running app still has the plugin's folder open (versions up to 0.5.1 did this). Quit every Codex and Claude session, IDE extension and desktop app, then update again.
 
 ### Or install per app
 
@@ -125,7 +172,8 @@ It refreshes the marketplace and updates the plugin in Claude Code and Codex; th
 | **Claude Desktop, Chat tab** | `npx -y github:hamza-aziz-ai/codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop |
 | **ChatGPT desktop app** | **Settings → Plugins → Add → + Add a marketplace**, enter `https://github.com/hamza-aziz-ai/codex-claude-council.git` in **Source**, click **Add marketplace**, then install **codex-claude-council** |
 
-Keep the desktop app open while you use it: the council runs on your computer through your local CLIs, so both still need to be installed and signed in.
+> [!NOTE]
+> Keep the desktop app open while you use it: the council runs on your computer through your local CLIs, so both still need to be installed and signed in.
 
 ## Use it
 
@@ -148,7 +196,8 @@ Just ask in plain language. The host (the app you are asking in) picks the tool 
 
 In a project, the host passes its folder as the `workspace`, and the models read what they need themselves: point them at files, functions, the failing test or the error rather than pasting whole files. They cannot see the host's conversation (unless the host takes part itself), so the host states the task and any context that is not in the project.
 
-**Long runs.** A council takes several minutes: two CLI calls for the answers, two per exchange and two for the final answer and its check, all counting against both plans' limits. Some apps end a tool call after about 60 seconds (Claude Desktop does), so every tool returns within about 50 seconds, with the answer or with "still working", the current step and a `job_id`; the host then calls `council_result` until the answer is ready, while the council keeps running. `council_cancel` stops a job.
+> [!NOTE]
+> **Long runs.** A council takes several minutes: two CLI calls for the answers, two per exchange and two for the final answer and its check, all counting against both plans' limits. Some apps end a tool call after about 60 seconds (Claude Desktop does), so every tool returns within about 50 seconds, with the answer or with "still working", the current step and a `job_id`; the host then calls `council_result` until the answer is ready, while the council keeps running. `council_cancel` stops a job.
 
 ## Examples and best practices
 

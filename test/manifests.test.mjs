@@ -35,12 +35,20 @@ test('the skill frontmatter names the skill', () => {
   assert.match(skill, /^---\nname: codex-claude-council\ndescription: .{50,1024}\n---\n/);
 });
 
-test('the banner logos are 9 lines of 18 columns each, with color codes only', () => {
-  for (const name of ['openai', 'claude']) {
+test('the banner logos are 7 lines of 14 columns each, with color codes only', () => {
+  for (const name of ['openai', 'claude', 'openai-256', 'claude-256']) {
     const text = readFileSync(join(ROOT, 'src', 'logos', `${name}.ans`), 'utf8');
     const lines = text.split(/\r?\n/).filter(Boolean);
-    assert.equal(lines.length, 9, name);
-    for (const line of lines) assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').length, 18, name);
+    assert.equal(lines.length, 7, name);
+    for (const line of lines) assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').length, 14, name);
     assert.doesNotMatch(text, /\x1b\[[0-9;?]*[a-ln-zA-Z]/, `${name}: no escape codes other than colors`);
+  }
+});
+
+test('the banner\'s sixel logos are complete images', () => {
+  for (const name of ['openai', 'claude']) {
+    const image = readFileSync(join(ROOT, 'src', 'logos', `${name}.six`), 'utf8').trimEnd();
+    assert.match(image, /^\x1bP[0-9;]*q"1;1;120;120/, `${name}: a 120x120 sixel image`);
+    assert.ok(image.endsWith('\x1b\\'), `${name}: ends the image`);
   }
 });
