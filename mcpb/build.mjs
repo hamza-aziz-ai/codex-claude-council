@@ -10,11 +10,21 @@
 //   inputSchema, which Smithery requires and the MCPB manifest spec does not allow. Publish it with:
 //   npx -y @smithery/cli mcp publish mcpb/dist/codex-claude-council-<version>-smithery.mcpb -n <namespace>/codex-claude-council
 import { execSync } from 'node:child_process';
-import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crc32, deflateRawSync } from 'node:zlib';
-import { TOOLS } from '../src/mcp.mjs';
+
+// The tool schemas come from the server's own TOOLS, whose skill field lists the skills installed where it runs. Load
+// them as on a clean machine (empty homes and config), so nothing from the machine that builds the bundle is published.
+const clean = mkdtempSync(join(tmpdir(), 'council-mcpb-'));
+Object.assign(process.env, {
+  HOME: clean, USERPROFILE: clean, COUNCIL_CONFIG: join(clean, 'config.json'),
+  CLAUDE_CONFIG_DIR: join(clean, '.claude'), CODEX_HOME: join(clean, '.codex'),
+});
+const { TOOLS } = await import('../src/mcp.mjs');
+rmSync(clean, { recursive: true, force: true });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = dirname(HERE);
