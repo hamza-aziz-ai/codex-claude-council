@@ -59,6 +59,11 @@
 2. **Restart** Claude Code and Codex, so they load the plugin.
 3. **Ask**, in a project: *"Ask the council: what does this project do, and what would you improve first?"*
 
+<p align="center">
+  <img src="assets/demo.gif" width="100%" alt="A real council in the terminal: asked whether to use UUIDv7 or integer primary keys, ChatGPT and Claude both disagree for two exchanges, Claude agrees in the third, ChatGPT in the fourth, and they answer: choose BIGINT identity, with UUIDv7 only for offline or decentralized ID generation.">
+  <br><sub>A real council (low effort, the wait cut out): they disagree for two exchanges, then converge on one answer. Recorded with <a href="assets/demo.tape"><code>assets/demo.tape</code></a>.</sub>
+</p>
+
 > [!TIP]
 > Already in a session of one model? Say *"discuss with my Codex session 019a…"* (in Claude Code) and your session takes part itself, with everything it already knows. See [`council_join`](#take-part-yourself-council_join).
 
