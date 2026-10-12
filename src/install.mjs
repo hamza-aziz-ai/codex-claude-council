@@ -5,13 +5,17 @@ import { basename, dirname, join } from 'node:path';
 import { claudeSignInProblem, codexSignInProblem } from './adapters.mjs';
 import { NAME, PACKAGE_ROOT, SIDES, loadConfig, resolveSide, userConfigPath } from './config.mjs';
 import { cleanEnv, findExecutable, run } from './process.mjs';
-import { banner, c, ui } from './ui.mjs';
+import { banner, blend, c, ui } from './ui.mjs';
 
 export const DEFAULT_SOURCE = 'hamza-aziz-ai/codex-claude-council';
 const PLUGIN = `${NAME}@${NAME}`;
 const MIN_NODE = 20;
 const LABEL = { claude: 'Claude Code CLI', codex: 'Codex CLI' };
 const HOST = { claude: 'Claude Code', codex: 'Codex' };
+// Each CLI's color, as in the banner: Claude orange, Codex (ChatGPT) green.
+const TINT = { claude: c.claude, codex: c.codex };
+// A menu path, its steps separated by a dim >.
+const menu = steps => steps.join(c.dim(' > '));
 const VERSION = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')).version;
 const INSTALL_HELP = {
   claude: [
@@ -51,7 +55,7 @@ export async function preflight({ quiet = false } = {}) {
     } catch {
       result.ok = false;
       result.missing.push(side);
-      show.fail(`${LABEL[side]}: not found`);
+      show.fail(`${TINT[side](LABEL[side])}: not found`);
       continue;
     }
     result.exes[side] = exe;
@@ -60,15 +64,15 @@ export async function preflight({ quiet = false } = {}) {
       run(exe, ['--version'], opts).then(r => (r.stdout || r.stderr).trim().split(/\r?\n/)[0] || 'unknown version').catch(error => error.message),
       (side === 'codex' ? codexSignInProblem : claudeSignInProblem)(exe, config, opts).catch(error => error.message),
     ]));
-    show.ok(`${LABEL[side]}: ${version} ${c.dim(`(${exe})`)}`);
+    show.ok(`${TINT[side](LABEL[side])}: ${version} ${c.dim(`(${exe})`)}`);
     if (problem) result.signIn.push(problem);
-    if (problem) show.warn(`${LABEL[side]} sign-in: ${problem}`); else show.ok(`${LABEL[side]} sign-in: subscription`);
+    if (problem) show.warn(`${TINT[side](LABEL[side])} sign-in: ${problem}`); else show.ok(`${TINT[side](LABEL[side])} sign-in: ${c.green('subscription')}`);
   }
   return result;
 }
 
 export async function doctor() {
-  ui.intro(`${NAME} doctor  ${c.dim(`v${VERSION}`)}`);
+  ui.intro(`${blend(NAME)} doctor  ${c.dim(`v${VERSION}`)}`);
   ui.gap();
   const result = await preflight();
   ui.gap();
@@ -77,12 +81,12 @@ export async function doctor() {
   try { config = loadConfig(); } catch { ui.outro('Fix the config file, then run doctor again.'); return 1; }
   const rounds = config.max_rounds === null ? '1' : config.max_rounds === 0 ? 'until both agree' : `at most ${config.max_rounds}`;
   ui.note('Config', [
-    `File: ${userConfigPath()}${existsSync(userConfigPath()) ? '' : c.dim(' (not created; using defaults)')}`,
-    ...SIDES.map(side => { const { model, effort } = resolveSide(side, {}, config); return `${side}: model=${model || '(CLI default)'} effort=${effort || '(CLI default)'}`; }),
-    `timeout=${config.timeout_seconds}s per call, synthesizer=${config.synthesizer}, exchanges=${rounds}`,
+    `${c.dim('File:')} ${c.link(userConfigPath())}${existsSync(userConfigPath()) ? '' : c.dim(' (not created; using defaults)')}`,
+    ...SIDES.map(side => { const { model, effort } = resolveSide(side, {}, config); return `${TINT[side](`${side}:`)} ${c.dim('model=')}${model || '(CLI default)'} ${c.dim('effort=')}${effort || '(CLI default)'}`; }),
+    `${c.dim('timeout=')}${config.timeout_seconds}s per call, ${c.dim('synthesizer=')}${config.synthesizer}, ${c.dim('exchanges=')}${rounds}`,
   ]);
   const ready = result.ok && !result.signIn.length;
-  ui.outro(ready ? `Ready. Try: ${c.bold('"Ask the council: <your question>"')}` : 'Fix the items marked above, then run doctor again.');
+  ui.outro(ready ? `${c.green('Ready.')} ${c.dim('Try:')} ${c.gold('"Ask the council: <your question>"')}` : c.yellow('Fix the items marked above, then run doctor again.'));
   return ready ? 0 : 1;
 }
 
@@ -96,14 +100,16 @@ export function failureHint(output) {
 /** Run one host command. Returns "already" when it reports the item already exists, else "done". */
 async function step(exe, args, { dryRun, tolerate } = {}) {
   const shown = [basename(exe).replace(/\.(exe|cmd|bat)$/i, ''), ...args].join(' ');
-  if (dryRun) { ui.ok(`$ ${shown}`); return 'done'; }
-  const result = await ui.spin(`$ ${shown}`, () => run(exe, args, { timeoutMs: 300_000 }));
+  const name = basename(exe).replace(/\.(exe|cmd|bat)$/i, '');
+  const command = `${c.dim('$')} ${(TINT[name] ?? (text => text))(name)} ${args.join(' ')}`;
+  if (dryRun) { ui.ok(command); return 'done'; }
+  const result = await ui.spin(command, () => run(exe, args, { timeoutMs: 300_000 }));
   const output = `${result.stdout}\n${result.stderr}`.trim();
   let status = null;
   if (/already/i.test(output) && (result.code === 0 || /already (added|exists|installed|on disk)/i.test(output))) status = 'already';
   else if (result.code === 0) status = 'done';
   else if (tolerate && tolerate.test(output)) status = 'skipped';
-  (status ? ui.ok : ui.fail)(`$ ${shown}${{ already: c.dim('  (already there)'), skipped: c.dim('  (nothing to do)') }[status] ?? ''}`);
+  (status ? ui.ok : ui.fail)(`${command}${{ already: c.dim('  (already there)'), skipped: c.dim('  (nothing to do)') }[status] ?? ''}`);
   for (const line of output.split(/\r?\n/).filter(line => line.trim() && !/could not create PATH aliases/.test(line))) ui.line(c.dim(`  ${line.trim()}`));
   if (!status) throw new Error(`\`${shown}\` failed (exit code ${result.code}).${failureHint(output)}`);
   return status;
@@ -139,7 +145,7 @@ function editDesktopConfig(path, edit, dryRun) {
   const exists = existsSync(path);
   const config = exists ? JSON.parse(readFileSync(path, 'utf8').replace(/^﻿/, '') || '{}') : {};
   if (!edit(config)) return false;
-  ui.ok(`${dryRun ? 'Would update' : 'Updated'} ${path}`);
+  ui.ok(`${dryRun ? 'Would update' : 'Updated'} ${c.link(path)}`);
   if (dryRun) return true;
   mkdirSync(dirname(path), { recursive: true });
   if (exists) writeFileSync(`${path}.bak-${NAME}`, readFileSync(path));
@@ -158,7 +164,7 @@ function installDesktop(dryRun) {
       if (existsSync(join(PACKAGE_ROOT, item))) cpSync(join(PACKAGE_ROOT, item), join(appDir(), item), { recursive: true });
     }
   }
-  ui.ok(`${dryRun ? 'Would copy' : 'Copied'} the server to ${appDir()}`);
+  ui.ok(`${dryRun ? 'Would copy' : 'Copied'} the server to ${c.link(appDir())}`);
   for (const path of desktopTargets()) {
     editDesktopConfig(path, config => {
       config.mcpServers = { ...(config.mcpServers || {}), [NAME]: { command: process.execPath, args: [server] } };
@@ -177,7 +183,7 @@ function uninstallDesktop(dryRun) {
   }
   if (existsSync(appDir())) {
     if (!dryRun) rmSync(appDir(), { recursive: true, force: true });
-    ui.ok(`${dryRun ? 'Would remove' : 'Removed'} ${appDir()}`);
+    ui.ok(`${dryRun ? 'Would remove' : 'Removed'} ${c.link(appDir())}`);
   }
 }
 
@@ -197,20 +203,20 @@ async function prerequisites() {
   ui.gap();
   ui.fail(`${NAME} needs both the Claude Code CLI and the Codex CLI (and Node.js ${MIN_NODE}+). Install what is missing, then run this again.`);
   if (check.missing.length) ui.note('Install what is missing', installHelp(check.missing));
-  ui.outro('Nothing was changed.');
+  ui.outro(c.yellow('Nothing was changed.'));
   return null;
 }
 
 export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = false, dryRun = false } = {}) {
   banner(VERSION);
-  ui.intro(`Installing ${NAME}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
+  ui.intro(`Installing ${blend(NAME)}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
   ui.gap();
   const check = await prerequisites();
   if (!check) return 1;
   const hosts = hostsFrom(only);
   if (hosts.includes('claude')) {
     ui.gap();
-    ui.info(c.bold('Claude Code plugin'));
+    ui.section('Claude Code plugin', c.claude);
     const claude = check.exes.claude;
     if (await step(claude, ['plugin', 'marketplace', 'add', source], { dryRun }) === 'already') {
       await step(claude, ['plugin', 'marketplace', 'update', NAME], { dryRun });
@@ -221,7 +227,7 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
   }
   if (hosts.includes('codex')) {
     ui.gap();
-    ui.info(c.bold('Codex plugin'));
+    ui.section('Codex plugin', c.codex);
     const codex = check.exes.codex;
     if (await step(codex, ['plugin', 'marketplace', 'add', source], { dryRun }) === 'already') {
       await step(codex, ['plugin', 'marketplace', 'upgrade', NAME], { dryRun, tolerate: /local|not a git|nothing to upgrade/i });
@@ -230,27 +236,27 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
   }
   if (claudeDesktop) {
     ui.gap();
-    ui.info(c.bold('Claude Desktop chat (MCP server)'));
+    ui.section('Claude Desktop chat (MCP server)', c.claude);
     installDesktop(dryRun);
   }
   ui.gap();
-  const done = host => (hosts.includes(host) ? (dryRun ? 'would be installed' : 'plugin installed') : `skipped (--only ${hosts[0]})`);
+  const done = host => (hosts.includes(host) ? c.green(dryRun ? 'would be installed' : 'plugin installed') : c.dim(`skipped (--only ${hosts[0]})`));
   ui.note(dryRun ? 'Dry run complete' : 'Installation complete', [
-    `Version:       ${VERSION}`,
-    `Claude Code:   ${done('claude')}`,
-    `Codex:         ${done('codex')}`,
-    `Desktop chat:  ${claudeDesktop ? 'MCP server added' : c.dim('not set up (add --claude-desktop)')}`,
-    `Config:        ${userConfigPath()}${existsSync(userConfigPath()) ? '' : c.dim(' (defaults; not created)')}`,
+    `${c.dim('Version:')}       ${c.gold(VERSION)}`,
+    `${c.claude('Claude Code:')}   ${done('claude')}`,
+    `${c.codex('Codex:')}         ${done('codex')}`,
+    `${c.dim('Desktop chat:')}  ${claudeDesktop ? c.green('MCP server added') : c.dim('not set up (add --claude-desktop)')}`,
+    `${c.dim('Config:')}        ${c.link(userConfigPath())}${existsSync(userConfigPath()) ? '' : c.dim(' (defaults; not created)')}`,
   ]);
   ui.gap();
   ui.note('Next steps', [
-    `1. Restart Claude Code and Codex (and Claude Desktop) so they load the plugin.`,
-    `2. Claude Desktop: Settings > Plugins (under Customize) > + Add > Add marketplace > Add from a repository > ${DEFAULT_SOURCE} > Sync, then install ${NAME}.`,
-    `3. ChatGPT desktop: Settings > Plugins > Add > + Add a marketplace > https://github.com/${DEFAULT_SOURCE}.git > Add marketplace, then install ${NAME}.`,
-    `4. Optional defaults (model, effort, timeout): npx -y github:${DEFAULT_SOURCE} config --init, then edit ${userConfigPath()}`,
+    `${c.gold('1.')} Restart ${c.claude('Claude Code')} and ${c.codex('Codex')} (and ${c.claude('Claude Desktop')}) so they load the plugin.`,
+    `${c.gold('2.')} ${c.claude('Claude Desktop')}: ${menu(['Settings', 'Plugins (under Customize)', '+ Add', 'Add marketplace', 'Add from a repository', c.link(DEFAULT_SOURCE), 'Sync'])}, then install ${blend(NAME)}.`,
+    `${c.gold('3.')} ${c.codex('ChatGPT desktop')}: ${menu(['Settings', 'Plugins', 'Add', '+ Add a marketplace', c.link(`https://github.com/${DEFAULT_SOURCE}.git`), 'Add marketplace'])}, then install ${blend(NAME)}.`,
+    `${c.gold('4.')} Optional defaults (model, effort, timeout): ${c.link(`npx -y github:${DEFAULT_SOURCE} config --init`)}, then edit ${c.link(userConfigPath())}`,
   ]);
   signInReminder(check);
-  ui.outro(`Try it: ${c.bold('"Ask the council: <your question>"')}`);
+  ui.outro(`${c.dim('Try it:')} ${c.gold('"Ask the council: <your question>"')}`);
   return 0;
 }
 
@@ -258,7 +264,7 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
 function signInReminder(check) {
   if (!check.signIn.length) return;
   ui.gap();
-  for (const problem of check.signIn) ui.warn(`Sign-in still needed: ${problem}`);
+  for (const problem of check.signIn) ui.warn(`${c.yellow('Sign-in still needed:')} ${problem}`);
   ui.gap();
 }
 
@@ -268,7 +274,7 @@ function signInReminder(check) {
  */
 export async function update({ only, dryRun = false } = {}) {
   banner(VERSION);
-  ui.intro(`Updating ${NAME}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
+  ui.intro(`Updating ${blend(NAME)}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
   ui.gap();
   const check = await prerequisites();
   if (!check) return 1;
@@ -277,13 +283,13 @@ export async function update({ only, dryRun = false } = {}) {
   try {
     if (hosts.includes('claude')) {
       ui.gap();
-      ui.info(c.bold('Claude Code plugin'));
+      ui.section('Claude Code plugin', c.claude);
       await step(check.exes.claude, ['plugin', 'marketplace', 'update', NAME], { dryRun });
       await step(check.exes.claude, ['plugin', 'update', PLUGIN], { dryRun, tolerate: /latest|up to date/i });
     }
     if (hosts.includes('codex')) {
       ui.gap();
-      ui.info(c.bold('Codex plugin'));
+      ui.section('Codex plugin', c.codex);
       await step(check.exes.codex, ['plugin', 'marketplace', 'upgrade', NAME], { dryRun, tolerate: /local|not a git|nothing to upgrade/i });
       await step(check.exes.codex, ['plugin', 'add', PLUGIN], { dryRun });
     }
@@ -292,22 +298,22 @@ export async function update({ only, dryRun = false } = {}) {
   }
   ui.gap();
   ui.note(dryRun ? 'Dry run complete' : `Updated to ${VERSION}`, [
-    'Fully quit and reopen Claude Code and Codex (and the desktop apps) to load the new version.',
-    'Claude Desktop and the ChatGPT desktop app update the plugin themselves under Settings > Plugins.',
+    `Fully quit and reopen ${c.claude('Claude Code')} and ${c.codex('Codex')} (and the desktop apps) to load the new version.`,
+    `${c.claude('Claude Desktop')} and the ${c.codex('ChatGPT desktop app')} update the plugin themselves under ${menu(['Settings', 'Plugins'])}.`,
   ]);
   signInReminder(check);
-  ui.outro('Done.');
+  ui.outro(c.green('Done.'));
   return 0;
 }
 
 export async function uninstall({ only, claudeDesktop = false, dryRun = false } = {}) {
-  ui.intro(`Removing ${NAME}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
+  ui.intro(`Removing ${blend(NAME)}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
   const config = loadConfig();
   for (const host of hostsFrom(only)) {
     ui.gap();
-    ui.info(c.bold(`${HOST[host]} plugin`));
+    ui.section(`${HOST[host]} plugin`, TINT[host]);
     let exe;
-    try { exe = findExecutable(host, config[host].command); } catch { ui.warn(`${LABEL[host]} not found; skipped`); continue; }
+    try { exe = findExecutable(host, config[host].command); } catch { ui.warn(`${TINT[host](LABEL[host])} not found; skipped`); continue; }
     if (host === 'claude') {
       await step(exe, ['plugin', 'uninstall', PLUGIN], { dryRun, tolerate: /not (found|installed)/i });
       await step(exe, ['plugin', 'marketplace', 'remove', NAME], { dryRun, tolerate: /not found|no marketplace/i });
@@ -318,12 +324,12 @@ export async function uninstall({ only, claudeDesktop = false, dryRun = false } 
   }
   if (claudeDesktop || !only) {
     ui.gap();
-    ui.info(c.bold('Claude Desktop chat (MCP server)'));
+    ui.section('Claude Desktop chat (MCP server)', c.claude);
     uninstallDesktop(dryRun);
   }
   ui.gap();
-  if (existsSync(userConfigPath())) ui.info(`Your settings in ${userConfigPath()} were kept.`);
-  ui.outro(dryRun ? 'Dry run complete.' : 'Removed.');
+  if (existsSync(userConfigPath())) ui.info(`Your settings in ${c.link(userConfigPath())} were kept.`);
+  ui.outro(c.green(dryRun ? 'Dry run complete.' : 'Removed.'));
   return 0;
 }
 

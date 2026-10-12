@@ -136,7 +136,8 @@ test('tools/call answers, and runs concurrent calls in parallel', async () => {
   assert.ok(!a.result.isError && !b.result.isError);
   // The two questions overlap in time: each started before the other ended (not a wall-clock limit, which a slow machine misses).
   const ends = new Map(readFileSync(`${fake.env.FAKE_LOG}.ends`, 'utf8').trim().split('\n').map(line => { const [id, at] = line.split(' '); return [id, Number(at)]; }));
-  const spans = fake.questionCalls().map(c => [c.at, ends.get(c.id)]);
+  // Only this test's two questions: a call an earlier test cancelled may still log while this one runs.
+  const spans = fake.questionCalls().filter(c => /\n(one|two)\s*$/.test(c.input)).map(c => [c.at, ends.get(c.id)]);
   assert.equal(spans.length, 2);
   assert.ok(Math.max(spans[0][0], spans[1][0]) < Math.min(spans[0][1], spans[1][1]), `calls should overlap: ${JSON.stringify(spans)}`);
 });
