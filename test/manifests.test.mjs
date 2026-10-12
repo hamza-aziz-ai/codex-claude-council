@@ -63,3 +63,14 @@ test('the MCP Registry entry (server.json) matches the npm package', () => {
   assert.deepEqual(npm.packageArguments, [{ type: 'positional', value: 'mcp' }], 'the CLI starts the MCP server with "mcp"');
   assert.ok(server.description.length <= 100, 'the registry limits descriptions to 100 characters');
 });
+
+test('the MCPB bundle manifest matches the package and declares every tool', async () => {
+  const pkg = json('package.json');
+  const manifest = json('mcpb/manifest.json');
+  assert.deepEqual([manifest.name, manifest.version], [pkg.name, pkg.version], 'mcpb/build.mjs refuses a version mismatch, this catches it earlier');
+  assert.equal(manifest.server.entry_point, 'src/mcp-server.mjs');
+  assert.deepEqual(manifest.server.mcp_config.args, ['${__dirname}/src/mcp-server.mjs']);
+  const { TOOLS } = await import('../src/mcp.mjs');
+  assert.deepEqual(manifest.tools.map(tool => tool.name), TOOLS.map(tool => tool.name));
+  assert.ok(existsSync(join(ROOT, 'mcpb', manifest.icon)), 'the icon is in mcpb/');
+});

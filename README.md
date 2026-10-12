@@ -200,6 +200,7 @@ It refreshes the marketplace and updates the plugin in Claude Code and Codex; th
 | **Claude Code** | `claude plugin marketplace add hamza-aziz-ai/codex-claude-council`<br>`claude plugin install codex-claude-council@codex-claude-council --scope user` |
 | **Codex** (CLI and IDE extension) | `codex plugin marketplace add hamza-aziz-ai/codex-claude-council`<br>`codex plugin add codex-claude-council@codex-claude-council` |
 | **Claude Desktop** (Cowork and Code) | **Settings → Customize → Plugins → + Add → Add marketplace → Add from a repository**, enter `hamza-aziz-ai/codex-claude-council`, turn **Sync automatically** on, click **Sync**, then install **codex-claude-council** |
+| **Claude Desktop, one-click extension** | Download `codex-claude-council-<version>.mcpb` from the [latest release](https://github.com/hamza-aziz-ai/codex-claude-council/releases/latest) and open it (or **Settings → Extensions → Install Extension…**). It adds the MCP server to Claude Desktop; the Codex and Claude Code CLIs still need to be installed and signed in. |
 | **Claude Desktop, Chat tab** | `npx -y codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop |
 | **ChatGPT desktop app** | **Settings → Plugins → Add → + Add a marketplace**, enter `https://github.com/hamza-aziz-ai/codex-claude-council.git` in **Source**, click **Add marketplace**, then install **codex-claude-council** |
 

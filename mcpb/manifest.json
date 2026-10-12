@@ -1,0 +1,50 @@
+{
+  "manifest_version": "0.3",
+  "name": "codex-claude-council",
+  "display_name": "Codex–Claude Council",
+  "version": "0.11.4",
+  "description": "ChatGPT (Codex CLI) and Claude (Claude Code) discuss your question until they agree, on your own subscriptions.",
+  "long_description": "Ask **ChatGPT** (through your Codex CLI) and **Claude** (through your Claude Code CLI) the same question. Each answers on its own, then they reply to each other, round after round, until both agree on one answer. No API keys: it runs the CLIs you have already signed in to.\n\n- Both read your project in read-only mode (Claude in plan mode, Codex in its sandbox) and can search the web.\n- Continue your existing Claude Code or Codex sessions, or take part yourself with `council_join`.\n- Requires the Claude Code CLI and the Codex CLI to be installed and signed in on this computer.",
+  "author": {
+    "name": "Hamza Aziz",
+    "url": "https://github.com/hamza-aziz-ai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hamza-aziz-ai/codex-claude-council.git"
+  },
+  "homepage": "https://github.com/hamza-aziz-ai/codex-claude-council",
+  "documentation": "https://github.com/hamza-aziz-ai/codex-claude-council#readme",
+  "support": "https://github.com/hamza-aziz-ai/codex-claude-council/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "src/mcp-server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/src/mcp-server.mjs"]
+    }
+  },
+  "tools": [
+    { "name": "council_ask", "description": "Ask ChatGPT and Claude; they reply to each other until both agree, then one writes the final answer and the other checks it." },
+    { "name": "debate", "description": "Run the council and return the whole discussion as JSON: both answers, every exchange and the final answer." },
+    { "name": "ask_codex", "description": "Ask Codex (ChatGPT) alone through the Codex CLI." },
+    { "name": "ask_claude", "description": "Ask Claude alone through Claude Code." },
+    { "name": "council_join", "description": "Take part in the council yourself, with the other model as the second member." },
+    { "name": "council_turn", "description": "Send your reply to the council's message when it is your turn." },
+    { "name": "council_result", "description": "Wait for the answer of a council that is still working." },
+    { "name": "council_cancel", "description": "Stop a council that is still working." }
+  ],
+  "keywords": ["chatgpt", "claude", "codex", "claude-code", "council", "second-opinion", "llm-council", "debate"],
+  "license": "MIT",
+  "privacy_policies": [
+    "https://openai.com/policies/privacy-policy/",
+    "https://www.anthropic.com/legal/privacy"
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  }
+}
