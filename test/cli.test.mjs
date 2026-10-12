@@ -97,7 +97,7 @@ test('install checks for both CLIs first, then shows the plugin commands', () =>
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /◇  Claude Code CLI: 0\.0\.0 \(Claude Code fake\)/);
   assert.match(result.stdout, /◇  Codex CLI: codex-cli 0\.0\.0-fake/);
-  assert.match(result.stdout, /╳/, 'the banner');
+  assert.match(result.stdout, /╚██████╗/, 'the banner');
   assert.match(result.stdout, /◇  Dry run complete ─+╮\n│ +│\n│  Version: +\d+\.\d+\.\d+ +│/, 'the summary box');
   assert.match(result.stdout, /└  Try it: "Ask the council: <your question>"\n$/);
   assert.ok(!/\x1b\[/.test(result.stdout), 'no colors when the output is not a terminal');

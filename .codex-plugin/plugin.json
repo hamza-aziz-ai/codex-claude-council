@@ -1,6 +1,6 @@
 {
   "name": "codex-claude-council",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, then reply to each other round after round until they agree on one answer.",
   "author": {
     "name": "Hamza Aziz",
@@ -37,6 +37,8 @@
     "category": "Productivity",
     "capabilities": [],
     "websiteURL": "https://github.com/hamza-aziz-ai/codex-claude-council",
+    "composerIcon": "./mcpb/icon.png",
+    "logo": "./mcpb/icon.png",
     "defaultPrompt": [
       "Ask the council: is this design sound?",
       "Get Claude's second opinion on this answer.",
