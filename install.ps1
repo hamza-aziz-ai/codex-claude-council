@@ -3,7 +3,6 @@
 # With options:
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.ps1))) --claude-desktop
 $ErrorActionPreference = 'Stop'
-$repo = 'hamza-aziz-ai/codex-claude-council'
 $missing = $false
 
 function Test-Cli([string]$name, [string[]]$fallbacks) {
@@ -31,4 +30,5 @@ if ($missing) {
 
 $extra = @($args)
 if ($env:COUNCIL_INSTALL_ARGS) { $extra += $env:COUNCIL_INSTALL_ARGS -split '\s+' }
-& npx --yes "github:$repo" install @extra
+# From npm: npm 12 refuses to install from git repositories by default (allow-git).
+& npx --yes codex-claude-council@latest install @extra

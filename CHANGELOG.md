@@ -3,6 +3,7 @@
 ## 0.11.2 (2026-10-12)
 
 - **Ready for the Official MCP Registry** (registry.modelcontextprotocol.io) as `io.github.hamza-aziz-ai/codex-claude-council`: `package.json` has the `mcpName` the registry checks on npm, and `server.json` describes the server (the npm package, started with `npx codex-claude-council mcp` over stdio). It passes `mcp-publisher validate`, and a test keeps the two files in step with the package version.
+- **The one-line install scripts install from npm** (`npx codex-claude-council@latest install`). npm 12 refuses to install from git repositories by default (`allow-git`), so the old `npx github:hamza-aziz-ai/codex-claude-council` form, which `install.sh` and `install.ps1` used, fails there with `EALLOWGIT`. The VHS demo script uses the npm package too.
 
 ## 0.11.1 (2026-10-12)
 

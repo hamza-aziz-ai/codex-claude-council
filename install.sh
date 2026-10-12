@@ -4,7 +4,6 @@
 # Options go after "bash -s --", e.g.:  ... | bash -s -- --claude-desktop
 set -euo pipefail
 
-REPO="hamza-aziz-ai/codex-claude-council"
 missing=0
 
 have() { command -v "$1" >/dev/null 2>&1 || [ -x "$HOME/.local/bin/$1" ]; }
@@ -26,4 +25,5 @@ if [ "$missing" -ne 0 ]; then
   exit 1
 fi
 
-exec npx --yes "github:${REPO}" install "$@"
+# From npm: npm 12 refuses to install from git repositories by default (allow-git).
+exec npx --yes codex-claude-council@latest install "$@"
