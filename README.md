@@ -6,9 +6,13 @@
 <p align="center">
   <a href="https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hamza-aziz-ai/codex-claude-council/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council"></a>
+  <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img alt="Glama Score" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/score.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-brightgreen">
   <img alt="No API keys" src="https://img.shields.io/badge/API%20keys-none-D97757">
+</p>
+<p align="center">
+  <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img alt="Glama Score" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/card.svg"></a>
 </p>
 
 <h2 align="center">Two AIs. One answer.</h2>
