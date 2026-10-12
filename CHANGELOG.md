@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.4 (2026-10-12)
+
+- **An MCPB bundle** (`codex-claude-council-<version>.mcpb`, attached to each GitHub release): the MCP server packed for one-click install in Claude Desktop (open the file, or Settings → Extensions → Install Extension…) and for publishing to Smithery (`smithery mcp publish`). `node mcpb/build.mjs` builds it with the official `@anthropic-ai/mcpb` tool from `mcpb/manifest.json` (spec 0.3: Node 20+, the 8 tools, macOS, Windows and Linux) and an icon of the two lines crossing into one answer. A test keeps the manifest's version and tools in step with the code. The Codex and Claude Code CLIs still need to be installed and signed in.
+
 ## 0.11.3 (2026-10-12)
 
 - **The final answer keeps to the length the question asks for**, also when the models did not agree. Asked for "under 60 words", an unresolved council wrote a long report of every point in dispute; now the writer leads with its recommendation and names the main point in dispute. The writer of an agreed answer is told the same.
