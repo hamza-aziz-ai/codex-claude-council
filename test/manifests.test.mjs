@@ -52,3 +52,14 @@ test('the banner\'s sixel logos are complete images', () => {
     assert.ok(image.endsWith('\x1b\\'), `${name}: ends the image`);
   }
 });
+
+test('the MCP Registry entry (server.json) matches the npm package', () => {
+  const pkg = json('package.json');
+  const server = json('server.json');
+  assert.equal(server.name, pkg.mcpName, 'the registry checks mcpName in the published package.json');
+  assert.equal(server.version, pkg.version);
+  const [npm] = server.packages;
+  assert.deepEqual([npm.registryType, npm.identifier, npm.version], ['npm', pkg.name, pkg.version]);
+  assert.deepEqual(npm.packageArguments, [{ type: 'positional', value: 'mcp' }], 'the CLI starts the MCP server with "mcp"');
+  assert.ok(server.description.length <= 100, 'the registry limits descriptions to 100 characters');
+});
