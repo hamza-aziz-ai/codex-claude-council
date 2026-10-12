@@ -93,12 +93,11 @@ const LETTERS = {
   L: ['██╗     ', '██║     ', '██║     ', '██║     ', '███████╗', '╚══════╝'],
 };
 
-// The icon (mcpb/icon.png) as a sixel image (real pixels), 220x220 px, about 22 columns by 11 rows, made with
-//   chafa --format sixels --size 22x22 --polite on --animate off mcpb/icon.png > src/logos/icon.six
+// The icon (mcpb/icon.png) as a sixel image (real pixels), 440x440 px, about 44 columns wide, made with
+//   chafa --format sixels --size 44x44 --polite on --animate off mcpb/icon.png > src/logos/icon.six
 // Shown only in terminals known to draw sixel images (Windows Terminal 1.22+, WezTerm, iTerm2, Konsole, foot,
 // mlterm); the others show the banner without it. COUNCIL_BANNER=text turns the image off.
-const SIXEL_COLS = 22;
-const SIXEL_ROWS = 11;
+const SIXEL_COLS = 44;
 function iconImage() {
   const env = process.env;
   if (!tty || env.COUNCIL_BANNER === 'text' || env.TERM_PROGRAM === 'vscode') return null;
@@ -106,14 +105,14 @@ function iconImage() {
   try { return readFileSync(new URL('./logos/icon.six', import.meta.url), 'utf8').trimEnd(); } catch { return null; }
 }
 
-// The icon centered on a column, as lines to print (none where the terminal does not draw it): reserve its rows
-// first (so drawing never scrolls the screen under a saved cursor), draw it from the saved top-left corner, then
-// move below it, and leave a blank line.
+// The icon centered on a column, as lines to print (none where the terminal does not draw it). The terminal moves
+// the cursor below the image as it draws it, however many rows that takes at its font size; \r returns to the
+// left edge, so the next line starts right under the image. Not in a terminal too narrow for it.
 function icon(center) {
   const image = iconImage();
-  if (!image) return [];
+  if (!image || (process.stdout.columns || 100) < SIXEL_COLS + 2) return [];
   const col = Math.max(0, center - SIXEL_COLS / 2);
-  return [`${'\n'.repeat(SIXEL_ROWS)}\x1b[${SIXEL_ROWS}A\x1b7${col > 0 ? `\x1b[${col}C` : ''}${image}\x1b8\x1b[${SIXEL_ROWS - 1}B`, ''];
+  return [`${col > 0 ? `\x1b[${col}C` : ''}${image}\r`];
 }
 
 function bigBanner(version) {

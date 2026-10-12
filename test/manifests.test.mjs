@@ -37,7 +37,7 @@ test('the skill frontmatter names the skill', () => {
 
 test('the banner\'s sixel icon is a complete image', () => {
   const image = readFileSync(join(ROOT, 'src', 'logos', 'icon.six'), 'utf8').trimEnd();
-  assert.match(image, /^\x1bP[0-9;]*q"1;1;220;220/, 'a 220x220 sixel image');
+  assert.match(image, /^\x1bP[0-9;]*q"1;1;440;440/, 'a 440x440 sixel image');
   assert.ok(image.endsWith('\x1b\\'), 'ends the image');
 });
 

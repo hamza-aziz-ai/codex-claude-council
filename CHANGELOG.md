@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.6 (2026-10-12)
+
+- **The installer's banner shows the icon twice as big** (440×440 px instead of 220×220), so the icon, not COUNCIL, leads the banner. The title now starts right under the image whatever the terminal's font size (the terminal moves the cursor below it as it draws), and a terminal narrower than 46 columns shows the banner without the image.
+
 ## 0.11.5 (2026-10-12)
 
 - **A new icon**, `mcpb/icon.png`: the two council members, ChatGPT and Claude, discussing over one checked answer. It is now the plugin's picture everywhere: the installer's banner (as a sixel image, in the terminals that draw them; the others show the title alone), the README banner, the social preview, the Claude Desktop extension and Smithery, the Codex plugin card (`interface.logo` and `composerIcon`), the MCP Registry (`icons` in `server.json`) and the MCP server's `serverInfo.icons`. It replaces the OpenAI and Claude logos and the crossing lines in the banners; the npm package now includes it, and the old `mcpb/icon.svg` and the text logos are gone. A test keeps every manifest pointing at the one file.
