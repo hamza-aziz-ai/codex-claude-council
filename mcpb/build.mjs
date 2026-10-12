@@ -10,8 +10,8 @@
 //   title, inputSchema, outputSchema and annotations, which Smithery reads (it requires inputSchema) and the MCPB
 //   manifest spec does not allow. Publish it with:
 //   npx -y @smithery/cli mcp publish mcpb/dist/codex-claude-council-<version>-smithery.mcpb -n <namespace>/codex-claude-council
-import { execSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,9 +41,14 @@ for (const item of ['src', 'assets/logos', 'package.json', 'LICENSE', 'README.md
 for (const item of ['manifest.json', 'icon.png']) cpSync(join(HERE, item), join(stage, item));
 
 const out = join(HERE, 'dist', `codex-claude-council-${version}.mcpb`);
-// One command string (npx is a .cmd script on Windows, which needs a shell); the paths are quoted.
-execSync(`npx -y ${MCPB} validate "${join(stage, 'manifest.json')}"`, { stdio: 'inherit' });
-execSync(`npx -y ${MCPB} pack "${stage}" "${out}"`, { stdio: 'inherit' });
+// npx run through this Node (no shell): npm's npx script sits beside the node binary on Windows, and under
+// ../lib/node_modules on macOS and Linux.
+const npx = [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js'), join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js')]
+  .find(path => existsSync(path));
+if (!npx) throw new Error(`npm's npx-cli.js is not beside ${process.execPath}`);
+const mcpb = (...args) => execFileSync(process.execPath, [npx, '-y', MCPB, ...args], { stdio: 'inherit' });
+mcpb('validate', join(stage, 'manifest.json'));
+mcpb('pack', stage, out);
 console.log(`\nBuilt ${out}`);
 
 // The Smithery bundle: the same files; the manifest's tools gain the title, schemas and annotations the server
