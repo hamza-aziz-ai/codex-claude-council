@@ -9,5 +9,10 @@ if (process.env.FAKE_SSH_FAIL) {
   process.stderr.write(`${process.env.FAKE_SSH_FAIL}\n`);
   process.exit(255);
 }
+// `skill installed …`: the skills installed there, from FAKE_SSH_SKILLS (a JSON list).
+if (/'\\''installed'\\''/.test(args.at(-1))) {
+  process.stdout.write(`${process.env.FAKE_SSH_SKILLS || '[]'}\n`);
+  process.exit(0);
+}
 const lastLine = input.split(/\r?\n/).filter(line => line.trim()).pop() || '';
 process.stdout.write(input.includes('VERDICT: AGREE or VERDICT: DISAGREE') ? 'remote: looks right\nVERDICT: AGREE\n' : `remote ${lastLine}\n`);

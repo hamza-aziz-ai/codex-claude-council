@@ -3,7 +3,7 @@
 // Each model keeps one session (see adapters.mjs), so every prompt carries only what it has not seen yet.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { askClaude, askCodex, checkSessionRef, holdSessions, remoteSession, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
+import { askClaude, askCodex, checkSessionRef, holdSessions, remoteInstalledSkills, remoteSession, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 import { installedFor, loadSkills, skillNote } from './skills.mjs';
 
@@ -68,6 +68,17 @@ export function hostAccessNote(workspace, web = false) {
     ? `You are working in the project at ${workspace}. Read it to check facts before relying on them. Do not change any files while this discussion runs: describe any change you propose instead of making it.`
     : 'Work from what you know and the text you are given. Do not change any files while this discussion runs.';
   return files + (web ? ' Where you can search the web, use it for facts that change or that you are unsure of, and say where a fact came from.' : '');
+}
+
+/**
+ * What a member is told of the skills: those installed for its own CLI are named (it loads them itself), the others'
+ * instructions are sent. A member on another machine is asked what is installed there, and is not pointed at this
+ * machine's skill folders, which it cannot read.
+ */
+async function skillsFor(side, skills, workspace, session, { config, signal }) {
+  if (!skills.length) return { skills, own: new Set() };
+  if (!remoteSession(session)) return { skills, own: installedFor(side, skills, workspace) };
+  return { skills: skills.map(({ dir, ...skill }) => skill), own: await remoteInstalledSkills(side, session, skills.map(skill => skill.name), { config, signal }) };
 }
 
 /**
@@ -233,9 +244,9 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   // With skills, the first prompt of the question carries their instructions and each later step says they are still available.
   // A skill installed for a member's own CLI is named instead, and the member loads it itself. The host gets every skill's
   // instructions: a desktop app may not load the skills installed for the CLI.
-  // A member on another machine gets every skill's instructions too: what is installed here says nothing of there.
-  const own = Object.fromEntries(SIDES_ORDER.map(side => [side, side === host?.side || remoteSession(sessions[side]) ? new Set() : installedFor(side, skills, workspace)]));
-  const withSkill = (side, text, first = false) => skillNote(skills, first, own[side]) + text;
+  const told = Object.fromEntries(await Promise.all(SIDES_ORDER.map(async side => [side, side === host?.side ? { skills, own: new Set() }
+    : await skillsFor(side, skills, workspace, sessions[side], { config, signal })])));
+  const withSkill = (side, text, first = false) => skillNote(told[side].skills, first, told[side].own) + text;
   const task = {
     codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, network: net, skill, resume: sessions.codex, held: true }),
     claude: text => s => askClaude(text, settings.claude, { config, signal: s, workspace, web, skill, resume: sessions.claude, held: true }),
@@ -393,7 +404,8 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
   const skills = loadSkills(clean.skill);
   if (tool === 'ask_codex' || tool === 'ask_claude') {
     const one = tool.slice(4);
-    const single = skillNote(skills, true, installedFor(one, skills, workspace)) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
+    const told = await skillsFor(one, skills, workspace, clean.session_id, { config, signal });
+    const single = skillNote(told.skills, true, told.own) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
     const answering = () => onProgress?.(`${LABEL[one]} is answering`);
     const singleOptions = { signal, workspace, web, network: net, skill: skills.length > 0, resume: clean.session_id,
       onWait: waiting => (waiting ? onProgress?.(waitingFor(one, clean.session_id)) : answering()) };

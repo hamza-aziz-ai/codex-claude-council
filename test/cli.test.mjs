@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { ROOT, setup } from './helpers.mjs';
@@ -153,4 +153,19 @@ test('--html saves the whole discussion as a page, and the usual answer is still
   const html = readFileSync(page, 'utf8');
   assert.ok(html.includes('Which one?') && html.includes('⇄ Exchange 1') && html.includes('One answer'));
   assert.match(cli(['claude', 'q', '--html', page]).stderr, /does not take --html/);
+});
+
+test('a remote member\'s commands: --raw sends the prompt as it is, skill installed lists that CLI\'s skills as JSON', () => {
+  fake.clearCalls();
+  const raw = cli(['claude', '--raw', '--session', '11111111-2222-4333-8444-555555555555', '--no-web'], 'You are Claude, in an exchange.\nVERDICT line please');
+  assert.equal(raw.status, 0, raw.stderr);
+  const [call] = fake.questionCalls();
+  assert.equal(call.input, 'You are Claude, in an exchange.\nVERDICT line please', 'not wrapped as a new question');
+  assert.ok(call.args.includes('--resume') && call.args.includes('WebSearch'), 'the session resumed, the web off');
+  assert.match(cli(['codex', '--raw'], 'x').stderr, /--raw is for the codex and claude commands with --session/);
+  mkdirSync(join(fake.env.CLAUDE_CONFIG_DIR, 'skills', 'mine'), { recursive: true });
+  writeFileSync(join(fake.env.CLAUDE_CONFIG_DIR, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\ndescription: "x"\n---\nx\n');
+  const listed = cli(['skill', 'installed', 'claude', 'mine', 'other', '../evil']);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.deepEqual(JSON.parse(listed.stdout), ['mine']);
 });

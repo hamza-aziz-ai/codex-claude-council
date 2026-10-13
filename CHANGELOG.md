@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.1 (2026-10-13)
+
+- **Fix: a member on another machine gets each council step as it is.** In 0.13.0 its `claude` / `codex` command wrapped every step (answer, exchange, final answer, check) in its own template for a new question. It now runs with `--raw`, which sends the prompt to the model unchanged.
+- **Skills on the remote machine are used by name.** With `skill`, the council asks that machine, in one `ssh` call (`skill installed <claude|codex> --session …`, which prints a JSON list), which of the skills are installed for its CLI, in the session's folder too. Those it loads itself; the others' instructions are sent, as before, and all of them if the check fails.
+- **A remote member is no longer pointed at this machine's skill folders,** which it can't read; a local member still is. A skill step there gets the longer `skill_timeout_seconds` (`--skill-step`).
+
 ## 0.13.0 (2026-10-13)
 
 - **Sessions on another machine.** Pass a session as `user@host:<id or name>` (`claude_session_id`, `codex_session_id`, `session_id`, `other_session_id`, or `--session` / `--claude-session` / `--codex-session`), and that member runs on that machine through `ssh`, as this plugin's own `codex` / `claude` command (fetched with `npx` at this version): that machine's CLI and sign-in, so another Claude or ChatGPT account works too, in the session's own folder, read-only. It needs key-based ssh (no password prompt) and Node.js 20+ there; its sign-in is checked there on each turn, and a failed login says how to set up ssh. Every argument is quoted for the remote shell (checked with a real bash against quotes, `, backticks and `;`). The `ssh` command can be set with `"ssh": { "command": … }` in the config.
