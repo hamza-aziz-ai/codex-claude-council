@@ -206,6 +206,7 @@ It refreshes the marketplace and updates the plugin in Claude Code and Codex; th
 | **Claude Desktop, one-click extension** | Download `codex-claude-council-<version>.mcpb` from the [latest release](https://github.com/hamza-aziz-ai/codex-claude-council/releases/latest) and open it (or **Settings → Extensions → Install Extension…**). It adds the MCP server to Claude Desktop; the Codex and Claude Code CLIs still need to be installed and signed in. |
 | **Claude Desktop, Chat tab** | `npx -y codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop |
 | **ChatGPT desktop app** | **Settings → Plugins → Add → + Add a marketplace**, enter `https://github.com/hamza-aziz-ai/codex-claude-council.git` in **Source**, click **Add marketplace**, then install **codex-claude-council** |
+| **Any other MCP client** (Cursor, VS Code, Windsurf, …) | Add a local (stdio) MCP server with command `npx` and arguments `["-y", "codex-claude-council", "mcp"]`. It is also listed in the [MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.hamza-aziz-ai/codex-claude-council) as `io.github.hamza-aziz-ai/codex-claude-council` and on [Smithery](https://smithery.ai/servers/hamza-aziz-ai/codex-claude-council) |
 
 > [!NOTE]
 > Keep the desktop app open while you use it: the council runs on your computer through your local CLIs, so both still need to be installed and signed in.
@@ -454,6 +455,8 @@ A step that uses a skill with sub-agents can take several minutes and uses much 
 | `council_turn` | sends the host's turn (`council_id`, `text`) | – |
 | `council_result` | waits for a running job's answer (or, with `council_join`, the host's next turn) | `job_id` |
 | `council_cancel` | stops a running job | `job_id` |
+
+Every tool also returns its result as `structuredContent` (declared in its `outputSchema`): `status` (`done`, `working`, `your_turn` or `stopped`), the `text`, and the `job_id` or `council_id` to use next. The tool names before 0.11.7 (`debate`, `ask_codex`, `ask_claude`) still work.
 
 - `workspace`: the absolute path of the project folder both models work in. In Claude Code and Codex, the plugin's skill tells the host to pass the folder you are working in.
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Claude effort: `low`, `medium`, `high`, `xhigh`, `max`.
