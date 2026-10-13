@@ -1,14 +1,16 @@
 # Publishes a GitHub release to npm, the MCP Registry and Smithery, with no stored passwords:
 # - npm: trusted publishing (OIDC). Once, on npmjs.com: the package's Settings > Trusted publishing > GitHub Actions,
-#   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml.
+#   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
-# Each step skips a version that is already published, so a release published by hand is not an error.
+# It runs when a release is published, or by hand (Actions > Publish > Run workflow) for the version in package.json,
+# which must already have its release tag. A version already on npm or in the MCP Registry is skipped there.
 name: Publish
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -26,10 +28,15 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: The release tag matches package.json
+      - name: The version has its release tag
         run: |
-          echo "VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
-          test "v$(node -p "require('./package.json').version")" = "${{ github.event.release.tag_name }}"
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = release ]; then
+            test "v$VERSION" = "${{ github.event.release.tag_name }}"
+          else
+            git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null
+          fi
 
       - run: npm test
 
@@ -39,12 +46,10 @@ jobs:
 
       - name: MCP Registry
         run: |
-          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.hamza-aziz-ai/codex-claude-council" | grep -q "\"version\":\"$VERSION\""; then
-            echo "$VERSION is already in the MCP Registry"
-          else
-            curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-            ./mcp-publisher login github-oidc
-            ./mcp-publisher publish
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          if ! ./mcp-publisher publish 2>&1 | tee publish.log; then
+            grep -q "duplicate version" publish.log && echo "$VERSION is already in the MCP Registry" || exit 1
           fi
 
       - name: Smithery
