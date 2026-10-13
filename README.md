@@ -86,12 +86,27 @@ A real run (low effort): *"PostgreSQL or SQLite for a single-server internal too
 
 The final answer was sharper than either opening answer: SQLite, with the exact conditions under which to move to PostgreSQL. See the whole discussion as a page: [**open it**](https://htmlpreview.github.io/?https://github.com/hamza-aziz-ai/codex-claude-council/blob/main/docs/examples/postgres-or-sqlite.html) ([source](docs/examples/postgres-or-sqlite.html)) (make your own with `--html`, see [From the terminal](#from-the-terminal)).
 
-**Measure it yourself:** [`bench/`](bench) has 24 programs with classic traps, an answer key checked by running them, and a runner that asks Codex alone, Claude alone and the council, and scores all three.
+### Benchmark
+
+24 programs in which several traps interact (the [hard set](bench/hard.mjs): the event loop across nested promises and timers, class fields, `yield from`, `NULL` in joins, …), each asked *"what exactly does this print?"* and graded against what it really prints. Codex `gpt-6.1-sol` and Claude Sonnet 5.5, both at low effort, fresh sessions, no web search (October 13, 2026):
+
+| | Right answers | Median time per question |
+|---|---|---|
+| Codex alone | 24 / 24 | 18 s |
+| Claude alone | 23 / 24 | 11 s |
+| **Council** | **24 / 24** | 59 s |
+
+- **The council caught the one mistake:** on `h-py-dunder` Claude alone printed `V3 V102 V3 …`; the council printed the right `V3 V102 V102 …`, with both models agreeing.
+- **It never made things worse:** there is no question the council got wrong that either model got right alone.
+- **What it means:** here Codex alone was already perfect, so the council's gain is insurance. You get the better answer without knowing in advance which model will slip, at about 3 to 5 times the time. One miss in 24 is a small sample, not proof.
+
+Every answer is in the [result file](bench/results/2026-10-13-03-15-hard-low.json). [Run it yourself](bench) with your own models and effort.
 
 <details>
 <summary><b>Contents</b></summary>
 
 - [Why two models?](#why-two-models)
+  - [Benchmark](#benchmark)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Install](#install)

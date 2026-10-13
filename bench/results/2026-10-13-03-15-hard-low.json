@@ -1,0 +1,486 @@
+{
+  "date": "2026-10-13T03:15:50.280Z",
+  "effort": "low",
+  "results": [
+    {
+      "id": "h-js-loop-mix",
+      "expected": "a1 n1 p1 a2 q1 p3 p2 t1 t2 a3",
+      "codex": {
+        "ok": true,
+        "got": "a1 n1 p1 a2 q1 p3 p2 t1 t2 a3",
+        "seconds": 31
+      },
+      "claude": {
+        "ok": true,
+        "got": "a1 n1 p1 a2 q1 p3 p2 t1 t2 a3",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "a1 n1 p1 a2 q1 p3 p2 t1 t2 a3",
+        "seconds": 125,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-object-keys",
+      "expected": "0,1,2,a,-1,01,1.5,b {\"n\":null,\"d\":\"1970-01-01T00:00:00.000Z\",\"nested\":\"J\",\"arr\":[null,null]}",
+      "codex": {
+        "ok": true,
+        "got": "0,1,2,a,-1,01,1.5,b {\"n\":null,\"d\":\"1970-01-01T00:00:00.000Z\",\"nested\":\"J\",\"arr\":[null,null]}",
+        "seconds": 17
+      },
+      "claude": {
+        "ok": true,
+        "got": "0,1,2,a,-1,01,1.5,b {\"n\":null,\"d\":\"1970-01-01T00:00:00.000Z\",\"nested\":\"J\",\"arr\":[null,null]}",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "0,1,2,a,-1,01,1.5,b {\"n\":null,\"d\":\"1970-01-01T00:00:00.000Z\",\"nested\":\"J\",\"arr\":[null,null]}",
+        "seconds": 58,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-tdz-hoisting",
+      "expected": "ReferenceError undefined g2 13",
+      "codex": {
+        "ok": true,
+        "got": "ReferenceError undefined g2 13",
+        "seconds": 17
+      },
+      "claude": {
+        "ok": true,
+        "got": "ReferenceError undefined g2 13",
+        "seconds": 13
+      },
+      "council": {
+        "ok": true,
+        "got": "ReferenceError undefined g2 13",
+        "seconds": 64,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-numbers",
+      "expected": "31 1 1000 0.5 0 12 NaN 0 1 NaN 0.30000000000000004 9007199254740992 true",
+      "codex": {
+        "ok": true,
+        "got": "31 1 1000 0.5 0 12 NaN 0 1 NaN 0.30000000000000004 9007199254740992 true",
+        "seconds": 21
+      },
+      "claude": {
+        "ok": true,
+        "got": "31 1 1000 0.5 0 12 NaN 0 1 NaN 0.30000000000000004 9007199254740992 true",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "31 1 1000 0.5 0 12 NaN 0 1 NaN 0.30000000000000004 9007199254740992 true",
+        "seconds": 62,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-class-fields",
+      "expected": "100 200 v true false",
+      "codex": {
+        "ok": true,
+        "got": "100 200 v true false",
+        "seconds": 17
+      },
+      "claude": {
+        "ok": true,
+        "got": "100 200 v true false",
+        "seconds": 15
+      },
+      "council": {
+        "ok": true,
+        "got": "100 200 v true false",
+        "seconds": 56,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-strings-regex",
+      "expected": "aaaBbbCcc 5 2 aaab abx 3 4",
+      "codex": {
+        "ok": true,
+        "got": "aaaBbbCcc 5 2 aaab abx 3 4",
+        "seconds": 18
+      },
+      "claude": {
+        "ok": true,
+        "got": "aaaBbbCcc 5 2 aaab abx 3 4",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "aaaBbbCcc 5 2 aaab abx 3 4",
+        "seconds": 59,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-labels",
+      "expected": "abbc",
+      "codex": {
+        "ok": true,
+        "got": "abbc",
+        "seconds": 13
+      },
+      "claude": {
+        "ok": true,
+        "got": "abbc",
+        "seconds": 9
+      },
+      "council": {
+        "ok": true,
+        "got": "abbc",
+        "seconds": 51,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-async-errors",
+      "expected": "f-finally | caught-await | then g | rf | fast | outer x",
+      "codex": {
+        "ok": true,
+        "got": "f-finally | caught-await | then g | rf | fast | outer x",
+        "seconds": 22
+      },
+      "claude": {
+        "ok": true,
+        "got": "f-finally | caught-await | then g | rf | fast | outer x",
+        "seconds": 14
+      },
+      "council": {
+        "ok": true,
+        "got": "f-finally | caught-await | then g | rf | fast | outer x",
+        "seconds": 70,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-array-holes",
+      "expected": "3 2//6 2 02 [1,null,3] true -1 01 -- 1",
+      "codex": {
+        "ok": true,
+        "got": "3 2//6 2 02 [1,null,3] true -1 01 -- 1",
+        "seconds": 18
+      },
+      "claude": {
+        "ok": true,
+        "got": "3 2//6 2 02 [1,null,3] true -1 01 -- 1",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "3 2//6 2 02 [1,null,3] true -1 01 -- 1",
+        "seconds": 55,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-js-sort-comparator",
+      "expected": "bcad 312 1,10,9,B,a,b 1,10,5 true,false",
+      "codex": {
+        "ok": true,
+        "got": "bcad 312 1,10,9,B,a,b 1,10,5 true,false",
+        "seconds": 19
+      },
+      "claude": {
+        "ok": true,
+        "got": "bcad 312 1,10,9,B,a,b 1,10,5 true,false",
+        "seconds": 12
+      },
+      "council": {
+        "ok": true,
+        "got": "bcad 312 1,10,9,B,a,b 1,10,5 true,false",
+        "seconds": 66,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-class-attr",
+      "expected": "2 1 0 [1, 2, 3] True",
+      "codex": {
+        "ok": true,
+        "got": "2 1 0 [1, 2, 3] True",
+        "seconds": 14
+      },
+      "claude": {
+        "ok": true,
+        "got": "2 1 0 [1, 2, 3] True",
+        "seconds": 9
+      },
+      "council": {
+        "ok": true,
+        "got": "2 1 0 [1, 2, 3] True",
+        "seconds": 56,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-eq-hash",
+      "expected": "1 1 True TypeError {1: 'float'}",
+      "codex": {
+        "ok": true,
+        "got": "1 1 True TypeError {1: 'float'}",
+        "seconds": 17
+      },
+      "claude": {
+        "ok": true,
+        "got": "1 1 True TypeError {1: 'float'}",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "1 1 True TypeError {1: 'float'}",
+        "seconds": 57,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-yield-from",
+      "expected": "0 5 12 returned 120 end",
+      "codex": {
+        "ok": true,
+        "got": "0 5 12 returned 120 end",
+        "seconds": 16
+      },
+      "claude": {
+        "ok": true,
+        "got": "0 5 12 returned 120 end",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "0 5 12 returned 120 end",
+        "seconds": 52,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-mutate-iterating",
+      "expected": "[1, 4, 5, 8] RuntimeError 3",
+      "codex": {
+        "ok": true,
+        "got": "[1, 4, 5, 8] RuntimeError 3",
+        "seconds": 14
+      },
+      "claude": {
+        "ok": true,
+        "got": "[1, 4, 5, 8] RuntimeError 3",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "[1, 4, 5, 8] RuntimeError 3",
+        "seconds": 58,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-scopes",
+      "expected": "('i', ['i']) g NameError",
+      "codex": {
+        "ok": true,
+        "got": "('i', ['i']) g NameError",
+        "seconds": 16
+      },
+      "claude": {
+        "ok": true,
+        "got": "('i', ['i']) g NameError",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "('i', ['i']) g NameError",
+        "seconds": 63,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-format",
+      "expected": "3.14| 42|42 | ab |1,234,567.9|0xff|1.23e-05|1|-0.0|111",
+      "codex": {
+        "ok": true,
+        "got": "3.14| 42|42 | ab |1,234,567.9|0xff|1.23e-05|1|-0.0|111",
+        "seconds": 21
+      },
+      "claude": {
+        "ok": true,
+        "got": "3.14| 42|42 | ab |1,234,567.9|0xff|1.23e-05|1|-0.0|111",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "3.14| 42|42 | ab |1,234,567.9|0xff|1.23e-05|1|-0.0|111",
+        "seconds": 57,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-sorting",
+      "expected": "[('c', 1), ('a', 1), ('b', 2), ('a', 2)] [('c', 1), ('a', 1), ('b', 2), ('a', 2)] ('b', 2) 3",
+      "codex": {
+        "ok": true,
+        "got": "[('c', 1), ('a', 1), ('b', 2), ('a', 2)] [('c', 1), ('a', 1), ('b', 2), ('a', 2)] ('b', 2) 3",
+        "seconds": 18
+      },
+      "claude": {
+        "ok": true,
+        "got": "[('c', 1), ('a', 1), ('b', 2), ('a', 2)] [('c', 1), ('a', 1), ('b', 2), ('a', 2)] ('b', 2) 3",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "[('c', 1), ('a', 1), ('b', 2), ('a', 2)] [('c', 1), ('a', 1), ('b', 2), ('a', 2)] ('b', 2) 3",
+        "seconds": 59,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-numbers",
+      "expected": "False 2.67 5 2.5 2.0 0.5 False True False False",
+      "codex": {
+        "ok": true,
+        "got": "False 2.67 5 2.5 2.0 0.5 False True False False",
+        "seconds": 30
+      },
+      "claude": {
+        "ok": true,
+        "got": "False 2.67 5 2.5 2.0 0.5 False True False False",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "False 2.67 5 2.5 2.0 0.5 False True False False",
+        "seconds": 61,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-default-cache",
+      "expected": "4 9 hit 2 {2: 4, 3: 9}",
+      "codex": {
+        "ok": true,
+        "got": "4 9 hit 2 {2: 4, 3: 9}",
+        "seconds": 16
+      },
+      "claude": {
+        "ok": true,
+        "got": "4 9 hit 2 {2: 4, 3: 9}",
+        "seconds": 9
+      },
+      "council": {
+        "ok": true,
+        "got": "4 9 hit 2 {2: 4, 3: 9}",
+        "seconds": 47,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-exceptions",
+      "expected": "finally ('ValueError', True, 'None') NameError",
+      "codex": {
+        "ok": true,
+        "got": "finally ('ValueError', True, 'None') NameError",
+        "seconds": 16
+      },
+      "claude": {
+        "ok": true,
+        "got": "finally ('ValueError', True, 'None') NameError",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "finally ('ValueError', True, 'None') NameError",
+        "seconds": 66,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-dunder",
+      "expected": "V3 V102 V102 False x 99",
+      "codex": {
+        "ok": true,
+        "got": "V3 V102 V102 False x 99",
+        "seconds": 16
+      },
+      "claude": {
+        "ok": false,
+        "got": "V3 V102 V3 False x 99",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "V3 V102 V102 False x 99",
+        "seconds": 65,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-py-walrus",
+      "expected": "[10, 16] 2 [5, 8, 16, 17] 17 {0: 0, 1: 'one', 2: 4} [0, 1, 2, 'a', 'b']",
+      "codex": {
+        "ok": true,
+        "got": "[10, 16] 2 [5, 8, 16, 17] 17 {0: 0, 1: 'one', 2: 4} [0, 1, 2, 'a', 'b']",
+        "seconds": 18
+      },
+      "claude": {
+        "ok": true,
+        "got": "[10, 16] 2 [5, 8, 16, 17] 17 {0: 0, 1: 'one', 2: 4} [0, 1, 2, 'a', 'b']",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "[10, 16] 2 [5, 8, 16, 17] 17 {0: 0, 1: 'one', 2: 4} [0, 1, 2, 'a', 'b']",
+        "seconds": 60,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-sql-group-null",
+      "expected": "[(None, 2, 2, 5, 2.5), ('a', 2, 1, 1, 1.0), ('b', 1, 0, None, None)] 2 2",
+      "codex": {
+        "ok": true,
+        "got": "[(None, 2, 2, 5, 2.5), ('a', 2, 1, 1, 1.0), ('b', 1, 0, None, None)] 2 2",
+        "seconds": 18
+      },
+      "claude": {
+        "ok": true,
+        "got": "[(None, 2, 2, 5, 2.5), ('a', 2, 1, 1, 1.0), ('b', 1, 0, None, None)] 2 2",
+        "seconds": 10
+      },
+      "council": {
+        "ok": true,
+        "got": "[(None, 2, 2, 5, 2.5), ('a', 2, 1, 1, 1.0), ('b', 1, 0, None, None)] 2 2",
+        "seconds": 58,
+        "agreed": true
+      }
+    },
+    {
+      "id": "h-sql-join-filter",
+      "expected": "1 3 (2, 2.5, 1, 0, None)",
+      "codex": {
+        "ok": true,
+        "got": "1 3 (2, 2.5, 1, 0, None)",
+        "seconds": 19
+      },
+      "claude": {
+        "ok": true,
+        "got": "1 3 (2, 2.5, 1, 0, None)",
+        "seconds": 11
+      },
+      "council": {
+        "ok": true,
+        "got": "1 3 (2, 2.5, 1, 0, None)",
+        "seconds": 63,
+        "agreed": true
+      }
+    }
+  ]
+}
