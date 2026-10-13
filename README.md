@@ -383,7 +383,7 @@ Pass sessions you already have, by id or by name, and the council continues **th
 
 A session on another computer takes part too: write it as **`user@host:session`**, with the session's id or name as there, for example `--claude-session hamza@10.152.15.202:fix-order-dialog-bugs` or *"continuing my Claude session hamza@10.152.15.202:fix-order-dialog-bugs"*. That member runs **on that machine**, through `ssh`: this plugin's own `codex` / `claude` command, with that machine's CLI and **its sign-in** (any account, not necessarily yours here), in the session's own folder, read-only as here.
 
-- **Needs:** key-based `ssh` from this computer (no password prompt: `ssh -o BatchMode=yes user@host true` must work), and Node.js 20+ and the CLI, signed in, on that machine (Linux or macOS). Nothing is installed there: `npx` fetches this plugin's version for the call.
+- **Needs:** key-based `ssh` from this computer (no password prompt: `ssh -o BatchMode=yes user@host true` must work), and Node.js 20+ and the CLI, signed in, on that machine (Linux or macOS). Node.js installed with nvm is found too, even when nvm loads only in `~/.bashrc`. Nothing is installed there: `npx` fetches this plugin's version for the call.
 - **Its model and effort** come from that machine's config, unless you set them for the call.
 - **Skills** (`skill`): the council asks that machine which of them are installed for its CLI (in the session's folder too), with one `ssh` call; those it loads by name, the others' instructions are sent. If the check fails, every skill's instructions are sent.
 - **It continues the saved session**, not the window it is open in: don't type in that session while the council runs, and resume it afterwards to see the council's turns.

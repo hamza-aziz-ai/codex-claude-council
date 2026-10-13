@@ -144,9 +144,11 @@ const shellQuote = text => `'${String(text).replace(/'/g, `'\\''`)}'`;
 
 // This plugin's command (at this version) on remote's machine, through ssh: key-based only (BatchMode), every
 // word quoted for the remote shell, run in a login shell so a PATH set in the profile (Node.js, the CLIs) applies.
+// nvm is loaded first when it is there: it is usually set up in ~/.bashrc, which a command run through ssh skips.
+const LOAD_NVM = '[ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ] && . "${NVM_DIR:-$HOME/.nvm}/nvm.sh" >/dev/null 2>&1;';
 function onRemote(remote, cli, input, { config, signal, skill }) {
   const ssh = findExecutable('ssh', config.ssh?.command);
-  const remoteCommand = `bash -lc ${shellQuote(['npx', '-y', `${NAME}@${packageVersion()}`, ...cli].map(shellQuote).join(' '))}`;
+  const remoteCommand = `bash -lc ${shellQuote(`${LOAD_NVM} ${['npx', '-y', `${NAME}@${packageVersion()}`, ...cli].map(shellQuote).join(' ')}`)}`;
   return run(ssh, ['-o', 'BatchMode=yes', remote.host, remoteCommand], { ...options(config, signal, homedir(), skill), input });
 }
 
