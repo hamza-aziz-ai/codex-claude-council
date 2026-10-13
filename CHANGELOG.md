@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.9 (2026-10-13)
+
+- **Accurate tool annotations:** `council_turn` is no longer marked read-only (sending a reply moves the council on), and `council_cancel` is marked destructive (it ends the job's CLI processes and discards its progress), so clients can ask before running it. The other tools are unchanged: read-only, never destructive. Both points were flagged by the Tool Definition Quality Score, which rates the tools 4.7 out of 5 (tier A); the README has its badge.
+
 ## 0.11.8 (2026-10-13)
 
 - **Tool descriptions rewritten to the Tool Definition Quality Score rubric** (TDQS 1.2, which Glama uses). Each says what the tool does first, when to use it and which tool to use instead, and what the annotations cannot say: the tools run the user's local CLIs on their own plans' quota and take minutes, a call still running after about 50 s returns a job_id for `council_result`, and `council_cancel` ends the CLI processes and discards the progress. They no longer repeat the schema ("optional model/effort overrides"). `npx mcp-tdqs lint` finds nothing to flag.

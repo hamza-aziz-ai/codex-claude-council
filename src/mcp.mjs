@@ -174,7 +174,8 @@ export const TOOLS = [
       required: ['council_id', 'text'],
       additionalProperties: false,
     },
-    annotations, outputSchema,
+    // Sending a reply moves the council on: it changes the council's state (never files).
+    annotations: { ...annotations, readOnlyHint: false }, outputSchema,
   },
   {
     name: 'council_result', title: 'Get a running council\'s answer',
@@ -188,7 +189,8 @@ export const TOOLS = [
     description: 'Stop a running job (a council_ask, council_debate, council_ask_codex, council_ask_claude or council_join): its Codex and Claude CLI processes are ended and its progress is discarded, so its answer can no longer be retrieved. '
       + 'Use it when the user asks to stop, or a council is no longer needed; to check on a job instead, use council_result.',
     inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false },
-    annotations: { ...annotations, readOnlyHint: false }, outputSchema,
+    // It ends the job's CLI processes and discards its progress.
+    annotations: { ...annotations, readOnlyHint: false, destructiveHint: true }, outputSchema,
   },
 ];
 
