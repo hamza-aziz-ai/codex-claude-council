@@ -1,0 +1,54 @@
+# Publishes a GitHub release to npm, the MCP Registry and Smithery, with no stored passwords:
+# - npm: trusted publishing (OIDC). Once, on npmjs.com: the package's Settings > Trusted publishing > GitHub Actions,
+#   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml.
+# - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
+# - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
+# Each step skips a version that is already published, so a release published by hand is not an error.
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: The release tag matches package.json
+        run: |
+          echo "VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+          test "v$(node -p "require('./package.json').version")" = "${{ github.event.release.tag_name }}"
+
+      - run: npm test
+
+      - name: npm
+        run: |
+          if npm view "codex-claude-council@$VERSION" version >/dev/null 2>&1; then echo "$VERSION is already on npm"; else npm publish; fi
+
+      - name: MCP Registry
+        run: |
+          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.hamza-aziz-ai/codex-claude-council" | grep -q "\"version\":\"$VERSION\""; then
+            echo "$VERSION is already in the MCP Registry"
+          else
+            curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+            ./mcp-publisher login github-oidc
+            ./mcp-publisher publish
+          fi
+
+      - name: Smithery
+        if: env.SMITHERY_API_KEY != ''
+        run: |
+          node mcpb/build.mjs
+          npx -y @smithery/cli mcp publish "mcpb/dist/codex-claude-council-$VERSION-smithery.mcpb" -n hamza-aziz-ai/codex-claude-council
