@@ -809,7 +809,7 @@ test('a remote member that cannot log in says how to set up ssh', async () => {
   fakeSsh();
   await withEnv({ FAKE_SSH_FAIL: 'hamza@10.0.0.5: Permission denied (publickey).' }, () => assert.rejects(
     invoke('ask_codex', 'q', { session_id: 'hamza@10.0.0.5:abc' }),
-    /codex on hamza@10\.0\.0\.5 failed: .*Permission denied \(publickey\)\..*Set up key-based ssh to hamza@10\.0\.0\.5 first \(test: ssh -o BatchMode=yes hamza@10\.0\.0\.5 true\)/s,
+    /codex on hamza@10\.0\.0\.5 failed: .*Permission denied \(publickey\)\..*Set up key-based ssh to hamza@10\.0\.0\.5 first \(test: ssh -o BatchMode=yes hamza@10\.0\.0\.5 true\)\. Report this to the user; don't work around it by running codex over ssh yourself/s,
   ));
 });
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.3 (2026-10-13)
+
+- **A failed remote member is reported, not worked around.** A session whose plugin predated 0.13.2 hit "npx: command not found" on a remote machine and went on to run `claude --resume … -p` over ssh itself, which wrote into the user's session without plan mode (nothing was changed on that machine). The error a remote member returns now says to report it to the user and not to run the CLI over ssh, and the plugin's skill says the same.
+
 ## 0.13.2 (2026-10-13)
 
 - **A remote machine whose Node.js comes from nvm works.** nvm is usually loaded in `~/.bashrc`, which a command run through `ssh` skips, so `npx` was "not found" there. The remote command now loads nvm first when it is installed (`$NVM_DIR`, else `~/.nvm`), and goes on as before where it is not. Checked against a real machine with nvm-only Node.js: the plugin ran there, found the session by name and listed its installed skills.
