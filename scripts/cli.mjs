@@ -6,7 +6,8 @@ import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.
 import { councilText, invoke } from '../src/council.mjs';
 import { debateHtml } from '../src/share.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
-import { addSkill, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
+import { askClaude, askCodex, resolveSession, sessionFolder } from '../src/adapters.mjs';
+import { addSkill, installedFor, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
 Ask Codex (ChatGPT) and Claude through your own signed-in CLIs.
@@ -80,6 +81,8 @@ const OPTIONS = {
   'dry-run': { type: 'boolean' },
   init: { type: 'boolean' },
   html: { type: 'string' },
+  raw: { type: 'boolean' },
+  'skill-step': { type: 'boolean' },
 };
 const TOOLS = { ask: 'council_ask', debate: 'debate', codex: 'ask_codex', claude: 'ask_claude' };
 
@@ -127,6 +130,13 @@ async function main() {
       return 0;
     }
     if (action === 'remove' && target) return console.log(`Removed skill "${removeSkill(target).name}".`), 0;
+    // For a council member on another machine: which of these skills are installed for that CLI here, in the folder of
+    // --session too, as a JSON list.
+    if (action === 'installed' && ['claude', 'codex'].includes(target)) {
+      const names = rest.slice(2).filter(name => /^[a-z0-9][a-z0-9._-]{0,63}$/.test(name));
+      const folder = values.session ? sessionFolder(target, await resolveSession(target, values.session)) : null;
+      return console.log(JSON.stringify([...installedFor(target, names.map(name => ({ name })), folder ?? undefined)])), 0;
+    }
     throw new Error('usage: skill add <GitHub URL | SKILL.md path | folder>, skill list, skill remove <name>');
   }
   if (commandName === 'config') {
@@ -169,6 +179,14 @@ async function main() {
     process.stderr.write('[council] cancelled\n');
     setTimeout(() => process.exit(130), 500);
   });
+  // --raw (a council member on another machine): the prompt is a council step, sent to the model as it is.
+  if (values.raw) {
+    if (!single || values.session === undefined) throw new Error('--raw is for the codex and claude commands with --session');
+    const ask = commandName === 'codex' ? askCodex : askClaude;
+    console.log(await ask(question, { model: values.model, effort: values.effort },
+      { resume: values.session, signal: controller.signal, skill: Boolean(values['skill-step']), ...(values['no-web'] ? { web: false } : {}), ...(values.network ? { network: true } : {}) }));
+    return 0;
+  }
   if (values.html === undefined) {
     console.log(await invoke(tool, question, options, { onProgress, signal: controller.signal }));
     return 0;

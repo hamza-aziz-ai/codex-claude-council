@@ -787,7 +787,7 @@ test('a session on another machine runs there through ssh: this plugin\'s comman
   const [call] = sshCalls();
   assert.deepEqual(call.args.slice(0, 3), ['-o', 'BatchMode=yes', 'hamza@10.0.0.5'], 'no password prompt, then the host');
   const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-  assert.equal(call.args[3], `bash -lc '${[`'npx'`, `'-y'`, `'codex-claude-council@${version}'`, `'claude'`, `'--session'`, `'fix order'\\''s bugs'`, `'--effort'`, `'low'`, `'--no-web'`]
+  assert.equal(call.args[3], `bash -lc '${[`'npx'`, `'-y'`, `'codex-claude-council@${version}'`, `'claude'`, `'--raw'`, `'--session'`, `'fix order'\\''s bugs'`, `'--effort'`, `'low'`, `'--no-web'`]
     .map(word => word.replace(/'/g, `'\\''`)).join(' ')}'`, 'every word quoted for the remote shell, a quote inside too');
   assert.match(call.input, /Why does the order dialog close\?/);
   assert.deepEqual(fake.questionCalls().filter(c => c.cli !== 'ssh'), [], 'no local CLI is run for it');
@@ -810,4 +810,30 @@ test('a remote member that cannot log in says how to set up ssh', async () => {
     invoke('ask_codex', 'q', { session_id: 'hamza@10.0.0.5:abc' }),
     /codex on hamza@10\.0\.0\.5 failed: .*Permission denied \(publickey\)\..*Set up key-based ssh to hamza@10\.0\.0\.5 first \(test: ssh -o BatchMode=yes hamza@10\.0\.0\.5 true\)/s,
   ));
+});
+
+test('a remote member is asked which skills are installed on its machine: those it loads by name, the others are sent without this machine\'s folders', async () => {
+  fakeSsh();
+  mkdirSync(`${fake.dir}/skills/test-skill`, { recursive: true });
+  writeFileSync(`${fake.dir}/skills/test-skill/SKILL.md`, '---\nname: test-skill\ndescription: "A test skill."\n---\n\nConsult five advisors.\n');
+  mkdirSync(`${fake.dir}/skills/second-skill/references`, { recursive: true });
+  writeFileSync(`${fake.dir}/skills/second-skill/SKILL.md`, '---\nname: second-skill\ndescription: "Another."\n---\n\nAnswer tersely; see references/guide.md.\n');
+  writeFileSync(`${fake.dir}/skills/second-skill/references/guide.md`, 'guide');
+  await withEnv({ FAKE_SSH_SKILLS: '["test-skill"]', FAKE_AGREE_AT: '1' }, () => invoke('debate', 'q', { skill: 'test-skill, second-skill', claude_session_id: 'hamza@10.0.0.5:abc', max_rounds: 1 }));
+  const [check, first] = sshCalls();
+  assert.match(check.args[3], /'\\''skill'\\'' '\\''installed'\\'' '\\''claude'\\'' '\\''--session'\\'' '\\''abc'\\'' '\\''test-skill'\\'' '\\''second-skill'\\''/, 'one check, with every skill name');
+  assert.match(first.input, /"test-skill" is installed for you, so load it by name/, 'installed there: named');
+  assert.ok(!first.input.includes('Consult five advisors') && first.input.includes('Answer tersely'), 'not installed there: sent');
+  assert.ok(!first.input.includes(fake.dir), 'not pointed at this machine\'s skill folders');
+  assert.match(first.args[3], /'\\''--skill-step'\\''/, 'a skill step gets the longer timeout there');
+  const codexFirst = fake.questionCalls().find(c => c.cli === 'codex' && c.input.includes('<skill name='));
+  assert.ok(codexFirst.input.includes(fake.dir), 'a local member still gets the folder');
+});
+
+test('a remote skill check that fails sends every skill\'s instructions', async () => {
+  fakeSsh();
+  mkdirSync(`${fake.dir}/skills/test-skill`, { recursive: true });
+  writeFileSync(`${fake.dir}/skills/test-skill/SKILL.md`, '---\nname: test-skill\ndescription: "A test skill."\n---\n\nConsult five advisors.\n');
+  await withEnv({ FAKE_SSH_SKILLS: 'not json' }, () => invoke('ask_claude', 'q', { skill: 'test-skill', session_id: 'hamza@10.0.0.5:abc' }));
+  assert.match(sshCalls().at(-1).input, /the "test-skill" skill is available; its instructions are below[\s\S]*Consult five advisors/);
 });

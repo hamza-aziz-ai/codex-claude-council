@@ -142,6 +142,31 @@ export function remoteSession(ref) {
 }
 const shellQuote = text => `'${String(text).replace(/'/g, `'\\''`)}'`;
 
+// This plugin's command (at this version) on remote's machine, through ssh: key-based only (BatchMode), every
+// word quoted for the remote shell, run in a login shell so a PATH set in the profile (Node.js, the CLIs) applies.
+function onRemote(remote, cli, input, { config, signal, skill }) {
+  const ssh = findExecutable('ssh', config.ssh?.command);
+  const remoteCommand = `bash -lc ${shellQuote(['npx', '-y', `${NAME}@${packageVersion()}`, ...cli].map(shellQuote).join(' '))}`;
+  return run(ssh, ['-o', 'BatchMode=yes', remote.host, remoteCommand], { ...options(config, signal, homedir(), skill), input });
+}
+
+/**
+ * Of these skill names, those installed for that CLI on the machine of a remote session (in its own folder too),
+ * so its member loads them by name, as a local one does. When that can't be told, none: the full instructions are
+ * sent, which works either way.
+ */
+export async function remoteInstalledSkills(side, ref, names, { config = loadConfig(), signal } = {}) {
+  const remote = remoteSession(ref);
+  if (!remote || !names.length) return new Set();
+  try {
+    const result = await onRemote(remote, ['skill', 'installed', side, '--session', remote.session, ...names], '', { config, signal });
+    const found = JSON.parse(result.stdout.trim().split(/\r?\n/).pop());
+    return new Set(Array.isArray(found) ? found.filter(name => names.includes(name)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * A member whose session is on another machine: this plugin runs there through ssh, as its `codex` / `claude`
  * command (that machine's CLI and sign-in, the session's own folder, read-only as here), with the prompt on stdin
@@ -150,13 +175,12 @@ const shellQuote = text => `'${String(text).replace(/'/g, `'\\''`)}'`;
  * ponytail: cancelling ends the local ssh, not a turn already running there; it finishes and is saved in the session.
  */
 async function askRemote(side, prompt, overrides, remote, { config, signal, web, network, skill }) {
-  const cli = ['npx', '-y', `${NAME}@${packageVersion()}`, side, '--session', remote.session];
+  // --raw: the prompt goes to the model as it is (it is already a council step), not wrapped as a new question.
+  const cli = [side, '--raw', '--session', remote.session, ...(skill ? ['--skill-step'] : [])];
   for (const key of ['model', 'effort']) if (typeof overrides[key] === 'string' && overrides[key].trim()) cli.push(`--${key}`, overrides[key].trim());
   if (!web) cli.push('--no-web');
   if (side === 'codex' && network) cli.push('--network');
-  const ssh = findExecutable('ssh', config.ssh?.command);
-  const remoteCommand = `bash -lc ${shellQuote(cli.map(shellQuote).join(' '))}`;
-  const result = await run(ssh, ['-o', 'BatchMode=yes', remote.host, remoteCommand], { ...options(config, signal, homedir(), skill), input: prompt });
+  const result = await onRemote(remote, cli, prompt, { config, signal, skill });
   const answer = result.stdout.trim();
   if (result.code === 0 && answer) return answer;
   const detail = failureDetail(result.stderr || result.stdout);
