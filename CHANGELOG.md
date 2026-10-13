@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.4 (2026-10-13)
+
+- **The installer's icon shows over ssh too.** It was drawn only in terminals recognised by their environment variables (`WT_SESSION`, `TERM_PROGRAM`, …), which don't reach a remote machine, so `npx codex-claude-council install` run over ssh from Windows Terminal showed no icon. When the environment doesn't say, the installer now asks the terminal (`ESC [ c`, DA1) and shows the image if the reply lists sixel (`4`), waiting at most 0.3 s for an answer. `COUNCIL_BANNER=image` forces the image (for terminals that don't answer, such as some tmux setups); `COUNCIL_BANNER=text` still turns it off.
+
 ## 0.13.3 (2026-10-13)
 
 - **A failed remote member is reported, not worked around.** A session whose plugin predated 0.13.2 hit "npx: command not found" on a remote machine and went on to run `claude --resume … -p` over ssh itself, which wrote into the user's session without plan mode (nothing was changed on that machine). The error a remote member returns now says to report it to the user and not to run the CLI over ssh, and the plugin's skill says the same.
