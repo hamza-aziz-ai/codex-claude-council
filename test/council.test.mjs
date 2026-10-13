@@ -650,6 +650,28 @@ test('max_rounds N stops the exchange as soon as both agree in the same exchange
   assert.match(councilText(result), /they converged after 3 exchanges\)\.$/);
 }));
 
+// Codex replies fast and agrees at once; Claude takes longer and objects in the first exchange. Codex's agreement is not
+// the end: the council waits for Claude, sends Codex the objection, and writes the final answer only after both agree.
+test('one model agreeing does not end the exchange: the council waits for the slower one, which may still object', () => withEnv(loopEnv({
+  FAKE_AGREE_AT_CODEX: '1', FAKE_AGREE_AT_CLAUDE: '3', FAKE_SLEEP_MS_CLAUDE: '400',
+}), async () => {
+  const steps = [];
+  const result = JSON.parse(await invoke('debate', 'q', { max_rounds: 5 }, { onProgress: m => steps.push(m) }));
+  assert.deepEqual(result.exchanges.map(e => [e.codex_agrees, e.claude_agrees]), [[true, false], [true, true]]);
+  assert.ok(steps.includes('Exchange 1 of 5: Codex (ChatGPT) agrees, Claude does not agree yet'), JSON.stringify(steps));
+  assert.equal(result.agreed, true);
+  const calls = fake.questionCalls();
+  const ends = new Map(readFileSync(`${fake.env.FAKE_LOG}.ends`, 'utf8').trim().split('\n').map(line => { const [id, at] = line.split(' '); return [id, Number(at)]; }));
+  const exchanges = calls.filter(c => kinds([c])[0].startsWith('exchange'));
+  const [first, second] = [exchanges.slice(0, 2), exchanges.slice(2)];
+  // Exchange 2 starts only after Claude's slower reply in exchange 1 has ended, and Codex's prompt in it is Claude's objection.
+  for (const call of second) for (const earlier of first) assert.ok(call.at >= ends.get(earlier.id), 'exchange 2 waits for both replies of exchange 1');
+  assert.ok(second.find(c => c.cli === 'codex').input.includes(result.exchanges[0].claude), 'Codex is sent Claude\'s objection');
+  // The final answer is drafted only after both replies of the agreeing exchange.
+  const draft = calls.find(c => kinds([c])[0].startsWith('draft'));
+  for (const call of second) assert.ok(draft.at >= ends.get(call.id), 'the final answer waits for both replies of the last exchange');
+}));
+
 test('max_rounds N stops at the limit without agreement, and the final answer sets out the points in dispute', () => withEnv(loopEnv({ FAKE_AGREE_AT: '0' }), async () => {
   const result = JSON.parse(await invoke('debate', 'q', { max_rounds: '3' }));
   assert.equal(result.exchanges.length, 3);
