@@ -49,9 +49,16 @@ jobs:
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
-          if ! ./mcp-publisher publish 2>&1 | tee publish.log; then
-            grep -q "duplicate version" publish.log && echo "$VERSION is already in the MCP Registry" || exit 1
-          fi
+          # The registry checks the version on npm, which can take a minute to appear after `npm publish`: retry then.
+          for attempt in 1 2 3 4 5 6; do
+            if ./mcp-publisher publish > publish.log 2>&1; then cat publish.log; exit 0; fi
+            cat publish.log
+            if grep -q "duplicate version" publish.log; then echo "$VERSION is already in the MCP Registry"; exit 0; fi
+            grep -q "was not found" publish.log || exit 1
+            echo "npm does not show $VERSION yet; retrying in 30 s ($attempt/6)"
+            sleep 30
+          done
+          exit 1
 
       - name: Smithery
         if: env.SMITHERY_API_KEY != ''
