@@ -1,7 +1,7 @@
 // Stand-in for the real `codex` and `claude` CLIs. Records every call to $FAKE_LOG (JSON lines).
 // Controls: FAKE_FAIL=codex|claude (FAKE_CODEX_ERROR: the error codex prints),FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
 // Exchanges and reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees from the n-th one on (default 1,
-// 0 = never); FAKE_FAIL_REVIEW_AT=n fails the n-th one. They are counted in the file $FAKE_STATE; the two replies of
+// 0 = never; FAKE_AGREE_AT_CODEX / _CLAUDE for one side); FAKE_FAIL_REVIEW_AT=n fails the n-th one. They are counted in the file $FAKE_STATE; the two replies of
 // an exchange run at once, so exchange r takes counts 2r-1 and 2r.
 // Sessions: codex --json reports a new thread (or the resumed one); claude echoes --session-id / --resume.
 import { randomUUID } from 'node:crypto';
@@ -25,7 +25,7 @@ if (input.includes('VERDICT: AGREE or VERDICT: DISAGREE')) {
   // Windows reuses process ids quickly.
   if (state) appendFileSync(state, `${id}\n`);
   const count = state ? readFileSync(state, 'utf8').split('\n').indexOf(id) + 1 : 1;
-  const agreeAt = Number(process.env.FAKE_AGREE_AT ?? 1);
+  const agreeAt = Number(process.env[`FAKE_AGREE_AT_${cli.toUpperCase()}`] ?? process.env.FAKE_AGREE_AT ?? 1);
   if (Number(process.env.FAKE_FAIL_REVIEW_AT) === count) failing = true;
   reply = agreeAt > 0 && count >= agreeAt ? `review ${count}: looks right\nVERDICT: AGREE` : `review ${count}: objection ${count}\nVERDICT: DISAGREE`;
   // FAKE_FINAL=disagree: every check of the final answer disagrees, even after the models agreed.
