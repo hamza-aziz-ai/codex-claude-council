@@ -8,7 +8,7 @@
 //   Claude Desktop and the GitHub release.
 // - codex-claude-council-<version>-smithery.mcpb: the same files, but each tool in the manifest also carries its
 //   title, inputSchema, outputSchema and annotations, which Smithery reads (it requires inputSchema) and the MCPB
-//   manifest spec does not allow. Publish it with:
+//   manifest spec does not allow, and the full description the server sends (the standard manifest has a short one). Publish it with:
 //   npx -y @smithery/cli mcp publish mcpb/dist/codex-claude-council-<version>-smithery.mcpb -n <namespace>/codex-claude-council
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -51,9 +51,9 @@ mcpb('validate', join(stage, 'manifest.json'));
 mcpb('pack', stage, out);
 console.log(`\nBuilt ${out}`);
 
-// The Smithery bundle: the same files; the manifest's tools gain the title, schemas and annotations the server
-// itself declares.
-const declared = new Map(TOOLS.map(({ name, title, inputSchema, outputSchema, annotations }) => [name, { title, inputSchema, outputSchema, annotations }]));
+// The Smithery bundle: the same files; the manifest's tools take the description, title, schemas and annotations the
+// server itself declares.
+const declared = new Map(TOOLS.map(({ name, title, description, inputSchema, outputSchema, annotations }) => [name, { title, description, inputSchema, outputSchema, annotations }]));
 const smithery = {
   ...manifest,
   tools: manifest.tools.map(tool => {
