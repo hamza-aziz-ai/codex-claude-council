@@ -10,7 +10,7 @@ import { createReadStream, existsSync, mkdtempSync, promises as fsp, readFileSyn
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { NAME, SIDES, loadConfig, resolveSide } from './config.mjs';
+import { NAME, SIDES, loadConfig, packageVersion, resolveSide } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
 
 // GIT_OPTIONAL_LOCKS=0 stops read-only git commands (git status) from refreshing the index.
@@ -133,6 +133,38 @@ export function codexSessionNamed(name) {
 
 const CLI_LABEL = { claude: 'Claude Code', codex: 'Codex' };
 
+// A session on another machine: user@host:session, with the session's id or name there.
+const REMOTE = /^([A-Za-z0-9_][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*):(.+)$/;
+/** { host: 'user@host', session } for a session on another machine, else null. */
+export function remoteSession(ref) {
+  const match = typeof ref === 'string' ? ref.trim().match(REMOTE) : null;
+  return match ? { host: match[1], session: match[2] } : null;
+}
+const shellQuote = text => `'${String(text).replace(/'/g, `'\\''`)}'`;
+
+/**
+ * A member whose session is on another machine: this plugin runs there through ssh, as its `codex` / `claude`
+ * command (that machine's CLI and sign-in, the session's own folder, read-only as here), with the prompt on stdin
+ * and the answer on stdout. Needs key-based ssh (BatchMode: no password prompt) and Node.js there; a POSIX shell.
+ * The model and effort are only passed when given for this call: the remote machine's config decides otherwise.
+ * ponytail: cancelling ends the local ssh, not a turn already running there; it finishes and is saved in the session.
+ */
+async function askRemote(side, prompt, overrides, remote, { config, signal, web, network, skill }) {
+  const cli = ['npx', '-y', `${NAME}@${packageVersion()}`, side, '--session', remote.session];
+  for (const key of ['model', 'effort']) if (typeof overrides[key] === 'string' && overrides[key].trim()) cli.push(`--${key}`, overrides[key].trim());
+  if (!web) cli.push('--no-web');
+  if (side === 'codex' && network) cli.push('--network');
+  const ssh = findExecutable('ssh', config.ssh?.command);
+  const remoteCommand = `bash -lc ${shellQuote(cli.map(shellQuote).join(' '))}`;
+  const result = await run(ssh, ['-o', 'BatchMode=yes', remote.host, remoteCommand], { ...options(config, signal, homedir(), skill), input: prompt });
+  const answer = result.stdout.trim();
+  if (result.code === 0 && answer) return answer;
+  const detail = failureDetail(result.stderr || result.stdout);
+  const hint = /permission denied|publickey|host key verification/i.test(detail) ? ` Set up key-based ssh to ${remote.host} first (test: ssh -o BatchMode=yes ${remote.host} true).`
+    : /npx: (command )?not found|npx.*not recognized/i.test(detail) ? ` Install Node.js 20 or later on ${remote.host.split('@')[1]}.` : '';
+  throw new Error(`${side} on ${remote.host} failed: ${detail}${hint}`);
+}
+
 /** A session the user passed, by id or by name, checked for its form (not looked up); returns it trimmed. */
 export function checkSessionRef(side, value) {
   const ref = typeof value === 'string' ? value.trim() : '';
@@ -149,7 +181,7 @@ export function checkSessionRef(side, value) {
 export async function resolveSession(side, value, { workspace } = {}) {
   const ref = checkSessionRef(side, value);
   const cli = CLI_LABEL[side];
-  if (UUID.test(ref)) return ref;
+  if (UUID.test(ref) || remoteSession(ref)) return ref; // a remote session is looked up on its own machine
   const id = side === 'claude' ? await claudeSessionNamed(ref, { workspace }) : codexSessionNamed(ref);
   if (id) return id;
   if (side === 'codex' && CODEX_REF.test(ref)) return ref;
@@ -198,7 +230,7 @@ process.once('exit', () => { for (const dir of keptDirs) try { rmSync(dir, { rec
 function sessionFor(side, workspace, model, resume) {
   const key = JSON.stringify(resume ? ['resume', side, resume] : [side, workspace || null, model || null]);
   if (!sessions.has(key)) {
-    const folder = resume ? sessionFolder(side, resume) : null;
+    const folder = resume && !remoteSession(resume) ? sessionFolder(side, resume) : null;
     sessions.set(key, { id: resume || null, folder: folder && existsSync(folder) ? folder : null, dir: null, queue: Promise.resolve() });
   }
   return sessions.get(key);
@@ -361,6 +393,12 @@ export function sandboxArgs(network, domains = []) {
  * resume: the id of a Codex session the user started, continued in place (it keeps its memory).
  */
 export async function askCodex(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, network = config.network, skill = false, resume, held = false, onWait } = {}) {
+  const remote = remoteSession(resume);
+  if (remote) {
+    const session = sessionFor('codex', null, null, resume);
+    const call = () => askRemote('codex', prompt, overrides, remote, { config, signal, web, network, skill });
+    return held ? call() : inSession(session, call, signal, onWait);
+  }
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
@@ -435,6 +473,12 @@ export function claudeAnswer(stdout) {
  * Plan mode applies on top of the user's own settings, whatever mode they use themselves.
  */
 export async function askClaude(prompt, overrides = {}, { config = loadConfig(), signal, workspace, web = config.web_search, skill = false, resume, held = false, onWait } = {}) {
+  const remote = remoteSession(resume);
+  if (remote) {
+    const session = sessionFor('claude', null, null, resume);
+    const call = () => askRemote('claude', prompt, overrides, remote, { config, signal, web, skill });
+    return held ? call() : inSession(session, call, signal, onWait);
+  }
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
   const session = sessionFor('claude', workspace, chosen.model, resume && await resolveSession('claude', resume, { workspace }));

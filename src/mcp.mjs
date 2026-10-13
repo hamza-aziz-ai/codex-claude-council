@@ -43,8 +43,8 @@ const workspaceField = {
     + '(or when passing a session id: the session\'s own folder is used).',
 };
 const sessionHint = {
-  codex: 'a Codex session the user already has: its id (as shown by `/status`) or the name they gave it with `/rename`',
-  claude: 'a Claude Code session the user already has: its UUID (as shown by `/status`) or the name they gave it with `/rename`',
+  codex: 'a Codex session the user already has: its id (as shown by `/status`) or the name they gave it with `/rename`; on another machine, user@host:<id or name> (runs there through ssh)',
+  claude: 'a Claude Code session the user already has: its UUID (as shown by `/status`) or the name they gave it with `/rename`; on another machine, user@host:<id or name> (runs there through ssh)',
 };
 const sessionField = side => ({
   type: 'string',
@@ -105,7 +105,7 @@ const joinFields = {
   other_session_id: {
     type: 'string',
     description: 'Optional: the id or /rename name of the user\'s own session of the other model (a Codex session if you are Claude, a Claude Code session if you are Codex), '
-      + 'to continue in place with its memory. Pass it exactly as the user gives it, only when they give one; never your own session.',
+      + 'or user@host:<id or name> for one on another machine (it runs there through ssh), to continue in place with its memory. Pass it exactly as the user gives it, only when they give one; never your own session.',
   },
   other_model: { type: 'string', description: `Optional model override for the other model. ${DEFAULTS_NOTE}` },
   other_effort: { type: 'string', description: `Optional effort override for the other model (Codex: ${EFFORTS.codex.join(', ')}; Claude: ${EFFORTS.claude.join(', ')}). ${DEFAULTS_NOTE}` },

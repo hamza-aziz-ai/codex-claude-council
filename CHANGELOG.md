@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 (2026-10-13)
+
+- **Sessions on another machine.** Pass a session as `user@host:<id or name>` (`claude_session_id`, `codex_session_id`, `session_id`, `other_session_id`, or `--session` / `--claude-session` / `--codex-session`), and that member runs on that machine through `ssh`, as this plugin's own `codex` / `claude` command (fetched with `npx` at this version): that machine's CLI and sign-in, so another Claude or ChatGPT account works too, in the session's own folder, read-only. It needs key-based ssh (no password prompt) and Node.js 20+ there; its sign-in is checked there on each turn, and a failed login says how to set up ssh. Every argument is quoted for the remote shell (checked with a real bash against quotes, `, backticks and `;`). The `ssh` command can be set with `"ssh": { "command": … }` in the config.
+
 ## 0.12.0 (2026-10-13)
 
 - **Releases publish themselves:** creating a GitHub release now publishes it to npm (trusted publishing, no token), the MCP Registry (GitHub OIDC) and Smithery, from `.github/workflows/publish.yml`; Actions → Publish → Run workflow repeats it.

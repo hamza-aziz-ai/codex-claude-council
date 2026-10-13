@@ -3,7 +3,7 @@
 // Each model keeps one session (see adapters.mjs), so every prompt carries only what it has not seen yet.
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { askClaude, askCodex, checkSessionRef, holdSessions, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
+import { askClaude, askCodex, checkSessionRef, holdSessions, remoteSession, requireBothSignedIn, resolveSession, sessionFolder } from './adapters.mjs';
 import { PACKAGE_ROOT, loadConfig, resolveSide, sideName } from './config.mjs';
 import { installedFor, loadSkills, skillNote } from './skills.mjs';
 
@@ -233,7 +233,8 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
   // With skills, the first prompt of the question carries their instructions and each later step says they are still available.
   // A skill installed for a member's own CLI is named instead, and the member loads it itself. The host gets every skill's
   // instructions: a desktop app may not load the skills installed for the CLI.
-  const own = Object.fromEntries(SIDES_ORDER.map(side => [side, side === host?.side ? new Set() : installedFor(side, skills, workspace)]));
+  // A member on another machine gets every skill's instructions too: what is installed here says nothing of there.
+  const own = Object.fromEntries(SIDES_ORDER.map(side => [side, side === host?.side || remoteSession(sessions[side]) ? new Set() : installedFor(side, skills, workspace)]));
   const withSkill = (side, text, first = false) => skillNote(skills, first, own[side]) + text;
   const task = {
     codex: text => s => askCodex(text, settings.codex, { config, signal: s, workspace, web, network: net, skill, resume: sessions.codex, held: true }),
@@ -253,7 +254,9 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
     };
 
     progress(host ? `Checking that ${LABEL[cliSides[0]]} is signed in` : 'Checking that Codex and Claude Code are both signed in');
-    await requireBothSignedIn(config, { signal, sides: cliSides });
+    // A member on another machine is checked there, on each of its turns.
+    const localSides = cliSides.filter(side => !remoteSession(sessions[side]));
+    if (localSides.length) await requireBothSignedIn(config, { signal, sides: localSides });
 
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
