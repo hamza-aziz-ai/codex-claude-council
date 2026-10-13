@@ -38,6 +38,7 @@
   "keywords": ["chatgpt", "claude", "codex", "claude-code", "council", "second-opinion", "llm-council", "debate"],
   "license": "MIT",
   "privacy_policies": [
+    "https://github.com/hamza-aziz-ai/codex-claude-council/blob/main/PRIVACY.md",
     "https://openai.com/policies/privacy-policy/",
     "https://www.anthropic.com/legal/privacy"
   ],

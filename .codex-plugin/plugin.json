@@ -37,6 +37,7 @@
     "category": "Productivity",
     "capabilities": [],
     "websiteURL": "https://github.com/hamza-aziz-ai/codex-claude-council",
+    "privacyPolicyURL": "https://github.com/hamza-aziz-ai/codex-claude-council/blob/main/PRIVACY.md",
     "composerIcon": "./mcpb/icon.png",
     "logo": "./mcpb/icon.png",
     "defaultPrompt": [

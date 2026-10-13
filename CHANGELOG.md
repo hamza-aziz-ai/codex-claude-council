@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A privacy policy,** [`PRIVACY.md`](PRIVACY.md): the plugin has no servers, no accounts and no telemetry; questions, the discussion and what the models read go to OpenAI and Anthropic through the user's own CLIs; the plugin itself contacts only GitHub, for `skill add`; what it stores, and where. The README links it, and the Codex plugin manifest (`privacyPolicyURL`) and the MCPB manifest (`privacy_policies`) point to it.
+
 ## 0.11.9 (2026-10-13)
 
 - **Accurate tool annotations:** `council_turn` is no longer marked read-only (sending a reply moves the council on), and `council_cancel` is marked destructive (it ends the job's CLI processes and discards its progress), so clients can ask before running it. The other tools are unchanged: read-only, never destructive. Both points were flagged by the Tool Definition Quality Score, which rates the tools 4.7 out of 5 (tier A); the README has its badge.
