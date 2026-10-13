@@ -69,6 +69,12 @@ test('tools/list exposes the council tools, with per-tool model/effort inputs, c
     assert.deepEqual(tool.outputSchema.required, ['status', 'text'], tool.name);
     assert.equal(typeof tool.annotations.readOnlyHint, 'boolean', tool.name);
   }
+  // Read-only: the tools that only ask or wait. council_turn moves a council on; council_cancel discards its progress.
+  const hints = Object.fromEntries(result.tools.map(tool => [tool.name, [tool.annotations.readOnlyHint, tool.annotations.destructiveHint]]));
+  assert.deepEqual(hints, {
+    council_ask: [true, false], council_debate: [true, false], council_ask_codex: [true, false], council_ask_claude: [true, false],
+    council_join: [true, false], council_turn: [false, false], council_result: [true, false], council_cancel: [false, true],
+  });
 });
 
 test('council_ask with max_rounds sends progress notifications when asked', async () => {
