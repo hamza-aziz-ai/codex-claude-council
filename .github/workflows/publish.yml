@@ -42,7 +42,8 @@ jobs:
 
       - name: npm
         run: |
-          if npm view "codex-claude-council@$VERSION" version >/dev/null 2>&1; then echo "$VERSION is already on npm"; else npm publish; fi
+          # The package's README: GitHub-only syntax (alerts, Mermaid) converted for npmjs.com; the repository's is unchanged.
+          if npm view "codex-claude-council@$VERSION" version >/dev/null 2>&1; then echo "$VERSION is already on npm"; else node scripts/npm-readme.mjs && npm publish; fi
 
       - name: MCP Registry
         run: |
