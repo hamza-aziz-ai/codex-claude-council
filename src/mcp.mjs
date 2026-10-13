@@ -121,22 +121,33 @@ const jobField = {
 export const TOOLS = [
   {
     name: 'council_ask', title: 'Ask the Codex–Claude council',
-    description: 'Ask Codex (ChatGPT) and Claude independently; then each replies to the other\'s latest message, round after round, until both agree, and one writes the final answer that the other checks. With workspace, both can read the project (never change it). Each model keeps its session between calls. Takes minutes at high effort. Optional per-side model/effort overrides.',
+    description: 'Get one cross-checked answer from Codex (ChatGPT) and Claude: each answers on its own, then they reply to each other until both agree, and one writes the final answer that the other checks. '
+      + 'Use it for decisions, reviews and questions where a second model\'s check is worth minutes of waiting; for a quick single opinion use council_ask_codex or council_ask_claude, and for the whole discussion use council_debate. '
+      + 'It runs the user\'s local Codex and Claude Code CLIs on their own subscriptions, so it uses both plans\' quota, and takes minutes; a call still running after about 50 s returns a job_id for council_result. '
+      + 'With workspace, both models read the project but never change it. Each model keeps its session between calls, so it remembers earlier questions.',
     inputSchema: schema(councilFields), annotations, outputSchema,
   },
   {
     name: 'council_debate', title: 'Codex–Claude debate transcript',
-    description: 'Run the council and return JSON with the final answer, whether both models agree with it, both answers, every exchange (each model\'s reply and verdict), the check of the final answer and the settings used. Optional per-side model/effort overrides.',
+    description: 'Run the same council as council_ask but return the whole discussion as JSON: both opening answers, every exchange with each model\'s reply and verdict, the check of the final answer, and the settings used. '
+      + 'Use it when the user wants to see where the models disagreed or how they converged; use council_ask when only the answer matters, since the transcript is long. '
+      + 'Same cost and timing as council_ask: both plans\' quota, minutes, and a job_id for council_result if it is still running after about 50 s.',
     inputSchema: schema(councilFields), annotations, outputSchema,
   },
   {
     name: 'council_ask_codex', title: 'Ask Codex (ChatGPT) only',
-    description: 'Ask Codex alone through the Codex CLI signed in with ChatGPT. Optional model/effort overrides.',
+    description: 'Ask Codex (ChatGPT) alone, through the user\'s Codex CLI signed in with ChatGPT, and return its answer. '
+      + 'Use it for a quick second opinion from ChatGPT; use council_ask when the answer should also be cross-checked by Claude, or council_ask_claude for Claude alone. '
+      + 'It uses the user\'s ChatGPT plan and usually answers within a minute (longer at high effort, when it returns a job_id for council_result). '
+      + 'With workspace it reads the project but never changes it; its session carries over between calls.',
     inputSchema: schema({ model: modelField('codex'), effort: effortField('codex'), workspace: workspaceField, web_search: webField, network: networkField, skill: skillField, session_id: sessionField('codex') }), annotations, outputSchema,
   },
   {
     name: 'council_ask_claude', title: 'Ask Claude only',
-    description: 'Ask Claude alone through Claude Code signed in with a Claude subscription. Optional model/effort overrides.',
+    description: 'Ask Claude alone, through the user\'s Claude Code CLI signed in with a Claude subscription, and return its answer. '
+      + 'Use it for a quick second opinion from Claude, for example from Codex or ChatGPT; use council_ask when the answer should also be cross-checked by Codex, or council_ask_codex for Codex alone. '
+      + 'It uses the user\'s Claude plan and usually answers within a minute (longer at high effort, when it returns a job_id for council_result). '
+      + 'With workspace it reads the project in plan mode and never changes it; its session carries over between calls.',
     inputSchema: schema({ model: modelField('claude'), effort: effortField('claude'), workspace: workspaceField, web_search: webField, skill: skillField, session_id: sessionField('claude') }), annotations, outputSchema,
   },
   {
@@ -145,13 +156,15 @@ export const TOOLS = [
       + 'you are one member and the plugin runs the other model (Codex if you are Claude, Claude if you are Codex), optionally continuing the user\'s own session of it. '
       + 'The steps are the same as council_ask (answer independently, then reply to each other\'s latest message until both agree, then write and check the final answer). '
       + 'Whenever it is your turn, this tool (or council_turn / council_result) returns the council\'s message to you: write your reply yourself and send it with council_turn. '
-      + 'Use this when the user wants you to discuss with the other model, or gives the id of their session of the other model.',
+      + 'Use this when the user wants you to discuss with the other model, or gives the id of their session of the other model; '
+      + 'use council_ask instead when the user wants a council of two separate sessions. Only the other model runs a CLI session; your turns are written here, in this conversation.',
     inputSchema: schema(joinFields), annotations, outputSchema,
   },
   {
     name: 'council_turn', title: 'Send your turn to the council',
-    description: 'Send your reply to the council message that council_join, council_turn or council_result gave you, and wait for the next step. '
-      + 'Returns your next turn, the final answer, or "still working" (then call council_result).',
+    description: 'Send your reply to the council\'s latest message, after council_join, council_turn or council_result returned your turn, and wait for the next step. '
+      + 'Only for councils started with council_join; the text is passed to the other model as written, so write the complete reply yourself. '
+      + 'If the council is not waiting for you, it says so and you call council_result instead; if the next step takes longer than about 50 s, call council_result with the council_id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -165,13 +178,15 @@ export const TOOLS = [
   },
   {
     name: 'council_result', title: 'Get a running council\'s answer',
-    description: 'Wait for the answer of a council_ask, council_debate, council_ask_codex, council_ask_claude or council_join call that returned a job_id because it was still working (for council_join: or for your next turn). '
-      + 'Waits up to about a minute; returns the answer as soon as it is ready, or says it is still working (then call this again).',
+    description: 'Wait for a job that returned status working with a job_id (from council_ask, council_debate, council_ask_codex, council_ask_claude or council_join), and return its answer, or with council_join your next turn. '
+      + 'Waits up to about 50 s and returns as soon as something is ready; if the job is still working, call it again. '
+      + 'Use it instead of asking the same question again, which would start a second job and use the plans twice. Waiting uses no model quota.',
     inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false }, annotations, outputSchema,
   },
   {
     name: 'council_cancel', title: 'Stop a running council',
-    description: 'Stop a council_ask, council_debate, council_ask_codex or council_ask_claude call that is still working in the background.',
+    description: 'Stop a running job (a council_ask, council_debate, council_ask_codex, council_ask_claude or council_join): its Codex and Claude CLI processes are ended and its progress is discarded, so its answer can no longer be retrieved. '
+      + 'Use it when the user asks to stop, or a council is no longer needed; to check on a job instead, use council_result.',
     inputSchema: { type: 'object', properties: { job_id: jobField }, additionalProperties: false },
     annotations: { ...annotations, readOnlyHint: false }, outputSchema,
   },

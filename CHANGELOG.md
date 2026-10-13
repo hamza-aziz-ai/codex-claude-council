@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.8 (2026-10-13)
+
+- **Tool descriptions rewritten to the Tool Definition Quality Score rubric** (TDQS 1.2, which Glama uses). Each says what the tool does first, when to use it and which tool to use instead, and what the annotations cannot say: the tools run the user's local CLIs on their own plans' quota and take minutes, a call still running after about 50 s returns a job_id for `council_result`, and `council_cancel` ends the CLI processes and discards the progress. They no longer repeat the schema ("optional model/effort overrides"). `npx mcp-tdqs lint` finds nothing to flag.
+
 ## 0.11.7 (2026-10-12)
 
 - **Every tool name starts with `council_`:** `debate`, `ask_codex` and `ask_claude` are now `council_debate`, `council_ask_codex` and `council_ask_claude`. Calls by the old names still work; they are just no longer listed. The CLI commands (`ask`, `debate`, `codex`, `claude`) are unchanged.
