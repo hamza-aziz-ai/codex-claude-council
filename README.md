@@ -551,7 +551,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | `codex.command`, `claude.command` | full path to a CLI if it isn't found automatically |
 | `allow_api_key_auth` | `true` allows CLIs signed in with API keys (billed per token) |
 
-Set `COUNCIL_CONFIG` to use a different config file.
+Set `COUNCIL_CONFIG` to use a different config file. The installer shows the plugin's icon in terminals that draw sixel images, which it asks the terminal (so it works over ssh too); set `COUNCIL_BANNER=image` to always show it, or `COUNCIL_BANNER=text` never to.
 
 ## Security and privacy
 

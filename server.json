@@ -9,12 +9,12 @@
   },
   "websiteUrl": "https://github.com/hamza-aziz-ai/codex-claude-council#readme",
   "icons": [{ "src": "https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/mcpb/icon.png", "mimeType": "image/png", "sizes": ["1254x1254"] }],
-  "version": "0.13.3",
+  "version": "0.13.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "codex-claude-council",
-      "version": "0.13.3",
+      "version": "0.13.4",
       "transport": {
         "type": "stdio"
       },

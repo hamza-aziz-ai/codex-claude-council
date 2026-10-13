@@ -70,10 +70,11 @@ function wrap(line, max) {
  * The banner: the plugin's icon over COUNCIL shaded from Codex green to Claude orange. A narrow terminal gets a
  * smaller one.
  */
-export function banner(version) {
+export async function banner(version) {
   const width = process.stdout.columns || 100;
+  const image = (await sixelTerminal()) ? iconImage() : null;
   out('');
-  for (const line of width >= 60 ? bigBanner(version) : smallBanner(version)) out(line);
+  for (const line of width >= 60 ? bigBanner(version, image) : smallBanner(version, image)) out(line);
   out('');
 }
 
@@ -95,27 +96,63 @@ const LETTERS = {
 
 // The icon (mcpb/icon.png) as a sixel image (real pixels), 440x440 px, about 44 columns wide, made with
 //   chafa --format sixels --size 44x44 --polite on --animate off mcpb/icon.png > src/logos/icon.six
-// Shown only in terminals known to draw sixel images (Windows Terminal 1.22+, WezTerm, iTerm2, Konsole, foot,
-// mlterm); the others show the banner without it. COUNCIL_BANNER=text turns the image off.
+// Shown in terminals that draw sixel images; the others show the banner without it.
 const SIXEL_COLS = 44;
 function iconImage() {
-  const env = process.env;
-  if (!tty || env.COUNCIL_BANNER === 'text' || env.TERM_PROGRAM === 'vscode') return null;
-  if (!(env.WT_SESSION || env.KONSOLE_VERSION || ['WezTerm', 'iTerm.app'].includes(env.TERM_PROGRAM) || /^(foot|mlterm)/.test(env.TERM ?? ''))) return null;
   try { return readFileSync(new URL('./logos/icon.six', import.meta.url), 'utf8').trimEnd(); } catch { return null; }
+}
+
+/**
+ * Does the terminal draw sixel images? Known terminals by their environment (Windows Terminal 1.22+, WezTerm, iTerm2,
+ * Konsole, foot, mlterm). Otherwise the terminal is asked, which also works over ssh, where those variables don't
+ * arrive: one that draws sixel images lists 4 in its reply to ESC [ c (DA1). COUNCIL_BANNER=image forces the image,
+ * COUNCIL_BANNER=text turns it off.
+ */
+export async function sixelTerminal({ env = process.env, stdin = process.stdin, stdout = process.stdout, isTty = tty } = {}) {
+  if (!isTty || env.COUNCIL_BANNER === 'text') return false;
+  if (env.COUNCIL_BANNER === 'image') return true;
+  if (env.TERM_PROGRAM === 'vscode') return false;
+  if (env.WT_SESSION || env.KONSOLE_VERSION || ['WezTerm', 'iTerm.app'].includes(env.TERM_PROGRAM) || /^(foot|mlterm)/.test(env.TERM ?? '')) return true;
+  return askSixel(stdin, stdout);
+}
+
+// ponytail: a terminal that never answers DA1 costs this wait once, at the start of the installer.
+const DA1_WAIT_MS = 300;
+function askSixel(stdin, stdout) {
+  if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') return Promise.resolve(false);
+  return new Promise(resolve => {
+    let reply = '';
+    const done = result => {
+      clearTimeout(timer);
+      stdin.off('data', onData);
+      stdin.setRawMode(false);
+      stdin.pause();
+      resolve(result);
+    };
+    const onData = chunk => {
+      reply += chunk;
+      const answer = reply.match(/\x1b\[\?([\d;]*)c/);
+      if (answer) done(answer[1].split(';').includes('4'));
+    };
+    const timer = setTimeout(() => done(false), DA1_WAIT_MS);
+    stdin.setRawMode(true);
+    stdin.setEncoding('utf8');
+    stdin.on('data', onData);
+    stdin.resume();
+    stdout.write('\x1b[c');
+  });
 }
 
 // The icon centered on a column, as lines to print (none where the terminal does not draw it). The terminal moves
 // the cursor below the image as it draws it, however many rows that takes at its font size; \r returns to the
 // left edge, so the next line starts right under the image. Not in a terminal too narrow for it.
-function icon(center) {
-  const image = iconImage();
+function icon(center, image) {
   if (!image || (process.stdout.columns || 100) < SIXEL_COLS + 2) return [];
   const col = Math.max(0, center - SIXEL_COLS / 2);
   return [`${col > 0 ? `\x1b[${col}C` : ''}${image}\r`];
 }
 
-function bigBanner(version) {
+function bigBanner(version, image) {
   const title = [...'COUNCIL'].reduce((rows, letter) => rows.map((row, i) => row + LETTERS[letter][i]), Array(6).fill(''));
   const span = title[0].length;
   const [X, L, G] = [c.codex, c.claude, c.gold];
@@ -124,12 +161,12 @@ function bigBanner(version) {
   const words = 'they discuss with each other until they agree';
   const motto = [...words].map((ch, i) => (ch === ' ' ? ch : shade(i / (words.length - 1))(ch))).join('') + (version ? c.dim(`  ·  v${version}`) : '');
   const pad = text => ' '.repeat(Math.max(2, 2 + Math.floor((span - visible(text)) / 2))) + text;
-  return [...icon(2 + Math.floor(span / 2)), ...shaded, '', pad(tagline), pad(motto)];
+  return [...icon(2 + Math.floor(span / 2), image), ...shaded, '', pad(tagline), pad(motto)];
 }
 
-function smallBanner(version) {
+function smallBanner(version, image) {
   return [
-    ...icon(2 + SIXEL_COLS / 2),
+    ...icon(2 + SIXEL_COLS / 2, image),
     `  ${c.bold('codex-claude-council')}${version ? c.dim(`  v${version}`) : ''}`,
     `  ${c.bold(c.codex('ChatGPT'))} ${c.gold('×')} ${c.bold(c.claude('Claude'))}  ${c.dim('they discuss with each other until they agree')}`,
   ];

@@ -208,7 +208,7 @@ async function prerequisites() {
 }
 
 export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = false, dryRun = false } = {}) {
-  banner(VERSION);
+  await banner(VERSION);
   ui.intro(`Installing ${blend(NAME)}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
   ui.gap();
   const check = await prerequisites();
@@ -273,7 +273,7 @@ function signInReminder(check) {
  * Claude Code and in Codex. (`install` does the same when the plugin is already installed.)
  */
 export async function update({ only, dryRun = false } = {}) {
-  banner(VERSION);
+  await banner(VERSION);
   ui.intro(`Updating ${blend(NAME)}${dryRun ? c.dim('  (dry run: nothing is changed)') : ''}`);
   ui.gap();
   const check = await prerequisites();
