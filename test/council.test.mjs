@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { CLAUDE_DENIED, CLAUDE_MEMBER_NOTE, CLAUDE_WEB, MEMBER_ENV, askClaude, askCodex, claudeAnswer, resolveSession, resetSessions, sessionFolder } from '../src/adapters.mjs';
 import { accessNote, invoke, prompt, verifyNote } from '../src/council.mjs';
-import { setup, withEnv } from './helpers.mjs';
+import { ROOT, setup, withEnv } from './helpers.mjs';
 
 let fake;
 before(() => { fake = setup({ codex: { model: 'gpt-test', effort: 'xhigh' }, claude: { model: 'opus', effort: 'high' } }); });
@@ -769,4 +769,45 @@ test('a cancelled call settles only once its process has exited', async () => {
   controller.abort();
   await assert.rejects(running, /cancelled/);
   assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, 'the process is gone when the call settles');
+});
+
+// A session on another machine (user@host:session): the member runs there, through ssh, as this plugin's own command.
+function fakeSsh() {
+  const script = new URL('./fixtures/fake-ssh.mjs', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  const path = join(fake.dir, process.platform === 'win32' ? 'ssh.cmd' : 'ssh');
+  writeFileSync(path, process.platform === 'win32' ? `@"${process.execPath}" "${script}" %*\r\n` : `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
+  fake.writeConfig({ ssh: { command: path } });
+}
+const sshCalls = () => fake.calls().filter(c => c.cli === 'ssh');
+
+test('a session on another machine runs there through ssh: this plugin\'s command, the session as given, the prompt on stdin', async () => {
+  fakeSsh();
+  const answer = await invoke('ask_claude', 'Why does the order dialog close?', { session_id: "hamza@10.0.0.5:fix order's bugs", effort: 'low', web_search: false });
+  assert.equal(answer, 'remote Why does the order dialog close?');
+  const [call] = sshCalls();
+  assert.deepEqual(call.args.slice(0, 3), ['-o', 'BatchMode=yes', 'hamza@10.0.0.5'], 'no password prompt, then the host');
+  const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  assert.equal(call.args[3], `bash -lc '${[`'npx'`, `'-y'`, `'codex-claude-council@${version}'`, `'claude'`, `'--session'`, `'fix order'\\''s bugs'`, `'--effort'`, `'low'`, `'--no-web'`]
+    .map(word => word.replace(/'/g, `'\\''`)).join(' ')}'`, 'every word quoted for the remote shell, a quote inside too');
+  assert.match(call.input, /Why does the order dialog close\?/);
+  assert.deepEqual(fake.questionCalls().filter(c => c.cli !== 'ssh'), [], 'no local CLI is run for it');
+});
+
+test('in a council, a remote member is checked on its own machine: only the local member\'s sign-in is checked here', () => withEnv({ FAKE_AGREE_AT: '1' }, async () => {
+  fakeSsh();
+  const result = JSON.parse(await invoke('debate', 'q', { claude_session_id: 'hamza@10.0.0.5:fix-order-dialog-bugs', max_rounds: 2 }));
+  assert.equal(result.agreed, true);
+  assert.ok(sshCalls().length >= 2, 'Claude\'s turns go through ssh');
+  assert.ok(sshCalls().every(c => c.args[3].includes(`'\\''fix-order-dialog-bugs'\\''`)), 'every turn continues the same remote session');
+  const local = fake.calls().filter(c => c.cli !== 'ssh');
+  assert.ok(local.some(c => c.cli === 'codex' && c.args[0] === 'login'), 'Codex (local) is checked here');
+  assert.ok(!local.some(c => c.cli === 'claude'), 'the local Claude CLI is not used at all');
+}));
+
+test('a remote member that cannot log in says how to set up ssh', async () => {
+  fakeSsh();
+  await withEnv({ FAKE_SSH_FAIL: 'hamza@10.0.0.5: Permission denied (publickey).' }, () => assert.rejects(
+    invoke('ask_codex', 'q', { session_id: 'hamza@10.0.0.5:abc' }),
+    /codex on hamza@10\.0\.0\.5 failed: .*Permission denied \(publickey\)\..*Set up key-based ssh to hamza@10\.0\.0\.5 first \(test: ssh -o BatchMode=yes hamza@10\.0\.0\.5 true\)/s,
+  ));
 });

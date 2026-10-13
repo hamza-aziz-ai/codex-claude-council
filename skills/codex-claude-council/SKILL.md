@@ -38,6 +38,8 @@ With `council_join`, you are one of the two members, in this conversation, and t
 
 If the user gives Claude Code or Codex sessions they already have, by id or by the name they gave it with `/rename`, and wants those sessions to discuss, pass `claude_session_id` / `codex_session_id` on `council_ask` / `council_debate`, or `session_id` on `council_ask_claude` / `council_ask_codex`, exactly as the user wrote it. Each is continued in place, with everything it already knows, in plan mode / read-only; its own folder is the workspace unless you pass one. Never pass your own current session (use `council_join` instead), and never guess an id or name. If the tool says no session has that name, tell the user how to find it (`/status` shows the id, `/rename` sets a name). Remind the user not to type in those sessions while the council runs.
 
+A session on another machine is passed as `user@host:<id or name>` (for example `hamza@10.152.15.202:fix-order-dialog-bugs`), exactly as the user gives it: that member runs on that machine through ssh, with its own CLI and sign-in. It needs key-based ssh and Node.js there; if the call fails with "Permission denied (publickey)", tell the user to set up key-based ssh to that host.
+
 ## Options
 
 Pass options only when the user asks for them; the defaults come from the user's config (`codex-claude-council config`).

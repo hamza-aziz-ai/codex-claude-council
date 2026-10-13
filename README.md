@@ -379,6 +379,16 @@ Pass sessions you already have, by id or by name, and the council continues **th
 - **Close those sessions first**, or at least don't type in them while the council runs: two programs writing to one session can mix up its history. Reopen them afterwards (`claude --resume <id>`, `codex resume <id>`) to see the council's turns.
 - Don't pass the id of the session you are asking from; to have that session take part, use `council_join`.
 
+### Sessions on another machine
+
+A session on another computer takes part too: write it as **`user@host:session`**, with the session's id or name as there, for example `--claude-session hamza@10.152.15.202:fix-order-dialog-bugs` or *"continuing my Claude session hamza@10.152.15.202:fix-order-dialog-bugs"*. That member runs **on that machine**, through `ssh`: this plugin's own `codex` / `claude` command, with that machine's CLI and **its sign-in** (any account, not necessarily yours here), in the session's own folder, read-only as here.
+
+- **Needs:** key-based `ssh` from this computer (no password prompt: `ssh -o BatchMode=yes user@host true` must work), and Node.js 20+ and the CLI, signed in, on that machine (Linux or macOS). Nothing is installed there: `npx` fetches this plugin's version for the call.
+- **Its model and effort** come from that machine's config, unless you set them for the call.
+- **It continues the saved session**, not the window it is open in: don't type in that session while the council runs, and resume it afterwards to see the council's turns.
+- **Cancelling** stops the council here; a turn already running on that machine finishes there.
+- `ssh` is found on your PATH; set `"ssh": { "command": "<path>" }` in the config to use another.
+
 ### Take part yourself: `council_join`
 
 Say your repository has a Claude Code session `abcd` and a Codex session `efgh`, and you are working in `abcd`. Ask there: *"discuss with my Codex session efgh whether we should split the auth module"*.

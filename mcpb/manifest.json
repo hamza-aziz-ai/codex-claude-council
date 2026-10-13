@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "codex-claude-council",
   "display_name": "Codex–Claude Council",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "ChatGPT (Codex CLI) and Claude (Claude Code) discuss your question until they agree, on your own subscriptions.",
   "long_description": "Ask **ChatGPT** (through your Codex CLI) and **Claude** (through your Claude Code CLI) the same question. Each answers on its own, then they reply to each other, round after round, until both agree on one answer. No API keys: it runs the CLIs you have already signed in to.\n\n- Both read your project in read-only mode (Claude in plan mode, Codex in its sandbox) and can search the web.\n- Continue your existing Claude Code or Codex sessions, or take part yourself with `council_join`.\n- Requires the Claude Code CLI and the Codex CLI to be installed and signed in on this computer.",
   "author": {
