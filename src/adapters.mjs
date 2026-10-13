@@ -187,8 +187,10 @@ async function askRemote(side, prompt, overrides, remote, { config, signal, web,
   if (result.code === 0 && answer) return answer;
   const detail = failureDetail(result.stderr || result.stdout);
   const hint = /permission denied|publickey|host key verification/i.test(detail) ? ` Set up key-based ssh to ${remote.host} first (test: ssh -o BatchMode=yes ${remote.host} true).`
-    : /npx: (command )?not found|npx.*not recognized/i.test(detail) ? ` Install Node.js 20 or later on ${remote.host.split('@')[1]}.` : '';
-  throw new Error(`${side} on ${remote.host} failed: ${detail}${hint}`);
+    : /npx: (command )?not found|npx.*not recognized/i.test(detail) ? ` Install Node.js 20 or later on ${remote.host.split('@')[1]} (nvm is loaded too).` : '';
+  // The reader is usually a model: a raw `claude -p` or `codex exec` over ssh would run without plan mode / the sandbox.
+  throw new Error(`${side} on ${remote.host} failed: ${detail}${hint} Report this to the user; don't work around it by running ${side} over ssh yourself, `
+    + 'which would skip the read-only mode the council runs members in.');
 }
 
 /** A session the user passed, by id or by name, checked for its form (not looked up); returns it trimmed. */
