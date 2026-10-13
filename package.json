@@ -11,7 +11,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test/config.test.mjs test/council.test.mjs test/mcp.test.mjs test/cli.test.mjs test/manifests.test.mjs test/skills.test.mjs test/share.test.mjs"
+    "test": "node --test test/config.test.mjs test/council.test.mjs test/mcp.test.mjs test/cli.test.mjs test/manifests.test.mjs test/skills.test.mjs test/share.test.mjs test/npm-readme.test.mjs"
   },
   "keywords": [
     "mcp",

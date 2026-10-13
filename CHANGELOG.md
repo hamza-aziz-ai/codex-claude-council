@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **The README on npmjs.com renders properly.** npm shows GitHub's alerts as `[!NOTE]` text and Mermaid diagrams as code; the publish workflow now converts the package's copy (`scripts/npm-readme.mjs`): alerts become bold-labelled quotes (💡 Tip, ❗ Important, …), the three diagrams become images (rendered by mermaid.ink), and relative paths point to the repository at the release tag. The README on GitHub is unchanged.
 - **A privacy policy,** [`PRIVACY.md`](PRIVACY.md): the plugin has no servers, no accounts and no telemetry; questions, the discussion and what the models read go to OpenAI and Anthropic through the user's own CLIs; the plugin itself contacts only GitHub, for `skill add`; what it stores, and where. The README links it, and the Codex plugin manifest (`privacyPolicyURL`) and the MCPB manifest (`privacy_policies`) point to it.
 
 ## 0.11.9 (2026-10-13)
