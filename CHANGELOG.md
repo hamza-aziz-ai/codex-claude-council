@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.2 (2026-10-13)
+
+- **A remote machine whose Node.js comes from nvm works.** nvm is usually loaded in `~/.bashrc`, which a command run through `ssh` skips, so `npx` was "not found" there. The remote command now loads nvm first when it is installed (`$NVM_DIR`, else `~/.nvm`), and goes on as before where it is not. Checked against a real machine with nvm-only Node.js: the plugin ran there, found the session by name and listed its installed skills.
+
 ## 0.13.1 (2026-10-13)
 
 - **Fix: a member on another machine gets each council step as it is.** In 0.13.0 its `claude` / `codex` command wrapped every step (answer, exchange, final answer, check) in its own template for a new question. It now runs with `--raw`, which sends the prompt to the model unchanged.

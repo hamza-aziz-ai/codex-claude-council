@@ -787,7 +787,8 @@ test('a session on another machine runs there through ssh: this plugin\'s comman
   const [call] = sshCalls();
   assert.deepEqual(call.args.slice(0, 3), ['-o', 'BatchMode=yes', 'hamza@10.0.0.5'], 'no password prompt, then the host');
   const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-  assert.equal(call.args[3], `bash -lc '${[`'npx'`, `'-y'`, `'codex-claude-council@${version}'`, `'claude'`, `'--raw'`, `'--session'`, `'fix order'\\''s bugs'`, `'--effort'`, `'low'`, `'--no-web'`]
+  // nvm first (it usually loads only in ~/.bashrc, which ssh commands skip), then the plugin's command.
+  assert.equal(call.args[3], `bash -lc '[ -s "\${NVM_DIR:-$HOME/.nvm}/nvm.sh" ] && . "\${NVM_DIR:-$HOME/.nvm}/nvm.sh" >/dev/null 2>&1; ${[`'npx'`, `'-y'`, `'codex-claude-council@${version}'`, `'claude'`, `'--raw'`, `'--session'`, `'fix order'\\''s bugs'`, `'--effort'`, `'low'`, `'--no-web'`]
     .map(word => word.replace(/'/g, `'\\''`)).join(' ')}'`, 'every word quoted for the remote shell, a quote inside too');
   assert.match(call.input, /Why does the order dialog close\?/);
   assert.deepEqual(fake.questionCalls().filter(c => c.cli !== 'ssh'), [], 'no local CLI is run for it');
