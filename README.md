@@ -18,6 +18,7 @@
 </p>
 <p align="center">
   <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img alt="Glama Score" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/card.svg"></a>
+  <a href="https://mcprush.com/to/codex-claude-council-mcp?ref=badge"><img width="380" height="200" src="https://mcprush.com/badge/codex-claude-council-mcp/card.svg" alt="Codex–Claude Council MCP server" /></a>
 </p>
 
 <h2 align="center">Two AIs. One answer.</h2>
