@@ -9,6 +9,8 @@
   <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img alt="Glama Score" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/score.svg"></a>
   <a href="https://smithery.ai/servers/hamza-aziz-ai/codex-claude-council"><img alt="Smithery: 98/100" src="https://img.shields.io/badge/Smithery-98%2F100-FF5601"></a>
   <a href="https://tdqs.dev/reports/dbtjn020iu"><img alt="TDQS" src="https://tdqs.dev/reports/dbtjn020iu/badge.svg"></a>
+  <a href="https://github.com/hashgraph-online/hol-guard"><img alt="HOL Plugin Scanner: 95/100" src="https://img.shields.io/badge/HOL%20Plugin%20Scanner-95%2F100-2E7D32"></a>
+  <a href="https://aiagentslisting.com/mcp/codex-claude-council"><img alt="Codex Claude Council on AI Agents Listing" src="https://aiagentslisting.com/codex-claude-council/badge.svg?claim=df6787ce44b7957dda33ffd902293f93"></a>
 </p>
 <p align="center">
   <a href="https://www.npmjs.com/package/codex-claude-council"><img alt="npm" src="https://img.shields.io/npm/v/codex-claude-council?color=CB3837"></a>
