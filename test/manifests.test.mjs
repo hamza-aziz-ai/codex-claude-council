@@ -14,6 +14,8 @@ test('names and versions agree across package and plugin manifests', () => {
   }
   assert.equal(json('.claude-plugin/marketplace.json').plugins[0].name, pkg.name);
   assert.equal(json('.agents/plugins/marketplace.json').plugins[0].name, pkg.name);
+  const lock = json('package-lock.json');
+  assert.deepEqual([lock.version, lock.packages[''].version], [pkg.version, pkg.version], 'run npm install --package-lock-only');
 });
 
 // Each host gets its own inline MCP config: Claude expands ${CLAUDE_PLUGIN_ROOT}; Codex does not

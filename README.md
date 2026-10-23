@@ -558,7 +558,7 @@ Set `COUNCIL_CONFIG` to use a different config file. The installer shows the plu
 
 - **Everything runs on your computer.** Your question goes to OpenAI and Anthropic through their official CLIs, under your own accounts.
 - **The members cannot change your files.**
-  - Codex runs `codex exec` in its **read-only sandbox**, enforced by the operating system, with `approval_policy="never"`. Both are set on the command line, which overrides your `config.toml`, so even a config that grants full access stays read-only.
+  - Codex runs `codex exec` in its **read-only sandbox**, enforced by the operating system, with `approval_policy` set to `never`. Both are set on the command line, which overrides your `config.toml`, so even a config that grants full access stays read-only.
   - Claude Code runs in **plan mode**: it reads, searches and runs commands it knows to be read-only, and every edit, write or other command is refused, since nobody is there to approve it. Plan mode is Claude Code's own permission guard, not an operating-system sandbox; the only file it may write is its plan file under `~/.claude/plans/`.
   - With `council_join`, the host is your own session and keeps its own permissions; it is only asked not to change files.
 - **Your own setup applies.** The members run with your skills, plugins, MCP servers, hooks, `CLAUDE.md` / `AGENTS.md` and permission rules. This plugin is switched off inside them, so a member can't start another council. MCP tools run in their own processes: plan mode refuses Claude's tools that change things, while Codex follows each server's own approval settings, so keep that in mind for MCP servers that can change things.
