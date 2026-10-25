@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.5 (2026-10-25)
+
+- **A failed Codex turn is reported by its own error.** With `--json`, Codex says why a turn failed in its `error` / `turn.failed` events on stdout, but the council reported stderr whenever it had anything. So an unrelated error there hid the cause: a council stopped with `codex failed: … rmcp::transport::worker … (http://127.0.0.1:64462/stream)`, from an MCP server in the user's Codex config that was down, which on its own doesn't stop Codex. The turn's own error is now reported, and stderr only when there is none; Codex's warnings (an ignored config setting, the skills context budget) are left out.
+
 ## 0.13.4 (2026-10-13)
 
 - **The installer's icon shows over ssh too.** It was drawn only in terminals recognised by their environment variables (`WT_SESSION`, `TERM_PROGRAM`, …), which don't reach a remote machine, so `npx codex-claude-council install` run over ssh from Windows Terminal showed no icon. When the environment doesn't say, the installer now asks the terminal (`ESC [ c`, DA1) and shows the image if the reply lists sixel (`4`), waiting at most 0.3 s for an answer. `COUNCIL_BANNER=image` forces the image (for terminals that don't answer, such as some tmux setups); `COUNCIL_BANNER=text` still turns it off.
