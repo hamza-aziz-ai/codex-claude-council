@@ -3,6 +3,7 @@
 #   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
+# Before any of them, HOL's AI Plugin Scanner checks the release (see the step).
 # It runs when a release is published, or by hand (Actions > Publish > Run workflow) for the version in package.json,
 # which must already have its release tag. A version already on npm or in the MCP Registry is skipped there.
 name: Publish
@@ -39,6 +40,13 @@ jobs:
           fi
 
       - run: npm test
+
+      # HOL's AI Plugin Scanner: a release with a high or critical finding, or a score under 80, is not published.
+      - name: HOL plugin scan
+        uses: hashgraph-online/ai-plugin-scanner-action@8b2992cc969481db3ee0335c984526611e26a450 # v1.2.805
+        with:
+          fail_on_severity: high
+          min_score: 80
 
       - name: npm
         run: |
