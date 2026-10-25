@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   test:
@@ -29,16 +30,18 @@ jobs:
           $null = [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$tokens, [ref]$errors)
           if ($errors) { $errors; exit 1 }
 
-  # Dependabot PRs merge themselves once every test job passes.
-  dependabot-merge:
+  # A pull request from a branch of this repository (Dependabot's included) merges itself once every test job
+  # passes. --auto: if the push run's checks for the same commit are still going, GitHub merges when they pass.
+  # A draft waits until it is marked ready; a fork's pull request gets a read-only token, so it is left out.
+  automerge:
     needs: test
-    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - run: gh pr merge --merge --delete-branch "$PR"
+      - run: gh pr merge --auto --merge --delete-branch "$PR"
         env:
           PR: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ github.token }}
