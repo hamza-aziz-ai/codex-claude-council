@@ -60,8 +60,11 @@ jobs:
           done
           exit 1
 
+      # Since 2026-10-25 Smithery refuses updates to a listed server (403 "Updating servers has been removed"), so
+      # a failure here doesn't fail the release; it is still tried, in case Smithery takes updates again.
       - name: Smithery
         if: env.SMITHERY_API_KEY != ''
+        continue-on-error: true
         run: |
           node mcpb/build.mjs
           npx -y @smithery/cli mcp publish "mcpb/dist/codex-claude-council-$VERSION-smithery.mcpb" -n hamza-aziz-ai/codex-claude-council
