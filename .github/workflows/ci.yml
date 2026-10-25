@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # Other branches are tested through their pull request. A second run for the same commit would leave the
+  # automerge job's merge queued, and a queued merge keeps the branch.
   push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -31,7 +34,7 @@ jobs:
           if ($errors) { $errors; exit 1 }
 
   # A pull request from a branch of this repository (Dependabot's included) merges itself once every test job
-  # passes. --auto: if the push run's checks for the same commit are still going, GitHub merges when they pass.
+  # passes, and its branch is deleted. --auto: if a required check is somehow still going, GitHub merges when it passes.
   # A draft waits until it is marked ready; a fork's pull request gets a read-only token, so it is left out.
   automerge:
     needs: test
