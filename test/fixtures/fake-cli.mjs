@@ -1,5 +1,5 @@
 // Stand-in for the real `codex` and `claude` CLIs. Records every call to $FAKE_LOG (JSON lines).
-// Controls: FAKE_FAIL=codex|claude (FAKE_CODEX_ERROR: the error codex prints),FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
+// Controls: FAKE_FAIL=codex|claude (FAKE_CODEX_ERROR: the error codex prints; FAKE_CODEX_TURN_ERROR: the failed turn's error event),FAKE_SLEEP_MS (or FAKE_SLEEP_MS_CODEX / _CLAUDE for one side), FAKE_CODEX_AUTH (login status text), FAKE_CLAUDE_AUTH (JSON).
 // Exchanges and reviews (prompts asking for a VERDICT line): FAKE_AGREE_AT=n agrees from the n-th one on (default 1,
 // 0 = never; FAKE_AGREE_AT_CODEX / _CLAUDE for one side); FAKE_FAIL_REVIEW_AT=n fails the n-th one. They are counted in the file $FAKE_STATE; the two replies of
 // an exchange run at once, so exchange r takes counts 2r-1 and 2r.
@@ -38,6 +38,13 @@ function codex() {
   const effort = args.find(arg => arg.startsWith('model_reasoning_effort='))?.replace('model_reasoning_effort=', '') || '-';
   console.error(`model: ${flag('-m') || '-'}\nreasoning effort: ${effort}`);
   if (failing) {
+    if (process.env.FAKE_CODEX_TURN_ERROR && args.includes('--json')) {
+      // Like a real failed turn: a warning item, then the error, as events on stdout.
+      const message = process.env.FAKE_CODEX_TURN_ERROR;
+      console.log(JSON.stringify({ type: 'item.completed', item: { id: 'item_0', type: 'error', message: 'a warning, not why the turn failed' } }));
+      console.log(JSON.stringify({ type: 'error', message }));
+      console.log(JSON.stringify({ type: 'turn.failed', error: { message } }));
+    }
     console.error(process.env.FAKE_CODEX_ERROR || "ERROR: You've hit your usage limit.");
     process.exit(1);
   }
