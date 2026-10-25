@@ -388,15 +388,29 @@ export async function requireBothSignedIn(config = loadConfig(), { signal, sides
   }
 }
 
-/** The thread id from `codex exec --json` output (a "thread.started" event). */
-function codexThreadId(stdout) {
-  for (const line of String(stdout).split(/\r?\n/)) {
+/** The events in `codex exec --json` output, one JSON object per line. */
+function codexEvents(stdout) {
+  return String(stdout).split(/\r?\n/).flatMap(line => {
     try {
       const event = JSON.parse(line);
-      if (event?.type === 'thread.started' && typeof event.thread_id === 'string') return event.thread_id;
-    } catch { /* not an event */ }
-  }
-  return null;
+      return event && typeof event === 'object' ? [event] : [];
+    } catch { return []; /* not an event */ }
+  });
+}
+
+/** The thread id from `codex exec --json` output (a "thread.started" event). */
+function codexThreadId(stdout) {
+  const id = codexEvents(stdout).find(event => event.type === 'thread.started')?.thread_id;
+  return typeof id === 'string' ? id : null;
+}
+
+/**
+ * Why a Codex turn failed, from its "error" and "turn.failed" events; empty if it has none. Warnings are
+ * "error" items, not events, and are left out.
+ */
+function codexTurnError(stdout) {
+  const messages = codexEvents(stdout).map(event => (event.type === 'error' ? event.message : event.type === 'turn.failed' ? event.error?.message : null));
+  return [...new Set(messages.filter(message => typeof message === 'string' && message.trim()))].join('\n');
 }
 
 /**
@@ -461,7 +475,9 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
         throw new Error(`Codex has not saved session ${resume}: it saves a session after its first message. `
           + 'Send one message in that session first, or check the id with `codex resume`.');
       }
-      throw new Error(`codex failed: ${withHint('codex', failureDetail(detail))}`);
+      // A failed turn reports why on stdout; stderr can hold only other errors, such as from an MCP server of
+      // the user's that is down.
+      throw new Error(`codex failed: ${withHint('codex', failureDetail(codexTurnError(result.stdout) || detail))}`);
     }
     if (!session.id) throw new Error('codex did not report a session id; update the Codex CLI (`npm install -g @openai/codex`)');
     let answer = '';

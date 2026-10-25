@@ -519,6 +519,12 @@ test('a failing side stops the council with that side\'s error', () => withEnv({
   }
 }));
 
+test('a failed Codex turn is reported by its own error, not by other errors on stderr', () => withEnv({
+  FAKE_FAIL: 'codex',
+  FAKE_CODEX_ERROR: 'ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed (http://127.0.0.1:1/stream)',
+  FAKE_CODEX_TURN_ERROR: 'stream disconnected before completion',
+}, () => assert.rejects(askCodex('q'), { message: 'codex failed: stream disconnected before completion' })));
+
 test('a Codex session that is open elsewhere or not saved yet is reported with the fix', async () => {
   const id = '019a0000-1111-7222-8333-444444444444';
   const failWith = error => ({ FAKE_FAIL: 'codex', FAKE_CODEX_ERROR: `Error: thread/resume: thread/resume failed: ${error} (code -32600)` });
