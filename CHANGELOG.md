@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0 (2026-10-26)
+
+- **Use it online: `serve` runs the MCP server over HTTP.** Apps on the web and on phones (claude.ai, ChatGPT) connect to MCP servers over HTTPS from their providers' servers, so they couldn't use the council. `npx -y codex-claude-council serve` runs the same server on your computer over Streamable HTTP, at `http://127.0.0.1:8000/mcp/<token>`, with your CLIs and plans as always. The secret token in the path is the only key, so the URL works in connectors that take only a URL; it is generated on the first start and saved next to the config file (`serve-token`), or set with `--token` / `COUNCIL_TOKEN`. `--port` and `--host` choose where it listens (default: this computer only). Put HTTPS in front, such as a Cloudflare Tunnel, and add the URL as a custom connector: see [Use it online](README.md#use-it-online-claudeai-chatgpt-your-phone). Each request gets one JSON response, without progress notifications.
+- **A `Dockerfile` for a server of your own.** It runs `serve` with Node.js and both CLIs; sign them in once with `codex login --device-auth` and `claude auth login`, and a volume keeps the sign-ins, config, skills and token. Codex's read-only sandbox needs user namespaces, which Docker's default seccomp profile blocks, so the README's `docker run` sets `--security-opt seccomp=unconfined`. See [On a server of your own](README.md#on-a-server-of-your-own-docker).
+
 ## 0.13.5 (2026-10-25)
 
 - **A failed Codex turn is reported by its own error.** With `--json`, Codex says why a turn failed in its `error` / `turn.failed` events on stdout, but the council reported stderr whenever it had anything. So an unrelated error there hid the cause: a council stopped with `codex failed: … rmcp::transport::worker … (http://127.0.0.1:64462/stream)`, from an MCP server in the user's Codex config that was down, which on its own doesn't stop Codex. The turn's own error is now reported, and stderr only when there is none; Codex's warnings (an ignored config setting, the skills context budget) are left out.
