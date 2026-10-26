@@ -1,4 +1,6 @@
-// Dependency-free MCP server (JSON-RPC 2.0 over stdio, newline-delimited).
+// Dependency-free MCP server: JSON-RPC 2.0 over stdio (newline-delimited) or Streamable HTTP.
+import { timingSafeEqual } from 'node:crypto';
+import { createServer } from 'node:http';
 import { createInterface } from 'node:readline';
 import { EFFORTS, NAME, loadConfig, packageVersion } from './config.mjs';
 import { MEMBER_ENV } from './adapters.mjs';
@@ -335,17 +337,16 @@ const COUNCIL = {
 };
 
 /**
- * Serve tools over stdio. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text or
+ * One client's connection: handle(message, send) answers a JSON-RPC request through send, with any progress
+ * notifications before the reply. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text or
  * { text, ...structured fields }, instructions }; the council's tools by default. An object is also sent as the
  * result's structuredContent.
  */
-export function serve({ input = process.stdin, output = process.stdout, server = COUNCIL } = {}) {
+function connection(server) {
   const inFlight = new Map();
-  const send = message => output.write(`${JSON.stringify(message)}\n`);
-  const reply = (id, result) => send({ jsonrpc: '2.0', id, result });
-  const fail = (id, code, message) => send({ jsonrpc: '2.0', id, error: { code, message } });
 
-  async function callTool(id, params = {}) {
+  async function callTool(id, params, send) {
+    const reply = result => send({ jsonrpc: '2.0', id, result });
     const controller = new AbortController();
     inFlight.set(id, controller);
     const token = params._meta?.progressToken;
@@ -356,57 +357,123 @@ export function serve({ input = process.stdin, output = process.stdout, server =
     try {
       const result = await server.call(params.name, params.arguments || {}, { signal: controller.signal, onProgress });
       const text = typeof result === 'string' ? result : result.text;
-      if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text }], ...(typeof result === 'string' ? {} : { structuredContent: result }) });
+      if (!controller.signal.aborted) reply({ content: [{ type: 'text', text }], ...(typeof result === 'string' ? {} : { structuredContent: result }) });
     } catch (error) {
-      if (!controller.signal.aborted) reply(id, { content: [{ type: 'text', text: error.message }], isError: true });
+      if (!controller.signal.aborted) reply({ content: [{ type: 'text', text: error.message }], isError: true });
     } finally {
       inFlight.delete(id);
     }
   }
 
-  function handle(message) {
+  function handle(message, send) {
     const { id, method, params } = message;
+    const reply = result => send({ jsonrpc: '2.0', id, result });
     if (id === undefined || id === null) {
       if (method === 'notifications/cancelled') inFlight.get(params?.requestId)?.abort();
       return; // other notifications need no reply
     }
     switch (method) {
       case 'initialize':
-        return reply(id, {
+        return reply({
           protocolVersion: params?.protocolVersion || '2025-06-18',
           capabilities: { tools: { listChanged: false } },
           serverInfo: { name: server.name, title: server.title, version: packageVersion(), icons: [{ src: ICON_URL, mimeType: 'image/png', sizes: ['1254x1254'] }] },
           instructions: server.instructions,
         });
       case 'ping':
-        return reply(id, {});
+        return reply({});
       case 'tools/list':
-        return reply(id, { tools: server.tools });
+        return reply({ tools: server.tools });
       case 'tools/call':
-        return void callTool(id, params);
+        return void callTool(id, params || {}, send);
       default:
-        return fail(id, -32601, `method not found: ${method}`);
+        return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } });
     }
   }
 
-  const lines = createInterface({ input, crlfDelay: Infinity });
-  lines.on('line', line => {
-    if (!line.trim()) return;
+  // A message as received: answered through send, including parse errors. Responses to server requests are
+  // ignored (none are sent).
+  function receive(text, send) {
     let message;
     try {
-      message = JSON.parse(line);
+      message = JSON.parse(text);
     } catch (error) {
-      return fail(null, -32700, `parse error: ${error.message}`);
+      return send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: `parse error: ${error.message}` } });
     }
-    if (!message || typeof message !== 'object' || Array.isArray(message)) return fail(null, -32600, 'invalid request');
-    if (typeof message.method !== 'string') return; // a response to a server request; none are sent
+    if (!message || typeof message !== 'object' || Array.isArray(message)) return send({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'invalid request' } });
+    if (typeof message.method !== 'string') return;
     try {
-      handle(message);
+      handle(message, send);
     } catch (error) {
-      if (message.id !== undefined && message.id !== null) fail(message.id, -32603, error.message);
+      if (message.id !== undefined && message.id !== null) send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: error.message } });
     }
-  });
+  }
+
   const abortAll = () => { for (const controller of inFlight.values()) controller.abort(); server.close?.(); };
+  return { receive, abortAll };
+}
+
+/** Serve tools over stdio, one JSON-RPC message per line. server: see connection(). */
+export function serve({ input = process.stdin, output = process.stdout, server = COUNCIL } = {}) {
+  const { receive, abortAll } = connection(server);
+  const send = message => output.write(`${JSON.stringify(message)}\n`);
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  lines.on('line', line => { if (line.trim()) receive(line, send); });
   lines.on('close', abortAll);
   return { abortAll };
+}
+
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Serve tools over MCP's Streamable HTTP transport at /mcp/<token>. The secret token in the path is the only key,
+ * so the URL also works in clients that take nothing but a URL (claude.ai and ChatGPT connectors). Each POST
+ * carries one message and gets one JSON response: no event stream, so no progress notifications (a tool call
+ * still returns within tool_wait_seconds). Resolves to { url, close } once listening.
+ */
+export function serveHttp({ token, port = 8000, host = '127.0.0.1', server = COUNCIL }) {
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{16,}$/.test(token)) throw new Error('the token must be at least 16 letters, digits, - or _');
+  const path = `/mcp/${token}`;
+  const expected = Buffer.from(path);
+  // ponytail: one connection for every client, no Mcp-Session-Id. Fine for one person's clients; per-session
+  // connections if two clients ever cancel calls with the same request id.
+  const { receive, abortAll } = connection(server);
+  const answer = (res, status, body) => {
+    if (res.headersSent) return;
+    res.writeHead(status, body === undefined ? {} : { 'Content-Type': 'application/json' });
+    res.end(body === undefined ? undefined : JSON.stringify(body));
+  };
+  const http = createServer((req, res) => {
+    const requested = Buffer.from(req.url.split('?')[0].replace(/\/$/, ''));
+    if (requested.length !== expected.length || !timingSafeEqual(requested, expected)) return answer(res, 404, { error: 'not found' });
+    if (req.method !== 'POST') return res.writeHead(405, { Allow: 'POST' }).end();
+    const chunks = [];
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size <= MAX_BODY_BYTES) chunks.push(chunk);
+      else { answer(res, 413, { error: 'request too large' }); req.destroy(); }
+    });
+    req.on('end', () => {
+      if (res.headersSent) return;
+      const text = Buffer.concat(chunks).toString('utf8');
+      let message;
+      try { message = JSON.parse(text); } catch { /* receive answers it */ }
+      const request = typeof message?.method === 'string' && message.id !== undefined && message.id !== null;
+      // A request gets its reply (progress notifications are dropped); a notification or response is just
+      // accepted; a message that is not JSON-RPC gets its error.
+      receive(text, reply => {
+        if (reply.id === null) answer(res, 400, reply);
+        else if (request && reply.id === message.id) answer(res, 200, reply);
+      });
+      if (!request) answer(res, 202);
+    });
+  });
+  return new Promise((resolve, reject) => {
+    http.once('error', reject);
+    http.listen(port, host, () => {
+      const { address, family, port: actual } = http.address();
+      resolve({ url: `http://${family === 'IPv6' ? `[${address}]` : address}:${actual}${path}`, close: () => { abortAll(); http.close(); } });
+    });
+  });
 }
