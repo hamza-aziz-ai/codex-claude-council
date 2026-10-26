@@ -1,6 +1,6 @@
 {
   "name": "codex-claude-council",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "mcpName": "io.github.hamza-aziz-ai/codex-claude-council",
   "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs; they answer independently, then reply to each other until they agree on one answer. MCP server + plugin for Claude Code, Claude Cowork and Codex.",
   "type": "module",
@@ -40,6 +40,7 @@
     ".claude-plugin/",
     ".codex-plugin/",
     "mcpb/icon.png",
+    "mcpb/icon-192.png",
     ".agents/",
     "skills/",
     "README.md",
