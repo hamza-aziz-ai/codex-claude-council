@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
@@ -26,6 +27,7 @@ Usage:
   ${NAME} codex "question"         Codex (ChatGPT) only
   ${NAME} claude "question"        Claude only
   ${NAME} mcp                      Run the MCP server on stdio
+  ${NAME} serve [options]          Run the MCP server over HTTP, at a secret URL (Streamable HTTP)
 
 Model and effort (omit to use your config):
   codex, claude:   --model <name>  --effort <level>
@@ -53,6 +55,12 @@ Install / update / uninstall options:
   --claude-desktop        Also register the MCP server with Claude Desktop chat
   --source <repo|path>    Marketplace source (default: hamza-aziz-ai/${NAME})
   --dry-run               Show what would run without changing anything
+
+Serve options:
+  --port <n>              Port to listen on (default: 8000)
+  --host <address>        Address to listen on (default: 127.0.0.1, this computer only; 0.0.0.0 for every network)
+  --token <secret>        The secret in the URL (default: COUNCIL_TOKEN, else one generated once and saved
+                          next to the config file)
 
 The question can also be piped on stdin.`;
 
@@ -83,6 +91,9 @@ const OPTIONS = {
   html: { type: 'string' },
   raw: { type: 'boolean' },
   'skill-step': { type: 'boolean' },
+  port: { type: 'string' },
+  host: { type: 'string' },
+  token: { type: 'string' },
 };
 const TOOLS = { ask: 'council_ask', debate: 'debate', codex: 'ask_codex', claude: 'ask_claude' };
 
@@ -101,6 +112,34 @@ async function readStdin() {
   return text;
 }
 
+/** The secret in the serve URL: --token, COUNCIL_TOKEN, or one generated once and kept next to the config file. */
+function serveToken(given) {
+  if (given ?? process.env.COUNCIL_TOKEN) return given ?? process.env.COUNCIL_TOKEN;
+  const path = join(dirname(userConfigPath()), 'serve-token');
+  if (existsSync(path)) return readFileSync(path, 'utf8').trim();
+  const token = randomBytes(24).toString('base64url');
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${token}\n`, { mode: 0o600 });
+  return token;
+}
+
+async function serveCommand(values) {
+  const port = values.port === undefined ? 8000 : Number(values.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('--port must be a port number');
+  const { serveHttp } = await import('../src/mcp.mjs');
+  const { url, close } = await serveHttp({ token: serveToken(values.token), port, host: values.host });
+  const local = url.replace(/\/mcp\/.*/, '');
+  console.log(`${url}
+The council's MCP server is listening at the URL above (Streamable HTTP). Anyone who has it can run the council
+on this computer, under your plans: keep it secret, and use HTTPS beyond this computer. To use it from claude.ai,
+ChatGPT or another computer, put HTTPS in front, for example a Cloudflare Tunnel:
+  cloudflared tunnel --url ${local}
+then add https://<the tunnel's host>${new URL(url).pathname} as a custom connector. Ctrl+C stops the server.`);
+  process.once('SIGINT', () => { close(); process.exit(130); });
+  process.once('SIGTERM', () => { close(); process.exit(0); });
+  return null;
+}
+
 async function main() {
   const { values, positionals } = parseArgs({ options: OPTIONS, allowPositionals: true });
   const [commandName, ...rest] = positionals;
@@ -111,6 +150,7 @@ async function main() {
     await import('../src/mcp-server.mjs');
     return null;
   }
+  if (commandName === 'serve') return serveCommand(values);
   if (commandName === 'doctor') return doctor();
   if (commandName === 'skill') {
     const [action, target] = rest;

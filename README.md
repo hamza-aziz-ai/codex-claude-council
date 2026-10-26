@@ -227,6 +227,7 @@ It refreshes the marketplace and updates the plugin in Claude Code and Codex; th
 | **Claude Desktop, one-click extension** | Download `codex-claude-council-<version>.mcpb` from the [latest release](https://github.com/hamza-aziz-ai/codex-claude-council/releases/latest) and open it (or **Settings → Extensions → Install Extension…**). It adds the MCP server to Claude Desktop; the Codex and Claude Code CLIs still need to be installed and signed in. |
 | **Claude Desktop, Chat tab** | `npx -y codex-claude-council install --claude-desktop --only claude`, then fully quit and reopen Claude Desktop |
 | **ChatGPT desktop app** | **Settings → Plugins → Add → + Add a marketplace**, enter `https://github.com/hamza-aziz-ai/codex-claude-council.git` in **Source**, click **Add marketplace**, then install **codex-claude-council** |
+| **claude.ai, ChatGPT on the web, phones** | Run `npx -y codex-claude-council serve` and connect over HTTPS: see [Use it online](#use-it-online-claudeai-chatgpt-your-phone) |
 | **Any other MCP client** (Cursor, VS Code, Windsurf, …) | Add a local (stdio) MCP server with command `npx` and arguments `["-y", "codex-claude-council", "mcp"]` (config below). It is also listed in the [MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.hamza-aziz-ai/codex-claude-council) as `io.github.hamza-aziz-ai/codex-claude-council` and on [Smithery](https://smithery.ai/servers/hamza-aziz-ai/codex-claude-council) |
 
 For a client configured with JSON (Cursor's `mcp.json`, Windsurf, Claude Desktop's `claude_desktop_config.json`, …), paste:
@@ -244,6 +245,34 @@ For a client configured with JSON (Cursor's `mcp.json`, Windsurf, Claude Desktop
 
 > [!NOTE]
 > Keep the desktop app open while you use it: the council runs on your computer through your local CLIs, so both still need to be installed and signed in.
+
+### Use it online: claude.ai, ChatGPT, your phone
+
+Apps on the web and on phones connect to MCP servers over HTTPS, from their providers' servers, so they can't start a local one. `serve` runs the council's MCP server over HTTP instead, on your computer, with your CLIs and plans as always:
+
+```bash
+npx -y codex-claude-council serve
+```
+
+It prints the server's address, `http://127.0.0.1:8000/mcp/<token>`. The token is a secret generated on the first start and saved next to your config file (`serve-token`), so the address stays the same; set `--token` or `COUNCIL_TOKEN` to choose your own. Options: `--port` (default 8000) and `--host` (default `127.0.0.1`: this computer only).
+
+To reach it from the internet, put HTTPS in front of it, for example a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/), in a second terminal:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+It prints an address like `https://<random words>.trycloudflare.com`. Add `https://<that host>/mcp/<token>` as a custom connector, with no authentication:
+
+| App | Where |
+|---|---|
+| **claude.ai** (and the Claude apps on your phone) | **Settings → Connectors → Add custom connector** |
+| **ChatGPT** | Turn on developer mode (**Settings → Apps → Advanced settings**), then create a connector with that URL |
+| **Any other MCP client** | Add a remote MCP server with that URL (Streamable HTTP) |
+
+- **Keep the URL secret.** The token in it is the only key: anyone with the URL can run the council on your computer, under your plans, and the members can read your files. A tunnel URL of the quick kind changes each time `cloudflared` starts (update the connector), or set up a named tunnel for a fixed one.
+- **Your computer stays the server.** It must be on, with `serve` and the tunnel running. Questions about a project need its folder on this computer: name it in the question ("in the project at `~/code/app`").
+- Each request gets one answer, without progress notifications; a tool call still returns within `tool_wait_seconds`, and the app calls `council_result` until the answer is ready.
 
 ## Use it
 
@@ -582,6 +611,7 @@ Set `COUNCIL_CONFIG` to use a different config file. The installer shows the plu
 - **What they read is sent to the model providers.** Whatever either model chooses to read goes to OpenAI or Anthropic, as when you paste it. Both can read files outside the project too, as in your normal sessions: Codex's read-only sandbox allows reading the whole disk, and plan mode allows read-only commands anywhere. Without a `workspace`, they start in an empty folder and are told to work from the question.
 - **Web access.** Codex's web search runs on OpenAI's side (its sandbox has no network for commands unless you turn on `network`); Claude can search and fetch pages, and its read-only commands can reach the network. With a `workspace` as well, text in the project that tries to instruct the model (a prompt injection) could in principle get it to send project content to a website, for example in a URL it fetches. For sensitive projects, turn web access off.
 - **Sessions.** The members' sessions are saved by the CLIs like any other, so they appear in `claude --resume` and `codex resume` for that folder. A session you pass by id is continued in place: the council's turns are added to it.
+- **Over HTTP (`serve`).** The secret token in the URL is the only key: whoever has the URL can ask the council, and the members can read your files. It listens on this computer only unless you set `--host`; reach it from elsewhere only through HTTPS (a tunnel or a reverse proxy), and keep the URL as secret as a password. Delete `serve-token` next to your config file to get a new one.
 - **Subscriptions, not API keys.** API-key environment variables are removed before the CLIs start. Codex must be signed in with ChatGPT and Claude Code with a Claude subscription, unless you set `allow_api_key_auth`.
 - **Privacy policy:** [PRIVACY.md](PRIVACY.md). The plugin has no servers and no telemetry; what goes to OpenAI and Anthropic goes through their CLIs, under your accounts.
 - **The plugin itself** runs with your user permissions: about 1,700 lines of dependency-free JavaScript in [`src/`](src). Read it before installing if you like.

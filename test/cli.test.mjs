@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { after, before, test } from 'node:test';
 import { ROOT, setup } from './helpers.mjs';
 
@@ -168,4 +170,33 @@ test('a remote member\'s commands: --raw sends the prompt as it is, skill instal
   const listed = cli(['skill', 'installed', 'claude', 'mine', 'other', '../evil']);
   assert.equal(listed.status, 0, listed.stderr);
   assert.deepEqual(JSON.parse(listed.stdout), ['mine']);
+});
+
+test('serve: the MCP server over HTTP answers only at its secret URL, with a generated token saved next to the config', async () => {
+  const child = spawn(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'serve', '--port', '0'], { env: { ...process.env, ...fake.env } });
+  try {
+    const [line] = await once(createInterface({ input: child.stdout }), 'line');
+    const url = line.trim();
+    const token = readFileSync(join(dirname(fake.env.COUNCIL_CONFIG), 'serve-token'), 'utf8').trim();
+    assert.match(token, /^[A-Za-z0-9_-]{32}$/);
+    assert.equal(new URL(url).pathname, `/mcp/${token}`);
+    const post = body => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body });
+    const rpc = async (method, params, id = 1) => (await post(JSON.stringify({ jsonrpc: '2.0', id, method, params }))).json();
+
+    assert.equal((await fetch(url.replace(token, 'x'.repeat(32)), { method: 'POST', body: '{}' })).status, 404, 'another token');
+    assert.equal((await fetch(new URL(url).origin)).status, 404);
+    assert.equal((await fetch(url)).status, 405, 'no event stream');
+    const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+    assert.equal(init.result.serverInfo.name, 'codex-claude-council');
+    assert.equal((await post(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }))).status, 202);
+    assert.equal((await rpc('tools/list', {}, 'two')).result.tools.length, 8);
+    const asked = await rpc('tools/call', { name: 'council_ask_codex', arguments: { question: 'over http' } }, 3);
+    assert.deepEqual(asked.result.structuredContent, { status: 'done', text: 'codex[-|high] over http' });
+    const bad = await post('{');
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json()).error.code, -32700);
+  } finally {
+    child.kill();
+    await once(child, 'exit');
+  }
 });
