@@ -8,6 +8,7 @@ import { councilText, invoke } from '../src/council.mjs';
 import { debateHtml } from '../src/share.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
 import { askClaude, askCodex, resolveSession, sessionFolder } from '../src/adapters.mjs';
+import { findExecutable, start } from '../src/process.mjs';
 import { addSkill, installedFor, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
@@ -61,6 +62,8 @@ Serve options:
   --host <address>        Address to listen on (default: 127.0.0.1, this computer only; 0.0.0.0 for every network)
   --token <secret>        The secret in the URL (default: COUNCIL_TOKEN, else one generated once and saved
                           next to the config file)
+  --tunnel                Also put it online over HTTPS, through a Cloudflare quick tunnel (needs cloudflared),
+                          and print that URL
 
 The question can also be piped on stdin.`;
 
@@ -94,6 +97,7 @@ const OPTIONS = {
   port: { type: 'string' },
   host: { type: 'string' },
   token: { type: 'string' },
+  tunnel: { type: 'boolean' },
 };
 const TOOLS = { ask: 'council_ask', debate: 'debate', codex: 'ask_codex', claude: 'ask_claude' };
 
@@ -128,16 +132,75 @@ async function serveCommand(values) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('--port must be a port number');
   const { serveHttp } = await import('../src/mcp.mjs');
   const { url, close } = await serveHttp({ token: serveToken(values.token), port, host: values.host });
-  const local = url.replace(/\/mcp\/.*/, '');
-  console.log(`${url}
-The council's MCP server is listening at the URL above (Streamable HTTP). Anyone who has it can run the council
-on this computer, under your plans: keep it secret, and use HTTPS beyond this computer. To use it from claude.ai,
-ChatGPT or another computer, put HTTPS in front, for example a Cloudflare Tunnel:
-  cloudflared tunnel --url ${local}
-then add https://<the tunnel's host>${new URL(url).pathname} as a custom connector. Ctrl+C stops the server.`);
-  process.once('SIGINT', () => { close(); process.exit(130); });
-  process.once('SIGTERM', () => { close(); process.exit(0); });
+  // Where this computer reaches the server: a server listening on every address is reached at 127.0.0.1.
+  const local = new URL(url).origin.replace(/\/\/(0\.0\.0\.0|\[::\])/, '//127.0.0.1');
+  const path = new URL(url).pathname;
+  let tunnel;
+  let stopping = false;
+  const stop = code => {
+    if (stopping) return;
+    stopping = true;
+    close();
+    Promise.resolve(tunnel?.stop()).finally(() => process.exit(code));
+  };
+  process.once('SIGINT', () => stop(130));
+  process.once('SIGTERM', () => stop(0));
+  const secret = 'Anyone who has it can run the council on this computer, under your plans: keep it secret.';
+  if (!values.tunnel) {
+    console.log(`${url}
+The council's MCP server is listening at the URL above (Streamable HTTP). ${secret}
+To use it from claude.ai, ChatGPT or another computer, it needs HTTPS: run serve --tunnel instead, or put your own
+tunnel or reverse proxy in front, such as: cloudflared tunnel --url ${local}
+then add https://<its host>${path} as a custom connector. Ctrl+C stops the server.`);
+    return null;
+  }
+  try {
+    tunnel = await startTunnel(local);
+  } catch (error) {
+    close();
+    throw error;
+  }
+  tunnel.child.once('exit', code => {
+    if (stopping) return;
+    console.error(`${NAME}: the tunnel stopped (cloudflared exited with ${code}); stopping the server.`);
+    stop(1);
+  });
+  console.log(`${tunnel.origin}${path}
+The council's MCP server is online at the URL above, through a Cloudflare quick tunnel (HTTPS). ${secret}
+Add it as a custom connector (claude.ai: Settings > Connectors > Add custom connector; no sign-in). The tunnel's
+address changes each time serve starts: update the connector then. Ctrl+C stops the server and the tunnel.`);
   return null;
+}
+
+/**
+ * A Cloudflare quick tunnel (no account needed) to the server at local: resolves to { origin, child, stop } once
+ * cloudflared reports its https://<words>.trycloudflare.com address.
+ */
+async function startTunnel(local) {
+  let file;
+  try {
+    file = findExecutable('cloudflared');
+  } catch {
+    throw new Error('--tunnel needs cloudflared. Install it (Windows: winget install Cloudflare.cloudflared; macOS: brew install cloudflared; '
+      + 'Linux: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/), then run serve --tunnel again.');
+  }
+  const tunnel = start(file, ['tunnel', '--no-autoupdate', '--url', local]);
+  const origin = await new Promise((resolve, reject) => {
+    let output = '';
+    const fail = message => { clearTimeout(timer); tunnel.stop(); reject(new Error(`${message}\n${output.trim().slice(-1500)}`)); };
+    const timer = setTimeout(() => fail('cloudflared gave no tunnel address within 60 s:'), 60_000);
+    const read = chunk => {
+      if (output === null) return; // found already: the rest is cloudflared's log, read and dropped
+      output += chunk;
+      const found = output.match(/https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/);
+      if (found) { clearTimeout(timer); output = null; resolve(found[0]); }
+    };
+    tunnel.child.stdout.setEncoding('utf8').on('data', read);
+    tunnel.child.stderr.setEncoding('utf8').on('data', read);
+    tunnel.child.once('error', error => fail(`could not start cloudflared: ${error.message}`));
+    tunnel.child.once('exit', code => { if (output !== null) fail(`cloudflared stopped (exit ${code}) before it had a tunnel address:`); });
+  });
+  return { origin, ...tunnel };
 }
 
 async function main() {

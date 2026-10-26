@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { after, before, test } from 'node:test';
 import { ROOT, setup } from './helpers.mjs';
@@ -184,7 +184,12 @@ test('serve: the MCP server over HTTP answers only at its secret URL, with a gen
     const rpc = async (method, params, id = 1) => (await post(JSON.stringify({ jsonrpc: '2.0', id, method, params }))).json();
 
     assert.equal((await fetch(url.replace(token, 'x'.repeat(32)), { method: 'POST', body: '{}' })).status, 404, 'another token');
-    assert.equal((await fetch(new URL(url).origin)).status, 404);
+    assert.equal((await fetch(`${new URL(url).origin}/mcp`, { method: 'POST', body: '{}' })).status, 404, 'no token');
+    // Without the token, only the icon (apps show the connector with its site's favicon) and a page naming it.
+    const icon = await fetch(`${new URL(url).origin}/favicon.ico`);
+    assert.equal(icon.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await icon.arrayBuffer()), readFileSync(join(ROOT, 'mcpb', 'icon.png')));
+    assert.match(await (await fetch(new URL(url).origin)).text(), /<link rel="icon" type="image\/png" href="\/favicon.ico">/);
     assert.equal((await fetch(url)).status, 405, 'no event stream');
     const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
     assert.equal(init.result.serverInfo.name, 'codex-claude-council');
@@ -195,6 +200,31 @@ test('serve: the MCP server over HTTP answers only at its secret URL, with a gen
     const bad = await post('{');
     assert.equal(bad.status, 400);
     assert.equal((await bad.json()).error.code, -32700);
+  } finally {
+    child.kill();
+    await once(child, 'exit');
+  }
+});
+
+test('serve --tunnel: starts a Cloudflare quick tunnel to the server and prints the HTTPS URL', async () => {
+  const bin = join(dirname(fake.env.COUNCIL_CONFIG), 'tunnel-bin');
+  mkdirSync(bin, { recursive: true });
+  const script = join(ROOT, 'test', 'fixtures', 'fake-cloudflared.mjs');
+  if (process.platform === 'win32') writeFileSync(join(bin, 'cloudflared.cmd'), `@"${process.execPath}" "${script}" %*\r\n`);
+  else writeFileSync(join(bin, 'cloudflared'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
+  const log = join(bin, 'calls.jsonl');
+  const child = spawn(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'serve', '--port', '0', '--tunnel', '--token', 'tunnel-test-token-0123456789'], {
+    env: { ...process.env, ...fake.env, PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_CLOUDFLARED_LOG: log },
+  });
+  try {
+    const [line] = await once(createInterface({ input: child.stdout }), 'line');
+    assert.equal(line.trim(), 'https://quiet-test-words-here.trycloudflare.com/mcp/tunnel-test-token-0123456789');
+    const [args] = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(args.slice(0, 3), ['tunnel', '--no-autoupdate', '--url']);
+    assert.match(args[3], /^http:\/\/127\.0\.0\.1:\d+$/);
+    // The tunnel's target is the server.
+    const reply = await fetch(`${args[3]}/mcp/tunnel-test-token-0123456789`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"jsonrpc":"2.0","id":1,"method":"ping"}' });
+    assert.deepEqual(await reply.json(), { jsonrpc: '2.0', id: 1, result: {} });
   } finally {
     child.kill();
     await once(child, 'exit');
