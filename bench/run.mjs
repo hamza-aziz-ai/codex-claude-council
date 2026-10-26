@@ -3,28 +3,45 @@
 // It runs your own Codex and Claude Code CLIs, so it uses both plans: a council is several calls per question.
 //
 //   node bench/run.mjs --verify                   check the answer key by running every program (no models)
-//   node bench/run.mjs [--set hard|classic|all] [--effort low] [--only id,id] [--max-rounds 5]
-// The hard set (the default) chains several traps per program; the classic set has one trap each.
+//   node bench/run.mjs [--set hard|classic|canary|all] [--effort low] [--only id,id] [--max-rounds 5] [--compare <result file>]
+//   node bench/run.mjs --compare <before.json> <after.json>    compare two saved runs (no models)
+// The hard set (the default) chains several traps per program; the classic set has one trap each; the canary set is
+// six of the hard ones, for a quick check before a release. --compare exits with 1 if an answer that was right is wrong.
 //
 // Each call starts fresh sessions (no member remembers another call) in an empty folder (no member can read the
 // answer key), without web search. Results: a table on stdout and bench/results/<date>-<effort>.json.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { resetSessions } from '../src/adapters.mjs';
+import { loadConfig, packageVersion } from '../src/config.mjs';
 import { invoke } from '../src/council.mjs';
-import { HARD } from './hard.mjs';
+import { findExecutable, run } from '../src/process.mjs';
+import { compareRuns } from './compare.mjs';
+import { CANARY, HARD } from './hard.mjs';
 import { QUESTIONS } from './questions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const { values } = parseArgs({ options: { effort: { type: 'string' }, only: { type: 'string' }, 'max-rounds': { type: 'string' }, verify: { type: 'boolean' }, set: { type: 'string' } } });
+const { values, positionals } = parseArgs({
+  options: { effort: { type: 'string' }, only: { type: 'string' }, 'max-rounds': { type: 'string' }, verify: { type: 'boolean' }, set: { type: 'string' }, compare: { type: 'string' } },
+  allowPositionals: true,
+});
+const readRun = file => JSON.parse(readFileSync(file, 'utf8'));
+/** Print the comparison with the run in file and exit with 1 if anything regressed. */
+function compareWith(file, after) {
+  const { regressions, lines } = compareRuns(readRun(file), after);
+  console.log(`\n${lines.join('\n')}`);
+  process.exit(regressions.length ? 1 : 0);
+}
+if (values.compare && positionals.length) compareWith(values.compare, readRun(positionals[0]));
+
 const only = values.only ? new Set(values.only.split(',')) : null;
-const SETS = { hard: HARD, classic: QUESTIONS, all: [...HARD, ...QUESTIONS] };
+const SETS = { hard: HARD, classic: QUESTIONS, canary: HARD.filter(q => CANARY.includes(q.id)), all: [...HARD, ...QUESTIONS] };
 const set = values.set ?? (only ? 'all' : 'hard');
-if (!SETS[set]) throw new Error('--set must be hard, classic or all');
+if (!SETS[set]) throw new Error('--set must be hard, classic, canary or all');
 const questions = SETS[set].filter(q => !only || only.has(q.id));
 
 /** What a program prints, its lines joined with single spaces. */
@@ -79,7 +96,9 @@ for (const [n, q] of questions.entries()) {
     try {
       const text = await invoke(tool, prompt(q), options);
       const got = finalAnswer(text);
-      row[who] = { ok: got === q.answer, got, seconds: Math.round((Date.now() - started) / 1000), ...(who === 'council' ? { agreed: /both agree with this answer/.test(text) } : {}) };
+      const rounds = Number(text.match(/converged after (\d+) exchanges?/)?.[1]);
+      row[who] = { ok: got === q.answer, got, seconds: Math.round((Date.now() - started) / 1000),
+        ...(who === 'council' ? { agreed: /both agree with this answer/.test(text), ...(rounds ? { rounds } : {}) } : {}) };
     } catch (error) {
       row[who] = { ok: false, error: error.message.split('\n')[0], seconds: Math.round((Date.now() - started) / 1000) };
     }
@@ -104,5 +123,24 @@ const lines = [
 console.log(lines.join('\n'));
 mkdirSync(join(HERE, 'results'), { recursive: true });
 const file = join(HERE, 'results', `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-${set}-${effort ?? 'default'}.json`);
-writeFileSync(file, `${JSON.stringify({ date: new Date().toISOString(), effort: effort ?? null, results }, null, 2)}\n`);
+const result = { date: new Date().toISOString(), effort: effort ?? null, setup: await setup(), results };
+writeFileSync(file, `${JSON.stringify(result, null, 2)}\n`);
 process.stderr.write(`Saved ${file}\n`);
+if (values.compare) compareWith(values.compare, result);
+
+/** What produced this run, so a changed score can be traced to a model, a CLI or the plugin. */
+async function setup() {
+  const config = loadConfig();
+  const version = async side => {
+    try {
+      return (await run(findExecutable(side, config[side].command), ['--version'], { timeoutMs: 30_000 })).stdout.trim();
+    } catch {
+      return null;
+    }
+  };
+  return {
+    set, plugin: packageVersion(), codex_cli: await version('codex'), claude_cli: await version('claude'),
+    // null: the CLI's own default (Codex reads it from its config.toml).
+    codex_model: config.codex.model, claude_model: config.claude.model, max_rounds: values['max-rounds'] ?? config.max_rounds,
+  };
+}

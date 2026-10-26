@@ -300,3 +300,7 @@ print(db.execute("SELECT COUNT(*) FROM a LEFT JOIN b ON a.id = b.id WHERE b.y <>
       db.execute("SELECT 5 / 2, 5 / 2.0, '10' < '9', 10 < 9, 'a' || NULL").fetchone())`,
   },
 ];
+
+// The canary set (run.mjs --set canary), for a quick check before a release: the question a model alone got wrong in
+// the last full run (h-py-dunder), the slowest to agree (h-js-loop-mix), and the others JavaScript, Python and SQL.
+export const CANARY = ['h-py-dunder', 'h-js-loop-mix', 'h-js-async-errors', 'h-py-exceptions', 'h-js-tdz-hoisting', 'h-sql-group-null'];
