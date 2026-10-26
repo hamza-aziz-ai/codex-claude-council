@@ -142,6 +142,15 @@ export function run(file, args, { input = '', cwd, env = process.env, timeoutMs 
   });
 }
 
+/** Start a long-running CLI, such as a tunnel, with its output piped; stop() kills it and its children. */
+export function start(file, args) {
+  const spec = command(file, args);
+  const child = spawn(spec.file, spec.args, {
+    windowsHide: true, windowsVerbatimArguments: spec.verbatim, detached: !IS_WINDOWS, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return { child, stop: () => killTree(child) };
+}
+
 /** The most useful part of a failed CLI's output: its ERROR lines, else the tail. */
 export function failureDetail(output, limit = 1200) {
   const errors = [...new Set(String(output).split(/\r?\n/).map(line => line.trim()).filter(line => /^error\b/i.test(line)))];

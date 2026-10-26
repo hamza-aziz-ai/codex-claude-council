@@ -1,5 +1,5 @@
-# Publishes a GitHub release to npm, the MCP Registry and Smithery, with no stored passwords, and attaches the
-# Claude Desktop bundle (.mcpb) to the release:
+# Publishes a GitHub release to npm, the MCP Registry, Smithery and ghcr.io (the Docker image), with no stored
+# passwords, and attaches the Claude Desktop bundle (.mcpb) to the release:
 # - npm: trusted publishing (OIDC). Once, on npmjs.com: the package's Settings > Trusted publishing > GitHub Actions,
 #   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
@@ -18,6 +18,7 @@ on:
 permissions:
   id-token: write
   contents: write # the release bundle
+  packages: write # the Docker image
 
 jobs:
   publish:
@@ -77,6 +78,17 @@ jobs:
         run: |
           node mcpb/build.mjs
           gh release upload "v$VERSION" "mcpb/dist/codex-claude-council-$VERSION.mcpb" --clobber
+
+      # The Docker image for a server of your own (see the README), for amd64 and arm64.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Docker image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMAGE=ghcr.io/hamza-aziz-ai/codex-claude-council
+          docker buildx build --platform linux/amd64,linux/arm64 --tag "$IMAGE:$VERSION" --tag "$IMAGE:latest" --push .
 
       # Since 2026-10-25 Smithery refuses updates to a listed server (403 "Updating servers has been removed"), so
       # a failure here doesn't fail the release; it is still tried, in case Smithery takes updates again.

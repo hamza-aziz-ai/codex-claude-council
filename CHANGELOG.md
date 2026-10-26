@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 (2026-10-26)
+
+- **`serve --tunnel`: online in one command.** It starts a Cloudflare quick tunnel (`cloudflared`, no account needed) to the server and prints the HTTPS URL to add as a connector, `https://<random words>.trycloudflare.com/mcp/<token>`, instead of a second terminal and joining the URL by hand. Ctrl+C stops both; if the tunnel stops, so does the server. Without `cloudflared`, it says how to install it.
+- **A ready-made Docker image**, `ghcr.io/hamza-aziz-ai/codex-claude-council` (amd64 and arm64), published with each release (`:latest` and `:<version>`), with `cloudflared` included: on a server, `docker run … ghcr.io/hamza-aziz-ai/codex-claude-council serve --tunnel`, no clone or build. Its entry point is now the `codex-claude-council` command. See [On a server of your own](README.md#on-a-server-of-your-own-docker).
+- **The connector shows the council's icon.** claude.ai shows a connector with its site's favicon, so a tunnel's URL showed Cloudflare's logo. `serve` now answers `/favicon.ico` with the plugin's icon (and `/` with a page naming it), without the token; everything else still needs it.
+- **Releases publish themselves.** When a version bump merges, `autorelease.yml` creates release `v<version>` with its CHANGELOG.md section as the notes and runs Publish.
+
 ## 0.14.0 (2026-10-26)
 
 - **Use it online: `serve` runs the MCP server over HTTP.** Apps on the web and on phones (claude.ai, ChatGPT) connect to MCP servers over HTTPS from their providers' servers, so they couldn't use the council. `npx -y codex-claude-council serve` runs the same server on your computer over Streamable HTTP, at `http://127.0.0.1:8000/mcp/<token>`, with your CLIs and plans as always. The secret token in the path is the only key, so the URL works in connectors that take only a URL; it is generated on the first start and saved next to the config file (`serve-token`), or set with `--token` / `COUNCIL_TOKEN`. `--port` and `--host` choose where it listens (default: this computer only). Put HTTPS in front, such as a Cloudflare Tunnel, and add the URL as a custom connector: see [Use it online](README.md#use-it-online-claudeai-chatgpt-your-phone). Each request gets one JSON response, without progress notifications.
