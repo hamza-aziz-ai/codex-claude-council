@@ -1,4 +1,5 @@
-# Publishes a GitHub release to npm, the MCP Registry and Smithery, with no stored passwords:
+# Publishes a GitHub release to npm, the MCP Registry and Smithery, with no stored passwords, and attaches the
+# Claude Desktop bundle (.mcpb) to the release:
 # - npm: trusted publishing (OIDC). Once, on npmjs.com: the package's Settings > Trusted publishing > GitHub Actions,
 #   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
@@ -15,7 +16,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write # the release bundle
 
 jobs:
   publish:
@@ -68,11 +69,18 @@ jobs:
           done
           exit 1
 
+      # The one-click Claude Desktop extension the README points to, attached to the release (replacing one already there).
+      - name: Release bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node mcpb/build.mjs
+          gh release upload "v$VERSION" "mcpb/dist/codex-claude-council-$VERSION.mcpb" --clobber
+
       # Since 2026-10-25 Smithery refuses updates to a listed server (403 "Updating servers has been removed"), so
       # a failure here doesn't fail the release; it is still tried, in case Smithery takes updates again.
       - name: Smithery
         if: env.SMITHERY_API_KEY != ''
         continue-on-error: true
         run: |
-          node mcpb/build.mjs
           npx -y @smithery/cli mcp publish "mcpb/dist/codex-claude-council-$VERSION-smithery.mcpb" -n hamza-aziz-ai/codex-claude-council
