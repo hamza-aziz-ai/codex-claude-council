@@ -6,7 +6,8 @@
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
 # Before any of them, HOL's AI Plugin Scanner checks the release (see the step).
 # It runs when a release is published, or by hand (Actions > Publish > Run workflow) for the version in package.json,
-# which must already have its release tag. A version already on npm or in the MCP Registry is skipped there.
+# which must already have its release tag; autorelease.yml starts it that way after it creates the release. A version
+# already on npm or in the MCP Registry is skipped there.
 name: Publish
 
 on:

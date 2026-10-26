@@ -1,0 +1,45 @@
+# Releases a new version once its pull request has merged itself: when main's package.json has a version without a
+# release tag, this creates release v<version> with its CHANGELOG.md section as the notes, then runs Publish.
+#
+# It runs after each successful CI run, which for a pull request is when the CI's automerge job has merged it. A
+# merge or a release made with a workflow's token starts no workflows (GitHub's rule for that token), so this can't
+# wait for a push to main, and it starts Publish itself (workflow_dispatch, an event the token can start). A version
+# whose merge was still queued is released after the next CI run. It only checks out main, never a pull request's code.
+name: Autorelease
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: write
+
+# One at a time, so two CI runs finishing together don't both create the release.
+concurrency: autorelease
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Release the version on main, unless it has its tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then echo "v$VERSION is already released"; exit 0; fi
+          # The notes: the lines under "## <version> (date)" up to the next "## ".
+          node -e '
+            const [, version] = process.argv;
+            const section = require("fs").readFileSync("CHANGELOG.md", "utf8").split(/^## /m).find(part => part.startsWith(`${version} `));
+            if (!section) { console.error(`CHANGELOG.md has no "## ${version}" section`); process.exit(1); }
+            require("fs").writeFileSync("notes.md", `${section.split("\n").slice(1).join("\n").trim()}\n`);
+          ' "$VERSION"
+          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --title "v$VERSION" --notes-file notes.md
+          gh workflow run publish.yml --ref main
