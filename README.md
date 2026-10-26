@@ -274,6 +274,30 @@ It prints an address like `https://<random words>.trycloudflare.com`. Add `https
 - **Your computer stays the server.** It must be on, with `serve` and the tunnel running. Questions about a project need its folder on this computer: name it in the question ("in the project at `~/code/app`").
 - Each request gets one answer, without progress notifications; a tool call still returns within `tool_wait_seconds`, and the app calls `council_result` until the answer is ready.
 
+#### On a server of your own (Docker)
+
+To keep it online without your computer, run it on a server you control (a VPS, a home server) with this repository's `Dockerfile`: Node.js, both CLIs and `serve`. It is still your council, on your plans: sign both CLIs in with your own accounts, for your own use.
+
+```bash
+git clone https://github.com/hamza-aziz-ai/codex-claude-council.git
+docker build -t codex-claude-council codex-claude-council
+docker run -d --name council --restart unless-stopped \
+  --security-opt seccomp=unconfined \
+  -p 127.0.0.1:8000:8000 \
+  -v council-home:/home/node \
+  -v ~/code:/projects:ro \
+  codex-claude-council
+docker exec -it council codex login --device-auth   # Sign in with ChatGPT, on any device
+docker exec -it council claude auth login           # open the link, paste the code back
+docker logs council                                 # the URL, with its token
+```
+
+- **`--security-opt seccomp=unconfined`**: Codex's read-only sandbox (bubblewrap) needs user namespaces, which Docker's default seccomp profile blocks; without it, Codex can't run any command. If Codex still reports that bubblewrap can't create a namespace, add `--security-opt apparmor=unconfined` too.
+- **The `council-home` volume** keeps the sign-ins, your config, skills and the token across restarts and new images. To use your own token, add `-e COUNCIL_TOKEN=<secret>`.
+- **Projects:** mount the folders the council should read, read-only, and name them in the question ("in the project at `/projects/app`").
+- **HTTPS:** the port is open on the server itself only (`127.0.0.1`). Put a tunnel (`cloudflared tunnel --url http://127.0.0.1:8000`) or a reverse proxy with a certificate (such as Caddy) in front, then add `https://<your host>/mcp/<token>` as a connector, as above.
+- **Update:** `git pull`, build again, then `docker rm -f council` and the same `docker run`; the volume keeps everything.
+
 ## Use it
 
 Just ask in plain language. The host (the app you are asking in) picks the tool and fills in its inputs:
