@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1 (2026-10-26)
+
+- **The connector icon, for favicon indexes.** claude.ai shows a connector with its domain's icon from a favicon index fed by search crawling, and falls back to the parent domain's (a URL on `council.example.com` showed `example.com`'s icon). `serve` now answers `HEAD` as well as `GET` for `/` and `/favicon.ico`, as crawlers check, and serves a 192 px icon (72 KB, was the 1254 px, 353 KB one), declared with `sizes="192x192"`. Once a search engine has indexed your server's address, the connector should show the council's icon (not yet confirmed; a domain of its own avoids the fallback).
+
 ## 0.15.0 (2026-10-26)
 
 - **`serve --tunnel`: online in one command.** It starts a Cloudflare quick tunnel (`cloudflared`, no account needed) to the server and prints the HTTPS URL to add as a connector, `https://<random words>.trycloudflare.com/mcp/<token>`, instead of a second terminal and joining the URL by hand. Ctrl+C stops both; if the tunnel stops, so does the server. Without `cloudflared`, it says how to install it.

@@ -188,8 +188,10 @@ test('serve: the MCP server over HTTP answers only at its secret URL, with a gen
     // Without the token, only the icon (apps show the connector with its site's favicon) and a page naming it.
     const icon = await fetch(`${new URL(url).origin}/favicon.ico`);
     assert.equal(icon.headers.get('content-type'), 'image/png');
-    assert.deepEqual(Buffer.from(await icon.arrayBuffer()), readFileSync(join(ROOT, 'mcpb', 'icon.png')));
-    assert.match(await (await fetch(new URL(url).origin)).text(), /<link rel="icon" type="image\/png" href="\/favicon.ico">/);
+    assert.deepEqual(Buffer.from(await icon.arrayBuffer()), readFileSync(join(ROOT, 'mcpb', 'icon-192.png')));
+    assert.match(await (await fetch(new URL(url).origin)).text(), /<link rel="icon" type="image\/png" sizes="192x192" href="\/favicon.ico">/);
+    // Crawlers check with HEAD too.
+    for (const path of ['/', '/favicon.ico']) assert.equal((await fetch(new URL(path, url), { method: 'HEAD' })).status, 200, path);
     assert.equal((await fetch(url)).status, 405, 'no event stream');
     const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
     assert.equal(init.result.serverInfo.name, 'codex-claude-council');

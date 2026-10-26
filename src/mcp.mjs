@@ -11,7 +11,7 @@ import { listSkills, nativeSkills } from './skills.mjs';
 
 // The plugin's icon, served from the repository (MCP icons must be HTTPS URLs); clients that show server icons use it.
 const ICON_URL = 'https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/mcpb/icon.png';
-const ICON_FILE = join(PACKAGE_ROOT, 'mcpb', 'icon.png');
+const ICON_FILE = join(PACKAGE_ROOT, 'mcpb', 'icon-192.png');
 const DEFAULTS_NOTE = 'Omit to use the configured default; set only when the user asks for a specific one.';
 const MODEL_HINT = {
   codex: 'Codex (ChatGPT) model override, e.g. gpt-5.6-sol',
@@ -447,15 +447,18 @@ export function serveHttp({ token, port = 8000, host = '127.0.0.1', server = COU
     res.end(body === undefined ? undefined : JSON.stringify(body));
   };
   const http = createServer((req, res) => {
-    // Apps show a connector with its site's icon (claude.ai fetches the favicon), not the MCP icons: without one, a
-    // tunnel's URL shows the tunnel provider's. The icon and a page naming it need no token; they reveal nothing else.
-    if (req.method === 'GET' && req.url === '/favicon.ico') {
+    // Apps show a connector with its site's favicon, not the MCP icons: claude.ai takes it from a favicon index fed by
+    // search crawling, and falls back to the parent domain's. So the page and its icon are served for crawlers (GET and
+    // HEAD; Node sends no body for HEAD) without the token; they reveal nothing else. A small square icon, as favicon
+    // indexes want (at least 48 px).
+    const read = req.method === 'GET' || req.method === 'HEAD';
+    if (read && req.url === '/favicon.ico') {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
       return res.end(readFileSync(ICON_FILE));
     }
-    if (req.method === 'GET' && req.url === '/') {
+    if (read && req.url === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(`<!doctype html><title>${server.title}</title><link rel="icon" type="image/png" href="/favicon.ico"><h1>${server.title}</h1>`);
+      return res.end(`<!doctype html><title>${server.title}</title><link rel="icon" type="image/png" sizes="192x192" href="/favicon.ico"><h1>${server.title}</h1>`);
     }
     const requested = Buffer.from(req.url.split('?')[0].replace(/\/$/, ''));
     if (requested.length !== expected.length || !timingSafeEqual(requested, expected)) return answer(res, 404, { error: 'not found' });
