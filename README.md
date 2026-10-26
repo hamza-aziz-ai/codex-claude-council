@@ -15,6 +15,7 @@
   <a href="https://github.com/hashgraph-online/hol-guard"><img alt="HOL Plugin Scanner: 95/100" src="https://img.shields.io/badge/HOL%20Plugin%20Scanner-95%2F100-2E7D32"></a>
   <a href="https://tdqs.dev/reports/dbtjn020iu"><img alt="TDQS" src="https://tdqs.dev/reports/dbtjn020iu/badge.svg"></a>
   <a href="https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council"></a>
+  <a href="https://github.com/Appnova-EU-OU/awesome-remote-mcp-servers"><img alt="Listed on awesome-remote-mcp-servers" src="https://img.shields.io/badge/Listed_on-awesome--remote--mcp--servers-blue?logo=github"></a>
 </p>
 <p align="center">
   <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img width="380" height="200" alt="Codex–Claude Council on Glama" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/card.svg"></a>
