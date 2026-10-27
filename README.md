@@ -18,6 +18,16 @@
   <a href="https://aiagentslisting.com/mcp/codex-claude-council"><img alt="Codex Claude Council MCP score on AI Agents Listing" src="https://aiagentslisting.com/codex-claude-council/badge.svg?variant=score"></a>
   <a href="https://github.com/Appnova-EU-OU/awesome-remote-mcp-servers"><img alt="Listed on awesome-remote-mcp-servers" src="https://img.shields.io/badge/Listed_on-awesome--remote--mcp--servers-blue?logo=github"></a>
 </p>
+<p align="center">
+  <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img width="380" height="200" alt="Codex–Claude Council on Glama" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/card.svg"></a>
+  <a href="https://mcprush.com/to/codex-claude-council-mcp?ref=badge"><img width="380" height="200" alt="Codex–Claude Council on MCPRush" src="https://mcprush.com/badge/codex-claude-council-mcp/card.svg"></a>
+</p>
+<p align="center">
+  <a href="https://aiagentslisting.com/mcp/codex-claude-council"><img width="200" height="50" alt="Codex–Claude Council on AI Agents Listing" src="https://aiagentslisting.com/codex-claude-council/badge.svg?claim=df6787ce44b7957dda33ffd902293f93"></a>
+</p>
+<p align="center">
+  Also in the <a href="https://registry.modelcontextprotocol.io/v0/servers?search=io.github.hamza-aziz-ai/codex-claude-council">MCP Registry</a>, on <a href="https://smithery.ai/servers/hamza-aziz-ai/codex-claude-council">Smithery</a>, <a href="https://www.npmjs.com/package/codex-claude-council">npm</a>, <a href="https://github.com/hamza-aziz-ai/codex-claude-council/pkgs/container/codex-claude-council">GHCR</a> and <a href="https://hub.docker.com/r/hamzaazizai/codex-claude-council">Docker Hub</a>.
+</p>
 
 <h2 align="center">Two AIs. One answer.</h2>
 
@@ -184,15 +194,24 @@ Every answer is in the [result file](bench/results/2026-10-13-03-15-hard-low.jso
 
 ### Install
 
-For Claude Code and Codex (the CLIs and their IDE extensions). Any of:
+For Claude Code and Codex (the CLIs and their IDE extensions). Use one of these:
+
+**macOS / Linux / WSL**
 
 ```bash
-npx -y codex-claude-council install                                                              # any OS with Node.js
-curl -fsSL https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.sh | bash  # macOS / Linux / WSL
+curl -fsSL https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.sh | bash
 ```
 
+**Windows (PowerShell)**
+
 ```powershell
-irm https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.ps1 | iex   # Windows (PowerShell)
+irm https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/install.ps1 | iex
+```
+
+**Any OS with Node.js**
+
+```bash
+npx -y codex-claude-council install
 ```
 
 The installer checks Node.js and both CLIs (and whether each is signed in), then adds this repository's marketplace to Claude Code and Codex and installs the plugin in both (for Claude Code, for your user, so it works in every project). If the plugin is already installed, it updates it instead.
@@ -661,18 +680,6 @@ npm test
 ```
 
 The tests use fake `codex` / `claude` executables and a fake of both APIs, so they make no model calls. CI runs them on Windows, macOS and Linux. To try a local checkout, use its path as the marketplace: `claude plugin marketplace add ./codex-claude-council` or `codex plugin marketplace add ./codex-claude-council`.
-
-## Listings
-
-<p align="center">
-  <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img width="380" height="200" alt="Codex–Claude Council on Glama" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/card.svg"></a>
-  <a href="https://mcprush.com/to/codex-claude-council-mcp?ref=badge"><img width="380" height="200" alt="Codex–Claude Council on MCPRush" src="https://mcprush.com/badge/codex-claude-council-mcp/card.svg"></a>
-</p>
-<p align="center">
-  <a href="https://aiagentslisting.com/mcp/codex-claude-council"><img width="200" height="50" alt="Codex–Claude Council on AI Agents Listing" src="https://aiagentslisting.com/codex-claude-council/badge.svg?claim=df6787ce44b7957dda33ffd902293f93"></a>
-</p>
-
-Also in the [MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.hamza-aziz-ai/codex-claude-council), on [Smithery](https://smithery.ai/servers/hamza-aziz-ai/codex-claude-council), [npm](https://www.npmjs.com/package/codex-claude-council), [GHCR](https://github.com/hamza-aziz-ai/codex-claude-council/pkgs/container/codex-claude-council) and [Docker Hub](https://hub.docker.com/r/hamzaazizai/codex-claude-council).
 
 ## Disclaimer
 
