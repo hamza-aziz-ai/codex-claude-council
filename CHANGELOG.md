@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0 (2026-10-27)
+
+- **Prompts: three starters.** Apps that show MCP prompts (claude.ai and Claude Desktop, in their **+** menu) now offer `ask_council`, `second_opinion` (Codex by default, or `model: claude`) and `debate`. Each takes your question and fills in a request that names the tool to call. The Claude Desktop extension's manifest lists them too.
+- **Resources: the guide and the config.** `council://guide` (markdown: which tool to use for what, with every tool's description) and `council://config` (JSON: the effective settings and the installed skills; no secrets) can be read or attached in apps that support resources.
+
 ## 0.15.1 (2026-10-26)
 
 - **The connector icon, for favicon indexes.** claude.ai shows a connector with its domain's icon from a favicon index fed by search crawling, and falls back to the parent domain's (a URL on `council.example.com` showed `example.com`'s icon). `serve` now answers `HEAD` as well as `GET` for `/` and `/favicon.ico`, as crawlers check, and serves a 192 px icon (72 KB, was the 1254 px, 353 KB one), declared with `sizes="192x192"`. Once a search engine has indexed your server's address, the connector should show the council's icon (not yet confirmed; a domain of its own avoids the fallback).

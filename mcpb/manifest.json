@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "codex-claude-council",
   "display_name": "Codex–Claude Council",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "ChatGPT (Codex CLI) and Claude (Claude Code) discuss your question until they agree, on your own subscriptions.",
   "long_description": "Ask **ChatGPT** (through your Codex CLI) and **Claude** (through your Claude Code CLI) the same question. Each answers on its own, then they reply to each other, round after round, until both agree on one answer. No API keys: it runs the CLIs you have already signed in to.\n\n- Both read your project in read-only mode (Claude in plan mode, Codex in its sandbox) and can search the web.\n- Continue your existing Claude Code or Codex sessions, or take part yourself with `council_join`.\n- Requires the Claude Code CLI and the Codex CLI to be installed and signed in on this computer.",
   "author": {
@@ -34,6 +34,11 @@
     { "name": "council_turn", "description": "Send your reply to the council's message when it is your turn." },
     { "name": "council_result", "description": "Wait for the answer of a council that is still working." },
     { "name": "council_cancel", "description": "Stop a council that is still working." }
+  ],
+  "prompts": [
+    { "name": "ask_council", "description": "Codex (ChatGPT) and Claude answer your question, discuss it until they agree, and give one answer.", "arguments": ["question"], "text": "Ask the council (council_ask): ${arguments.question}" },
+    { "name": "second_opinion", "description": "One model alone answers: Codex (ChatGPT) by default, or Claude.", "arguments": ["question", "model"], "text": "Get a second opinion from one model alone (council_ask_codex for Codex, the default; council_ask_claude if the model is claude). Model: ${arguments.model}. Question: ${arguments.question}" },
+    { "name": "debate", "description": "The council's answer with both opening answers, every exchange and the final check, to see where they disagreed.", "arguments": ["question"], "text": "Run a council debate (council_debate) and show me both answers, every exchange and the final check: ${arguments.question}" }
   ],
   "keywords": ["chatgpt", "claude", "codex", "claude-code", "council", "second-opinion", "llm-council", "debate"],
   "license": "MIT",
