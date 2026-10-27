@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.1 (2026-10-27)
+
+- **With neither a CLI nor an API key, the message names both ways out.** A side whose CLI isn't installed already stopped the council before anything was sent, but the error said only "CLI not found". It now adds how to do without the CLI: enter the provider's API key in the Claude Desktop extension's settings, or set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` and `"via": "api"` for that side.
+
 ## 0.21.0 (2026-10-27)
 
 - **Claude Desktop: enter a partner model's API key in the extension's settings.** The `.mcpb` extension now has settings (Claude Desktop: **Settings → Extensions → Codex–Claude Council**): an OpenAI API key, an Anthropic API key, and a model for each side, all optional. A side with a key runs through its API with no CLI needed; a side without one uses its CLI, as before. The keys are marked sensitive, so Claude Desktop masks them, and this server never passes them on to the CLIs. With only an OpenAI key, "Discuss with ChatGPT whether …" (`council_join`) makes Claude Desktop itself the Claude member, so it needs neither Claude Code nor an Anthropic key. A config file that sets a side's `via` still decides. See [Without the CLIs](README.md#without-the-clis-through-the-apis).
