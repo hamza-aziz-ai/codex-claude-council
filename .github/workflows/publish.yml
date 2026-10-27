@@ -5,7 +5,7 @@
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
 # - Docker image: ghcr.io with this workflow's token; Docker Hub (hamzaazizai/codex-claude-council) too when DOCKERHUB_USERNAME (variable) and
-#   DOCKERHUB_TOKEN (secret) are set (see the step).
+#   DOCKERHUB_TOKEN (secret) are set (see the step), and its page (description and docker/README.md) with them.
 # Before any of them, HOL's AI Plugin Scanner checks the release (see the step).
 # It runs when a release is published, or by hand (Actions > Publish > Run workflow) for the version in package.json,
 # which must already have its release tag; autorelease.yml starts it that way after it creates the release. A version
@@ -101,6 +101,25 @@ jobs:
           TAGS=()
           for IMAGE in "${IMAGES[@]}"; do TAGS+=(--tag "$IMAGE:$VERSION" --tag "$IMAGE:latest"); done
           docker buildx build --platform linux/amd64,linux/arm64 "${TAGS[@]}" --push .
+
+      # The Docker Hub page: its short description and its overview, docker/README.md. Docker Hub lets only a token with
+      # Read, Write, Delete edit them; with a narrower one this step warns without failing the release.
+      - name: Docker Hub page
+        if: vars.DOCKERHUB_USERNAME != ''
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DESCRIPTION: 'ChatGPT (Codex) and Claude discuss your question until they agree: MCP server, on your own plans'
+        run: |
+          JWT=$(jq -n --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" '{username: $u, password: $p}' \
+            | curl -fsS -H 'Content-Type: application/json' -d @- https://hub.docker.com/v2/users/login | jq -r .token)
+          echo "::add-mask::$JWT"
+          jq -n --arg d "$DESCRIPTION" --rawfile f docker/README.md '{description: $d, full_description: $f}' \
+            | curl -sS -o response.json -w '%{http_code}' -X PATCH -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d @- \
+              "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/codex-claude-council/" > status.txt
+          if [ "$(cat status.txt)" != 200 ]; then
+            echo "::warning::Docker Hub page not updated (HTTP $(cat status.txt)): the token needs Read, Write, Delete. $(head -c 300 response.json)"
+          fi
 
       # Since 2026-10-25 Smithery refuses updates to a listed server (403 "Updating servers has been removed"), so
       # a failure here doesn't fail the release; it is still tried, in case Smithery takes updates again.
