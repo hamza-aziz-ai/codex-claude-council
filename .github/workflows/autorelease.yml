@@ -5,6 +5,8 @@
 # merge or a release made with a workflow's token starts no workflows (GitHub's rule for that token), so this can't
 # wait for a push to main, and it starts Publish itself (workflow_dispatch, an event the token can start). A version
 # whose merge was still queued is released after the next CI run. It only checks out main, never a pull request's code.
+# A tagged version that isn't on npm and ghcr.io yet (its Publish run failed, such as at the HOL scan gate) gets
+# Publish again after the next CI run, which is usually the fix's: no retry by hand. Publish skips what is done already.
 name: Autorelease
 
 on:
@@ -28,12 +30,23 @@ jobs:
         with:
           ref: main
 
-      - name: Release the version on main, unless it has its tag
+      - name: Release the version on main, unless it has its tag; publish it again if that failed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          if git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then echo "v$VERSION is already released"; exit 0; fi
+          if git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then
+            if npm view "codex-claude-council@$VERSION" version >/dev/null 2>&1 \
+              && docker manifest inspect "ghcr.io/hamza-aziz-ai/codex-claude-council:$VERSION" >/dev/null 2>&1; then
+              echo "v$VERSION is already released and published"; exit 0
+            fi
+            if [ -n "$(gh run list --workflow publish.yml --status in_progress --json databaseId --jq '.[].databaseId')$(gh run list --workflow publish.yml --status queued --json databaseId --jq '.[].databaseId')" ]; then
+              echo "v$VERSION is being published"; exit 0
+            fi
+            echo "v$VERSION is released but not published on npm and ghcr.io (its Publish run failed): running Publish again"
+            gh workflow run publish.yml --ref main
+            exit 0
+          fi
           # The notes: the lines under "## <version> (date)" up to the next "## ".
           node -e '
             const [, version] = process.argv;
