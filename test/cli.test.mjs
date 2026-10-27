@@ -208,20 +208,27 @@ test('serve: the MCP server over HTTP answers only at its secret URL, with a gen
   }
 });
 
-test('serve --tunnel: starts a Cloudflare quick tunnel to the server and prints the HTTPS URL', async () => {
+/** `serve --tunnel` with a fake cloudflared first on PATH: { child, log } (cloudflared's calls, in order). */
+function serveTunnel(env = {}) {
   const bin = join(dirname(fake.env.COUNCIL_CONFIG), 'tunnel-bin');
   mkdirSync(bin, { recursive: true });
   const script = join(ROOT, 'test', 'fixtures', 'fake-cloudflared.mjs');
   if (process.platform === 'win32') writeFileSync(join(bin, 'cloudflared.cmd'), `@"${process.execPath}" "${script}" %*\r\n`);
   else writeFileSync(join(bin, 'cloudflared'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
   const log = join(bin, 'calls.jsonl');
+  writeFileSync(log, '');
   const child = spawn(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'serve', '--port', '0', '--tunnel', '--token', 'tunnel-test-token-0123456789'], {
-    env: { ...process.env, ...fake.env, PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_CLOUDFLARED_LOG: log },
+    env: { ...process.env, ...fake.env, PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_CLOUDFLARED_LOG: log, TUNNEL_TOKEN: '', COUNCIL_PUBLIC_URL: '', ...env },
   });
+  return { child, calls: () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) };
+}
+
+test('serve --tunnel: starts a Cloudflare quick tunnel to the server and prints the HTTPS URL', async () => {
+  const { child, calls } = serveTunnel();
   try {
     const [line] = await once(createInterface({ input: child.stdout }), 'line');
     assert.equal(line.trim(), 'https://quiet-test-words-here.trycloudflare.com/mcp/tunnel-test-token-0123456789');
-    const [args] = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+    const [{ args }] = calls();
     assert.deepEqual(args.slice(0, 3), ['tunnel', '--no-autoupdate', '--url']);
     assert.match(args[3], /^http:\/\/127\.0\.0\.1:\d+$/);
     // The tunnel's target is the server.
@@ -231,6 +238,27 @@ test('serve --tunnel: starts a Cloudflare quick tunnel to the server and prints 
     child.kill();
     await once(child, 'exit');
   }
+});
+
+test('serve --tunnel with TUNNEL_TOKEN: runs the named tunnel and prints its fixed address from COUNCIL_PUBLIC_URL', async () => {
+  const { child, calls } = serveTunnel({ TUNNEL_TOKEN: 'named-tunnel-token', COUNCIL_PUBLIC_URL: 'https://council.example.com/' });
+  try {
+    const [line] = await once(createInterface({ input: child.stdout }), 'line');
+    assert.equal(line.trim(), 'https://council.example.com/mcp/tunnel-test-token-0123456789');
+    const [{ args, token }] = calls();
+    assert.deepEqual(args.slice(0, 4), ['tunnel', '--no-autoupdate', 'run', '--url']);
+    assert.match(args[4], /^http:\/\/127\.0\.0\.1:\d+$/);
+    assert.ok(token, 'cloudflared gets the token from its environment, not its command line');
+    assert.ok(!args.includes('named-tunnel-token'));
+  } finally {
+    child.kill();
+    await once(child, 'exit');
+  }
+  // Without the address to print, it says what to set, and starts no tunnel.
+  const missing = serveTunnel({ TUNNEL_TOKEN: 'named-tunnel-token' });
+  const [code] = await once(missing.child, 'exit');
+  assert.equal(code, 1);
+  assert.deepEqual(missing.calls(), []);
 });
 
 test('login signs in each CLI that is not signed in yet, Codex with a code when COUNCIL_DEVICE_AUTH is set', () => {

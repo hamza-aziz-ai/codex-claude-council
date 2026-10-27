@@ -65,7 +65,8 @@ Serve options:
   --token <secret>        The secret in the URL (default: COUNCIL_TOKEN, else one generated once and saved
                           next to the config file)
   --tunnel                Also put it online over HTTPS, through a Cloudflare quick tunnel (needs cloudflared),
-                          and print that URL
+                          and print that URL; with TUNNEL_TOKEN and COUNCIL_PUBLIC_URL set, through your named
+                          tunnel instead, at a fixed address
 
 The question can also be piped on stdin.`;
 
@@ -168,9 +169,10 @@ then add https://<its host>${path} as a custom connector. Ctrl+C stops the serve
     stop(1);
   });
   console.log(`${tunnel.origin}${path}
-The council's MCP server is online at the URL above, through a Cloudflare quick tunnel (HTTPS). ${secret}
-Add it as a custom connector (claude.ai: Settings > Connectors > Add custom connector; no sign-in). The tunnel's
-address changes each time serve starts: update the connector then. Ctrl+C stops the server and the tunnel.`);
+The council's MCP server is online at the URL above, through ${tunnel.named ? 'your Cloudflare named tunnel' : 'a Cloudflare quick tunnel'} (HTTPS). ${secret}
+Add it as a custom connector (claude.ai: Settings > Connectors > Add custom connector; no sign-in). ${tunnel.named
+    ? 'The address stays the same across restarts.'
+    : 'The tunnel\'s\naddress changes each time serve starts: update the connector then.'} Ctrl+C stops the server and the tunnel.`);
   return null;
 }
 
@@ -186,23 +188,30 @@ async function startTunnel(local) {
     throw new Error('--tunnel needs cloudflared. Install it (Windows: winget install Cloudflare.cloudflared; macOS: brew install cloudflared; '
       + 'Linux: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/), then run serve --tunnel again.');
   }
-  const tunnel = start(file, ['tunnel', '--no-autoupdate', '--url', local]);
+  // A named tunnel of your own (a fixed address): cloudflared reads its token from TUNNEL_TOKEN, and the tunnel's
+  // public hostname, which cloudflared doesn't print, comes from COUNCIL_PUBLIC_URL.
+  const named = Boolean(process.env.TUNNEL_TOKEN);
+  const publicUrl = process.env.COUNCIL_PUBLIC_URL?.trim().replace(/\/+$/, '');
+  if (named && !/^https:\/\/[^/\s]+$/.test(publicUrl ?? '')) {
+    throw new Error('With TUNNEL_TOKEN (a named tunnel), set COUNCIL_PUBLIC_URL to its address, such as https://council.example.com');
+  }
+  const tunnel = start(file, named ? ['tunnel', '--no-autoupdate', 'run', '--url', local] : ['tunnel', '--no-autoupdate', '--url', local]);
   const origin = await new Promise((resolve, reject) => {
     let output = '';
     const fail = message => { clearTimeout(timer); tunnel.stop(); reject(new Error(`${message}\n${output.trim().slice(-1500)}`)); };
-    const timer = setTimeout(() => fail('cloudflared gave no tunnel address within 60 s:'), 60_000);
+    const timer = setTimeout(() => fail(`cloudflared ${named ? 'connected no tunnel' : 'gave no tunnel address'} within 60 s:`), 60_000);
     const read = chunk => {
       if (output === null) return; // found already: the rest is cloudflared's log, read and dropped
       output += chunk;
-      const found = output.match(/https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/);
-      if (found) { clearTimeout(timer); output = null; resolve(found[0]); }
+      const found = named ? /Registered tunnel connection/.test(output) && publicUrl : output.match(/https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/)?.[0];
+      if (found) { clearTimeout(timer); output = null; resolve(found); }
     };
     tunnel.child.stdout.setEncoding('utf8').on('data', read);
     tunnel.child.stderr.setEncoding('utf8').on('data', read);
     tunnel.child.once('error', error => fail(`could not start cloudflared: ${error.message}`));
     tunnel.child.once('exit', code => { if (output !== null) fail(`cloudflared stopped (exit ${code}) before it had a tunnel address:`); });
   });
-  return { origin, ...tunnel };
+  return { origin, named, ...tunnel };
 }
 
 /**
