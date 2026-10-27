@@ -77,10 +77,12 @@ const LIMITS = { entries: 500, lines: 400, maxLines: 2000, bytes: 512 * 1024, ma
 
 /** path (relative to root, or absolute inside it) resolved to a real path inside root; throws if it leaves it. */
 function inside(root, path = '.') {
-  const target = resolve(root, String(path || '.'));
+  // Both real paths: the project folder can itself sit behind a link (on macOS, /var is /private/var).
+  const base = realpathSync(root);
+  const target = resolve(base, String(path || '.'));
   let real;
   try { real = realpathSync(target); } catch { throw new Error(`no such file or folder: ${path}`); }
-  const rel = relative(root, real);
+  const rel = relative(base, real);
   if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error(`${path} is outside the project, which is all you can read`);
   return real;
 }
@@ -139,7 +141,8 @@ const TOOL_SPECS = [
 ];
 
 /** Run one workspace tool; its result as text. Errors come back as text too, for the model to correct. */
-export function runTool(root, name, input = {}) {
+export function runTool(project, name, input = {}) {
+  const root = realpathSync(project);
   if (name === 'list_files') {
     const dir = inside(root, input.path);
     if (!statSync(dir).isDirectory()) throw new Error(`${input.path} is a file; read it with read_file`);
