@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
@@ -241,7 +242,9 @@ test('serve --tunnel: starts a Cloudflare quick tunnel to the server and prints 
 });
 
 test('serve --tunnel with TUNNEL_TOKEN: runs the named tunnel and prints its fixed address from COUNCIL_PUBLIC_URL', async () => {
-  const { child, calls } = serveTunnel({ TUNNEL_TOKEN: 'named-tunnel-token', COUNCIL_PUBLIC_URL: 'https://council.example.com/' });
+  // Generated, so nothing here looks like a real credential to secret scanners.
+  const tunnelToken = randomUUID();
+  const { child, calls } = serveTunnel({ TUNNEL_TOKEN: tunnelToken, COUNCIL_PUBLIC_URL: 'https://council.example.com/' });
   try {
     const [line] = await once(createInterface({ input: child.stdout }), 'line');
     assert.equal(line.trim(), 'https://council.example.com/mcp/tunnel-test-token-0123456789');
@@ -249,13 +252,13 @@ test('serve --tunnel with TUNNEL_TOKEN: runs the named tunnel and prints its fix
     assert.deepEqual(args.slice(0, 4), ['tunnel', '--no-autoupdate', 'run', '--url']);
     assert.match(args[4], /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.ok(token, 'cloudflared gets the token from its environment, not its command line');
-    assert.ok(!args.includes('named-tunnel-token'));
+    assert.ok(!args.includes(tunnelToken));
   } finally {
     child.kill();
     await once(child, 'exit');
   }
   // Without the address to print, it says what to set, and starts no tunnel.
-  const missing = serveTunnel({ TUNNEL_TOKEN: 'named-tunnel-token' });
+  const missing = serveTunnel({ TUNNEL_TOKEN: tunnelToken });
   const [code] = await once(missing.child, 'exit');
   assert.equal(code, 1);
   assert.deepEqual(missing.calls(), []);

@@ -4,3 +4,7 @@ Thumbs.db
 *.log
 *.zip
 mcpb/dist/
+
+# Secrets for compose.yaml (TUNNEL_TOKEN, COUNCIL_TOKEN), and the default projects folder it mounts.
+.env
+projects/
