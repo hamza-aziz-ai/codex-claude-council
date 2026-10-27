@@ -8,6 +8,6 @@
   "network": false,
   "network_domains": [],
   "allow_api_key_auth": false,
-  "codex": { "command": null, "model": null, "effort": "high", "auth": "subscription" },
-  "claude": { "command": null, "model": null, "effort": "high", "auth": "subscription" }
+  "codex": { "command": null, "model": null, "effort": "high", "auth": "subscription", "via": "cli" },
+  "claude": { "command": null, "model": null, "effort": "high", "auth": "subscription", "via": "cli" }
 }

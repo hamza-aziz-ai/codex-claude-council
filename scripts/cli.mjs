@@ -21,6 +21,8 @@ Usage:
   ${NAME} doctor                   Check Node.js, both CLIs, sign-ins and config
   ${NAME} login                    Sign in each CLI that is not signed in yet (Codex with ChatGPT, Claude Code
                                    with your Claude plan); COUNCIL_DEVICE_AUTH=1 signs Codex in with a code
+  ${NAME} api-setup                Install the Anthropic and OpenAI SDKs for sides set to "via": "api", where the
+                                   plugin's own copy lacks them (Claude Code, Codex, Claude Desktop)
   ${NAME} skill add <url|path>     Install the skills (SKILL.md folders) of a GitHub repository or local folder/file
   ${NAME} skill list               List installed skills
   ${NAME} skill remove <name>      Remove an installed skill
@@ -265,6 +267,13 @@ async function main() {
   if (commandName === 'serve') return serveCommand(values);
   if (commandName === 'doctor') return doctor();
   if (commandName === 'login') return login();
+  if (commandName === 'api-setup') {
+    const { apiSetup } = await import('../src/api.mjs');
+    console.log('Installing the Anthropic and OpenAI SDKs, for sides that run through their APIs ("via": "api")…');
+    const { specs, dir } = await apiSetup();
+    console.log(`Installed ${specs.join(', ')} in ${dir}.`);
+    return 0;
+  }
   if (commandName === 'skill') {
     const [action, target] = rest;
     if (action === 'add' && target) {

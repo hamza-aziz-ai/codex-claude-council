@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { claudeSignInProblem, codexSignInProblem } from './adapters.mjs';
+import { apiKeyProblem, apiModel, sdkProblem } from './api.mjs';
 import { NAME, PACKAGE_ROOT, SIDES, loadConfig, resolveSide, userConfigPath, usesApiKey } from './config.mjs';
 import { cleanEnv, findExecutable, run } from './process.mjs';
 import { banner, blend, c, ui } from './ui.mjs';
@@ -49,6 +50,15 @@ export async function preflight({ quiet = false } = {}) {
     return { ...result, ok: false };
   }
   for (const side of ['claude', 'codex']) {
+    // A side through its API ("via": "api") needs its key, not its CLI; the CLI only matters for adding the plugin to it.
+    if (config[side].via === 'api') {
+      const problem = apiKeyProblem(side) ?? await sdkProblem(side);
+      if (problem) { result.signIn.push(problem); show.warn(`${TINT[side](LABEL[side])}: ${problem}`); } else {
+        show.ok(`${TINT[side](LABEL[side])}: through the ${side === 'claude' ? 'Anthropic' : 'OpenAI'} API ${c.dim(`(${apiModel(side, config[side].model)}, key set)`)}`);
+      }
+      try { result.exes[side] = findExecutable(side, config[side].command); } catch { /* not needed for the council */ }
+      continue;
+    }
     let exe;
     try {
       exe = findExecutable(side, config[side].command);
@@ -213,7 +223,8 @@ export async function install({ only, source = DEFAULT_SOURCE, claudeDesktop = f
   ui.gap();
   const check = await prerequisites();
   if (!check) return 1;
-  const hosts = hostsFrom(only);
+  // An app whose CLI isn't installed can't take the plugin; its side may still run through its API.
+  const hosts = hostsFrom(only).filter(host => check.exes[host] || void ui.warn(`${LABEL[host]} is not installed: the plugin is not added to it.`));
   if (hosts.includes('claude')) {
     ui.gap();
     ui.section('Claude Code plugin', c.claude);
@@ -279,7 +290,7 @@ export async function update({ only, dryRun = false } = {}) {
   const check = await prerequisites();
   if (!check) return 1;
   const notInstalled = error => new Error(`${error.message} If ${NAME} is not installed yet, run \`npx -y ${NAME} install\` instead.`);
-  const hosts = hostsFrom(only);
+  const hosts = hostsFrom(only).filter(host => check.exes[host] || void ui.warn(`${LABEL[host]} is not installed: skipped.`));
   try {
     if (hosts.includes('claude')) {
       ui.gap();

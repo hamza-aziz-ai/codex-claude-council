@@ -19,9 +19,12 @@ services:
       # https://council.example.com (see the README). Empty: a quick tunnel, whose address changes on each restart.
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
       COUNCIL_PUBLIC_URL: ${COUNCIL_PUBLIC_URL:-}
-      # Optional, per side: api_key to pay per token instead of a plan, with that side's key (see the README).
+      # Optional, per side: api_key to pay per token instead of a plan, with that side's key; or VIA api to use the
+      # provider's API instead of the CLI (see the README).
       COUNCIL_CODEX_AUTH: ${COUNCIL_CODEX_AUTH:-}
       COUNCIL_CLAUDE_AUTH: ${COUNCIL_CLAUDE_AUTH:-}
+      COUNCIL_CODEX_VIA: ${COUNCIL_CODEX_VIA:-}
+      COUNCIL_CLAUDE_VIA: ${COUNCIL_CLAUDE_VIA:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:

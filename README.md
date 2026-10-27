@@ -156,12 +156,12 @@ Neither model leads the discussion: in every exchange both reply to each other a
 
 | You need | Install | Sign in |
 |---|---|---|
-| [Node.js](https://nodejs.org) 20 or newer: runs the small MCP server (no dependencies) | [nodejs.org](https://nodejs.org) | – |
+| [Node.js](https://nodejs.org) 20 or newer: runs the small MCP server | [nodejs.org](https://nodejs.org) | – |
 | [Claude Code CLI](https://code.claude.com/docs/en/setup), with a Claude Pro, Max, Team or Enterprise plan | macOS / Linux / WSL: `curl -fsSL https://claude.ai/install.sh \| bash`<br>Windows: `irm https://claude.ai/install.ps1 \| iex` | `claude auth login` |
 | [Codex CLI](https://developers.openai.com/codex/cli), with a ChatGPT plan | any OS: `npm install -g @openai/codex`<br>macOS: `brew install --cask codex` | `codex login` → *Sign in with ChatGPT* |
 | [Git](https://git-scm.com) (recommended) | usually already installed | – |
 
-- **Both CLIs are required.** The installer checks for them and stops, with these install steps, if either is missing. Before each council, the CLIs it runs are checked for a sign-in, and nothing is sent until they are signed in.
+- **Both CLIs are required**, unless a side runs through its API instead (see [Without the CLIs](#without-the-clis-through-the-apis)). The installer checks for them and stops, with these install steps, if either is missing. Before each council, the CLIs it runs are checked for a sign-in, and nothing is sent until they are signed in.
 - **Git** lets both models look at your project's history, changes and blame, and `skill add` uses it to download a repository's skills.
 
 > [!IMPORTANT]
@@ -636,6 +636,7 @@ This creates `~/.codex-claude-council/config.json`. It is re-read on every call,
 | `codex.command`, `claude.command` | full path to a CLI if it isn't found automatically |
 | `codex.auth`, `claude.auth` | `subscription` (default): only your ChatGPT or Claude plan; `api_key`: that side may also run on an API key, billed per token (see [API keys instead of a plan](#api-keys-instead-of-a-plan)) |
 | `allow_api_key_auth` | `true`: both sides as `api_key` (the setting before 0.19.0) |
+| `codex.via`, `claude.via` | `cli` (default): that side runs its CLI; `api`: it runs through its provider's API instead, with no CLI (see [Without the CLIs](#without-the-clis-through-the-apis)) |
 
 ### API keys instead of a plan
 
@@ -656,7 +657,34 @@ In Docker, put it all in `.env`: `COUNCIL_CODEX_AUTH=api_key` or `COUNCIL_CLAUDE
 
 - **Each CLI sees only its own key.** A side on `subscription` gets no API key at all, so it can't bill an API account by accident, and neither CLI ever gets the other side's key.
 - **A side on `api_key` still accepts its plan's sign-in.** If the CLI is signed in with your plan, that is used; the key is for when it isn't.
-- **Both CLIs are still needed:** the council runs them either way, with their tools, sandbox and plan mode.
+- **Both CLIs are still needed:** the council runs them either way, with their tools, sandbox and plan mode. To do without a CLI, see the next section.
+
+### Without the CLIs: through the APIs
+
+An add-on to the CLIs, which stay the default: a side set to `"via": "api"` runs through its provider's API, so its CLI doesn't need to be installed at all. Claude goes through Anthropic's Messages API and the ChatGPT side through OpenAI's Responses API, each with its API key, billed per token. Mix as you like, for example Claude Code with your Claude plan and ChatGPT through the API:
+
+```json
+{ "codex": { "via": "api" } }
+```
+
+| Side | Key | Model, when none is set |
+|---|---|---|
+| **Codex (ChatGPT)** | `OPENAI_API_KEY` | `gpt-6-astra` |
+| **Claude** | `ANTHROPIC_API_KEY` | `claude-opus-5-5` (`opus`, `sonnet`, `haiku` and `fable` name the current ones) |
+
+`model` and `effort` work as for the CLIs. In Docker, set `COUNCIL_CODEX_VIA=api` or `COUNCIL_CLAUDE_VIA=api` and the key in `.env`. The Claude Code and Codex plugins and the Claude Desktop extension don't include the providers' SDKs: run `npx -y codex-claude-council api-setup` once to add them (npm and Docker installs have them already). `npx -y codex-claude-council doctor` shows each side's mode and whether it's ready.
+
+What changes for a side through its API:
+
+| | Through its CLI | Through its API |
+|---|---|---|
+| **Your project** | reads files, searches, runs read-only commands (`git log`, `diff`, …) | reads it with three read-only tools of the council's own, limited to the project folder: list files, read a file, search; no commands, no `git` |
+| **The web** | the CLI's web search | the provider's web search (and Claude's web fetch) |
+| **Memory** | the CLI session | the conversation, kept by the council's server while it runs (OpenAI's side with `store: false`, so OpenAI doesn't keep it) |
+| **Your own sessions** (`claude_session_id`, `codex_session_id`, `council_join`'s other side) | continued in place | not possible: they exist only in the CLIs |
+| **Your setup** (CLI skills, plugins, MCP servers, `CLAUDE.md` / `AGENTS.md`) | applies | doesn't: a skill you name is sent as text |
+
+It can't change anything either way: an API member has no tool that writes or runs anything.
 
 Set `COUNCIL_CONFIG` to use a different config file. The installer shows the plugin's icon in terminals that draw sixel images, which it asks the terminal (so it works over ssh too); set `COUNCIL_BANNER=image` to always show it, or `COUNCIL_BANNER=text` never to.
 
@@ -673,8 +701,9 @@ Set `COUNCIL_CONFIG` to use a different config file. The installer shows the plu
 - **Sessions.** The members' sessions are saved by the CLIs like any other, so they appear in `claude --resume` and `codex resume` for that folder. A session you pass by id is continued in place: the council's turns are added to it.
 - **Over HTTP (`serve`).** The secret token in the URL is the only key: whoever has the URL can ask the council, and the members can read your files. It listens on this computer only unless you set `--host`; reach it from elsewhere only through HTTPS (a tunnel or a reverse proxy), and keep the URL as secret as a password. Delete `serve-token` next to your config file to get a new one.
 - **Subscriptions, not API keys, unless you choose.** API-key environment variables are removed before the CLIs start, and Codex must be signed in with ChatGPT and Claude Code with a Claude subscription, unless you set that side's `auth` to `api_key`. Even then, each CLI gets only its own side's key.
-- **Privacy policy:** [PRIVACY.md](PRIVACY.md). The plugin has no servers and no telemetry; what goes to OpenAI and Anthropic goes through their CLIs, under your accounts.
-- **The plugin itself** runs with your user permissions: about 1,700 lines of dependency-free JavaScript in [`src/`](src). Read it before installing if you like.
+- **Through the APIs** (`"via": "api"`), a side sends its prompts, and what it reads of the project with its read-only tools, to its provider directly, under your API key; only that side's key is used, and OpenAI's side is sent with `store: false`. The tools can't leave the project folder, even through a symbolic link.
+- **Privacy policy:** [PRIVACY.md](PRIVACY.md). The plugin has no servers and no telemetry; what goes to OpenAI and Anthropic goes through their CLIs, or their APIs for a side set to `"via": "api"`, under your accounts.
+- **The plugin itself** runs with your user permissions: about 3,200 lines of JavaScript in [`src/`](src), with no dependencies except the Anthropic and OpenAI SDKs, which load only for a side set to `"via": "api"`. Read it before installing if you like.
 
 ## Troubleshooting
 

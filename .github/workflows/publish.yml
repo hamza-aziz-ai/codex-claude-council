@@ -44,6 +44,7 @@ jobs:
             git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null
           fi
 
+      - run: npm ci
       - run: npm test
 
       # HOL's AI Plugin Scanner: a release with a high or critical finding, or a score under 80, is not published.
