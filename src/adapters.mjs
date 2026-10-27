@@ -12,6 +12,7 @@ import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { NAME, SIDES, loadConfig, packageVersion, resolveSide, usesApiKey } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
+import { apiKeyProblem, askApi } from './api.mjs';
 
 // GIT_OPTIONAL_LOCKS=0 stops read-only git commands (git status) from refreshing the index.
 // MEMBER_ENV tells this plugin's own server, if a member's setup starts it, that it runs inside a council.
@@ -385,8 +386,9 @@ export async function claudeSignInProblem(exe, config, opts = {}) {
 const SIGN_IN_PROBLEM = { codex: codexSignInProblem, claude: claudeSignInProblem };
 export const CLI_NAME = { codex: 'Codex (ChatGPT)', claude: 'Claude Code' };
 
-/** null when that side's CLI is installed and signed in as the council needs, otherwise what to do. */
+/** null when that side's CLI is installed and signed in as the council needs (or its API key is set, with "via": "api"), otherwise what to do. */
 export async function signInProblem(side, config = loadConfig(), opts = {}) {
+  if (config[side]?.via === 'api') return apiKeyProblem(side);
   try {
     return await SIGN_IN_PROBLEM[side](findExecutable(side, config[side].command), config, opts);
   } catch (error) {
@@ -461,6 +463,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
     const call = () => askRemote('codex', prompt, overrides, remote, { config, signal, web, network, skill });
     return held ? call() : inSession(session, call, signal, onWait);
   }
+  if (config.codex.via === 'api') return apiMember('codex', prompt, overrides, { config, signal, workspace, web, skill, resume, held, onWait });
   const chosen = resolveSide('codex', overrides, config);
   const exe = findExecutable('codex', config.codex.command);
   const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
@@ -509,6 +512,22 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
 }
 
 /**
+ * A side set to "via": "api": its model through the provider's API (see api.mjs), in a session of its own per workspace and
+ * model, one call at a time like a CLI session. A CLI session of the user's (resume) can't be continued that way.
+ */
+function apiMember(side, prompt, overrides, { config, signal, workspace, web, skill, resume, held, onWait }) {
+  if (resume) {
+    throw new Error(`${CLI_NAME[side]} runs through the API ("via": "api"), which can't continue a ${side === 'claude' ? 'Claude Code' : 'Codex'} session: `
+      + `leave out the session id, or set "${side}": { "via": "cli" }.`);
+  }
+  const chosen = resolveSide(side, overrides, config);
+  const session = sessionFor(side, workspace, chosen.model);
+  const seconds = skill ? Math.max(Number(config.timeout_seconds), Number(config.skill_timeout_seconds)) : Number(config.timeout_seconds);
+  const call = () => askApi(side, prompt, { model: chosen.model, effort: chosen.effort, session, workspace, web, signal, timeoutMs: seconds * 1000 });
+  return held ? call() : inSession(session, call, signal, onWait);
+}
+
+/**
  * Claude's answer from `--output-format stream-json`: the main agent's text after its last tool result,
  * within its final turn. A model that writes a verdict and then closes with "see above" keeps the verdict;
  * sub-agents' messages and "still waiting for the sub-agents" turns (each ends with its own result event)
@@ -543,6 +562,7 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
     const call = () => askRemote('claude', prompt, overrides, remote, { config, signal, web, skill });
     return held ? call() : inSession(session, call, signal, onWait);
   }
+  if (config.claude.via === 'api') return apiMember('claude', prompt, overrides, { config, signal, workspace, web, skill, resume, held, onWait });
   const chosen = resolveSide('claude', overrides, config);
   const exe = findExecutable('claude', config.claude.command);
   const session = sessionFor('claude', workspace, chosen.model, resume && await resolveSession('claude', resume, { workspace }));

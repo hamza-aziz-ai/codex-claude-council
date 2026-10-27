@@ -13,7 +13,8 @@ RUN apt-get update \
   && npm cache clean --force
 
 COPY --chown=node:node . /opt/codex-claude-council
-RUN npm install -g /opt/codex-claude-council
+# Its dependencies (the providers' SDKs, for sides through their APIs) first: a global install of a folder only links it.
+RUN cd /opt/codex-claude-council && npm ci --omit=dev && npm cache clean --force && npm install -g /opt/codex-claude-council
 
 LABEL org.opencontainers.image.source="https://github.com/hamza-aziz-ai/codex-claude-council" \
   org.opencontainers.image.description="Codex–Claude Council: its MCP server over HTTP, with the Codex and Claude Code CLIs" \

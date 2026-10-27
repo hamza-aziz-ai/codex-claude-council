@@ -46,6 +46,7 @@ function readJson(path, optional) {
 export const isDomain = value => typeof value === 'string' && /^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/.test(value);
 
 export const AUTHS = Object.freeze(['subscription', 'api_key']);
+export const VIAS = Object.freeze(['cli', 'api']);
 
 /** Whether side's CLI may run on an API key (billed per token) rather than only the user's subscription. */
 export const usesApiKey = (config, side) => config.allow_api_key_auth === true || config[side]?.auth === 'api_key';
@@ -61,6 +62,10 @@ export function loadConfig() {
     const fromEnv = process.env[`COUNCIL_${side.toUpperCase()}_AUTH`]?.trim();
     if (fromEnv) config[side].auth = fromEnv;
     if (!AUTHS.includes(config[side].auth)) throw new Error(`config: ${side}.auth must be "subscription" or "api_key"`);
+    // "via": "api" runs that side through its provider's API instead of its CLI (COUNCIL_CODEX_VIA / COUNCIL_CLAUDE_VIA).
+    const viaEnv = process.env[`COUNCIL_${side.toUpperCase()}_VIA`]?.trim();
+    if (viaEnv) config[side].via = viaEnv;
+    if (!VIAS.includes(config[side].via)) throw new Error(`config: ${side}.via must be "cli" or "api"`);
   }
   if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');
   config.synthesizer = sideName(config.synthesizer);

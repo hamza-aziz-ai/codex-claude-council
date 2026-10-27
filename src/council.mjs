@@ -77,6 +77,8 @@ export function hostAccessNote(workspace, web = false) {
  */
 async function skillsFor(side, skills, workspace, session, { config, signal }) {
   if (!skills.length) return { skills, own: new Set() };
+  // A member through the API has no skill folders of its own and can read only the project: it gets every skill's text.
+  if (config[side]?.via === 'api') return { skills: skills.map(({ dir, ...skill }) => skill), own: new Set() };
   if (!remoteSession(session)) return { skills, own: installedFor(side, skills, workspace) };
   return { skills: skills.map(({ dir, ...skill }) => skill), own: await remoteInstalledSkills(side, session, skills.map(skill => skill.name), { config, signal }) };
 }
@@ -110,8 +112,12 @@ export function networkNote(domains = []) {
 }
 
 /** What a model is told about its access, in its first prompt for each question. */
-export function accessNote(workspace, web = false) {
-  const files = workspace
+export function accessNote(workspace, web = false, api = false) {
+  const files = api
+    ? (workspace
+      ? `You are working in the project at ${workspace}. Read it to check facts before relying on them, with your read-only tools: list_files, read_file and search. You cannot run commands or change anything, so describe any change you propose instead of making it. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
+      : 'No folder was given for this question: work from the text you are given. You cannot change anything.')
+    : workspace
     ? `You are working in the project at ${workspace}. Read it to check facts before relying on them: open files, search, and run read-only commands such as git log, diff, show and blame. You are in plan mode: you cannot change anything (edits and writes are blocked), so describe any change you propose instead of making it. Reuse what you already read earlier in this conversation, but re-read files that matter, since the user may have changed them since.`
     : 'No folder was given for this question: work from the text you are given. You are in plan mode: you cannot change anything.';
   const internet = web
@@ -271,7 +277,9 @@ export async function debate(question, { codex = {}, claude = {}, maxRounds, syn
 
     // Each step sends a model only what it has not seen: its own earlier turns are in its session.
     progress('Codex (ChatGPT) and Claude are answering independently');
-    const access = side => (side === host?.side ? hostAccessNote(workspace, web) : accessNote(workspace, web) + (side === 'codex' && net ? networkNote(config.network_domains) : ''));
+    const viaApi = side => config[side]?.via === 'api';
+    const access = side => (side === host?.side ? hostAccessNote(workspace, web)
+      : accessNote(workspace, web, viaApi(side)) + (side === 'codex' && net && !viaApi(side) ? networkNote(config.network_domains) : ''));
     const answers = await bothSides((me, them) => withSkill(me, prompt('answer', { question, access: access(me), self: SPEAKER[me], other: SPEAKER[them] }), true));
     const verify = verifyNote(workspace, web);
 
@@ -405,7 +413,8 @@ export async function invoke(tool, question, options = {}, { signal, onProgress,
   if (tool === 'ask_codex' || tool === 'ask_claude') {
     const one = tool.slice(4);
     const told = await skillsFor(one, skills, workspace, clean.session_id, { config, signal });
-    const single = skillNote(told.skills, true, told.own) + prompt('ask', { question, access: accessNote(workspace, web) + (net ? networkNote(config.network_domains) : '') });
+    const api = config[one]?.via === 'api';
+    const single = skillNote(told.skills, true, told.own) + prompt('ask', { question, access: accessNote(workspace, web, api) + (net && !api ? networkNote(config.network_domains) : '') });
     const answering = () => onProgress?.(`${LABEL[one]} is answering`);
     const singleOptions = { signal, workspace, web, network: net, skill: skills.length > 0, resume: clean.session_id,
       onWait: waiting => (waiting ? onProgress?.(waitingFor(one, clean.session_id)) : answering()) };
