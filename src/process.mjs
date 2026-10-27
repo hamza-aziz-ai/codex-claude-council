@@ -11,6 +11,8 @@ const IS_WINDOWS = process.platform === 'win32';
 const HOST_VARS = [
   'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_PLUGIN_ROOT',
   'CLAUDE_PLUGIN_DATA', 'CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED',
+  // The keys entered in the Claude Desktop extension's settings, for this server's own API calls only.
+  'COUNCIL_OPENAI_API_KEY', 'COUNCIL_ANTHROPIC_API_KEY',
 ];
 // Each side's API credentials and endpoints. A CLI keeps its own side's only when that side may use an API key
 // ("auth": "api_key"), so calls bill the user's subscriptions otherwise; the other side's never reach it, so a model

@@ -7,7 +7,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rea
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { NAME, PACKAGE_ROOT, userConfigPath } from './config.mjs';
+import { DESKTOP_KEY, NAME, PACKAGE_ROOT, settingValue, userConfigPath } from './config.mjs';
 import { failureDetail, findExecutable, run } from './process.mjs';
 
 // The SDKs load only when a side runs through its API, so the CLI mode never needs them. A copy of the plugin made
@@ -65,8 +65,8 @@ export const apiModel = (side, model) => (side === 'claude' ? CLAUDE_ALIASES[mod
 
 /** null when side's API key is set, otherwise what to do. */
 export function apiKeyProblem(side) {
-  if (KEY_ENV[side].some(name => process.env[name]?.trim())) return null;
-  return `${side === 'claude' ? 'Claude' : 'Codex (ChatGPT)'} runs through the ${PROVIDER[side]} API ("via": "api"), but ${KEY_ENV[side][0]} is not set. `
+  if (KEY_ENV[side].some(name => process.env[name]?.trim()) || settingValue(DESKTOP_KEY[side])) return null;
+  return `${side === 'claude' ? 'Claude' : 'Codex (ChatGPT)'} runs through the ${PROVIDER[side]} API ("via": "api"), but it has no key: set ${KEY_ENV[side][0]}, or enter the key in the Claude Desktop extension's settings. `
     + `Set it to your ${PROVIDER[side]} API key, or set "${side}": { "via": "cli" } to use the ${side === 'claude' ? 'Claude Code' : 'Codex'} CLI.`;
 }
 
@@ -206,7 +206,9 @@ const requestOptions = (signal, timeoutMs) => ({ signal, timeout: timeoutMs });
 
 async function askClaudeApi(prompt, { model, effort, session, workspace, web, signal, timeoutMs }) {
   const Anthropic = exported(await load('@anthropic-ai/sdk'), 'Anthropic');
-  const client = new Anthropic({ maxRetries: 2 });
+  // The provider's own variables first (the SDK reads them); else the key from the Claude Desktop extension's settings.
+  const setting = KEY_ENV.claude.some(name => process.env[name]?.trim()) ? null : settingValue(DESKTOP_KEY.claude);
+  const client = new Anthropic({ maxRetries: 2, ...(setting ? { apiKey: setting } : {}) });
   const tools = [
     ...(workspace ? TOOL_SPECS.map(spec => ({ name: spec.name, description: spec.description, input_schema: { type: 'object', properties: spec.properties, required: spec.required } })) : []),
     ...(web ? [{ type: 'web_search_20260209', name: 'web_search' }, { type: 'web_fetch_20260209', name: 'web_fetch' }] : []),
@@ -244,7 +246,8 @@ async function askClaudeApi(prompt, { model, effort, session, workspace, web, si
 async function askOpenAiApi(prompt, { model, effort, session, workspace, web, signal, timeoutMs }) {
   const OpenAI = exported(await load('openai'), 'OpenAI');
   const toResponseInputItems = exported(await load('openai/lib/responses/ResponseInputItems'), 'toResponseInputItems');
-  const client = new OpenAI({ maxRetries: 2 });
+  const setting = process.env.OPENAI_API_KEY?.trim() ? null : settingValue(DESKTOP_KEY.codex);
+  const client = new OpenAI({ maxRetries: 2, ...(setting ? { apiKey: setting } : {}) });
   const tools = [
     ...(workspace ? TOOL_SPECS.map(spec => ({ type: 'function', name: spec.name, description: spec.description, parameters: { type: 'object', properties: spec.properties, required: spec.required }, strict: false })) : []),
     ...(web ? [{ type: 'web_search' }] : []),
