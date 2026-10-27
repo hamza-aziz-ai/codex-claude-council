@@ -16,6 +16,7 @@
   <a href="https://tdqs.dev/reports/dbtjn020iu"><img alt="TDQS" src="https://tdqs.dev/reports/dbtjn020iu/badge.svg"></a>
   <a href="https://m8ven.ai/mcp/hamza-aziz-ai/codex-claude-council"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/hamza-aziz-ai/codex-claude-council"></a>
   <a href="https://github.com/Appnova-EU-OU/awesome-remote-mcp-servers"><img alt="Listed on awesome-remote-mcp-servers" src="https://img.shields.io/badge/Listed_on-awesome--remote--mcp--servers-blue?logo=github"></a>
+  <a href="https://aiagentslisting.com/mcp/codex-claude-council"><img alt="Codex Claude Council MCP score on AI Agents Listing" src="https://aiagentslisting.com/codex-claude-council/badge.svg?variant=score"></a>
 </p>
 <p align="center">
   <a href="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council"><img width="380" height="200" alt="Codex–Claude Council on Glama" src="https://glama.ai/mcp/servers/hamza-aziz-ai/codex-claude-council/badges/card.svg"></a>
