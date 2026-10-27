@@ -8,7 +8,7 @@
   <a href="https://www.npmjs.com/package/codex-claude-council"><img alt="npm" src="https://img.shields.io/npm/v/codex-claude-council?color=CB3837"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-brightgreen">
-  <img alt="No API keys" src="https://img.shields.io/badge/API%20keys-none-D97757">
+  <img alt="API keys optional" src="https://img.shields.io/badge/API%20keys-optional-D97757">
 </p>
 <p align="center">
   <a href="https://smithery.ai/servers/hamza-aziz-ai/codex-claude-council"><img alt="Smithery: 98/100" src="https://img.shields.io/badge/Smithery-98%2F100-FF5601"></a>
@@ -56,7 +56,7 @@
   </tr>
   <tr>
     <td valign="top">🧩 <b>With skills on request</b><br>Such as <a href="https://github.com/aiwithremy/claude-skills-llm-council">llm-council</a>, <a href="https://github.com/JuliusBrussee/caveman">caveman</a>, <a href="https://github.com/DietrichGebert/ponytail">ponytail</a> or <a href="https://github.com/Graphify-Labs/graphify">graphify</a>.</td>
-    <td valign="top">🔑 <b>No API keys</b><br>It runs your own Codex CLI (signed in with ChatGPT) and Claude Code CLI (signed in with your Claude plan) on your computer.</td>
+    <td valign="top">🔑 <b>Your plans, or API keys</b><br>It runs your own Codex CLI (signed in with ChatGPT) and Claude Code CLI (signed in with your Claude plan) on your computer. Or give a side its API key, and it runs through the API with no CLI needed.</td>
   </tr>
 </table>
 
