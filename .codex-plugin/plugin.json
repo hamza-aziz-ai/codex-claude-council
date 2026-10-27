@@ -1,6 +1,6 @@
 {
   "name": "codex-claude-council",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Ask OpenAI Codex (ChatGPT) and Claude the same question through your own signed-in CLIs. They answer independently, then reply to each other round after round until they agree on one answer.",
   "author": {
     "name": "Hamza Aziz",

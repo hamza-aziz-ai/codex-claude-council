@@ -19,6 +19,11 @@ services:
       # https://council.example.com (see the README). Empty: a quick tunnel, whose address changes on each restart.
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
       COUNCIL_PUBLIC_URL: ${COUNCIL_PUBLIC_URL:-}
+      # Optional, per side: api_key to pay per token instead of a plan, with that side's key (see the README).
+      COUNCIL_CODEX_AUTH: ${COUNCIL_CODEX_AUTH:-}
+      COUNCIL_CLAUDE_AUTH: ${COUNCIL_CLAUDE_AUTH:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       # The sign-ins, config, skills and token, across restarts and new images.
       - council-home:/home/node

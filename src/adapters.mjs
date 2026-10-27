@@ -10,7 +10,7 @@ import { createReadStream, existsSync, mkdtempSync, promises as fsp, readFileSyn
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { NAME, SIDES, loadConfig, packageVersion, resolveSide } from './config.mjs';
+import { NAME, SIDES, loadConfig, packageVersion, resolveSide, usesApiKey } from './config.mjs';
 import { cleanEnv, failureDetail, findExecutable, run } from './process.mjs';
 
 // GIT_OPTIONAL_LOCKS=0 stops read-only git commands (git status) from refreshing the index.
@@ -19,9 +19,9 @@ export const MEMBER_ENV = 'CODEX_CLAUDE_COUNCIL_MEMBER';
 const READ_ONLY_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat', [MEMBER_ENV]: '1' };
 
 // A step that uses a skill runs its sub-agents too, so it gets the longer skill_timeout_seconds.
-function options(config, signal, cwd, skill) {
+function options(config, signal, cwd, skill, side = null) {
   const seconds = skill ? Math.max(Number(config.timeout_seconds), Number(config.skill_timeout_seconds)) : Number(config.timeout_seconds);
-  return { cwd, env: { ...cleanEnv(config), ...READ_ONLY_ENV }, timeoutMs: seconds * 1000, signal };
+  return { cwd, env: { ...cleanEnv(config, side), ...READ_ONLY_ENV }, timeoutMs: seconds * 1000, signal };
 }
 
 // Claude runs in plan mode: it reads, searches and runs read-only commands, and anything that would change
@@ -342,25 +342,42 @@ async function inTempDir(prefix, work) {
   }
 }
 
-/** null when Codex is signed in with ChatGPT, otherwise a message saying what to do. */
+/**
+ * null when Codex is signed in as configured, otherwise a message saying what to do: with ChatGPT ("auth":
+ * "subscription", the default), or with ChatGPT or an API key ("auth": "api_key", billed per token).
+ */
 export async function codexSignInProblem(exe, config, opts = {}) {
-  const status = await run(exe, ['login', 'status'], { env: cleanEnv(config), timeoutMs: 60_000, ...opts });
+  const status = await run(exe, ['login', 'status'], { env: cleanEnv(config, 'codex'), timeoutMs: 60_000, ...opts });
   const output = `${status.stdout}\n${status.stderr}`;
   if (status.code === 0 && /chatgpt/i.test(output)) return null;
-  if (config.allow_api_key_auth && status.code === 0 && /logged in/i.test(output)) return null;
+  if (usesApiKey(config, 'codex')) {
+    if (status.code === 0 && /logged in/i.test(output) && !/not logged in/i.test(output)) return null;
+    return 'Codex has no API key. Run `codex login --with-api-key` and paste your OpenAI API key (or set OPENAI_API_KEY and run '
+      + '`codex-claude-council login`), or sign in with ChatGPT: `codex login`.';
+  }
   return /api key/i.test(output)
-    ? 'Codex is signed in with an API key. Run `codex login` and choose "Sign in with ChatGPT", or set "allow_api_key_auth": true.'
+    ? 'Codex is signed in with an API key. Run `codex login` and choose "Sign in with ChatGPT", or set "codex": { "auth": "api_key" } to use the key.'
     : 'Codex is not signed in. Run `codex login` and choose "Sign in with ChatGPT".';
 }
 
-/** null when Claude Code is signed in with a Claude subscription, otherwise what to do. */
+/**
+ * null when Claude Code is signed in as configured, otherwise what to do: with a Claude subscription ("auth":
+ * "subscription", the default), or also with an API key ("auth": "api_key": ANTHROPIC_API_KEY, or a Console sign-in).
+ */
 export async function claudeSignInProblem(exe, config, opts = {}) {
-  const status = await run(exe, ['auth', 'status'], { env: cleanEnv(config), timeoutMs: 60_000, ...opts });
+  const env = cleanEnv(config, 'claude');
+  const apiKey = usesApiKey(config, 'claude');
+  if (apiKey && env.ANTHROPIC_API_KEY?.trim()) return null;
+  const status = await run(exe, ['auth', 'status'], { env, timeoutMs: 60_000, ...opts });
   let auth = {};
   try { auth = JSON.parse(status.stdout); } catch { /* reported below */ }
-  if (!auth.loggedIn) return 'Claude Code is not signed in. Run `claude auth login`.';
-  if (!config.allow_api_key_auth && /api/i.test(String(auth.authMethod || ''))) {
-    return 'Claude Code is using an API key. Run `claude auth login` with your Claude subscription, or set "allow_api_key_auth": true.';
+  if (!auth.loggedIn) {
+    return apiKey
+      ? 'Claude Code has no API key. Set ANTHROPIC_API_KEY, or run `claude auth login --console`; or sign in with your Claude plan: `claude auth login`.'
+      : 'Claude Code is not signed in. Run `claude auth login`.';
+  }
+  if (!apiKey && /api/i.test(String(auth.authMethod || ''))) {
+    return 'Claude Code is using an API key. Run `claude auth login` with your Claude subscription, or set "claude": { "auth": "api_key" } to use the key.';
   }
   return null;
 }
@@ -449,7 +466,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
   const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
   const call = () => inTempDir('council-codex-out-', async outDir => {
     const cwd = workingDir(session, workspace, 'council-codex-');
-    const opts = options(config, signal, cwd, skill);
+    const opts = options(config, signal, cwd, skill, 'codex');
     const problem = await codexSignInProblem(exe, config, opts);
     if (problem) throw new Error(problem);
     const answerFile = join(outDir, 'answer.txt');
@@ -531,7 +548,7 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
   const session = sessionFor('claude', workspace, chosen.model, resume && await resolveSession('claude', resume, { workspace }));
   const call = async () => {
     const cwd = workingDir(session, workspace, 'council-claude-');
-    const opts = options(config, signal, cwd, skill);
+    const opts = options(config, signal, cwd, skill, 'claude');
     const problem = await claudeSignInProblem(exe, config, opts);
     if (problem) throw new Error(problem);
     const id = session.id ?? randomUUID();

@@ -3,12 +3,12 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { NAME, SIDES, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
+import { NAME, SIDES, loadConfig, packageVersion, userConfigPath, usesApiKey } from '../src/config.mjs';
 import { councilText, invoke } from '../src/council.mjs';
 import { debateHtml } from '../src/share.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
 import { CLI_NAME, askClaude, askCodex, resolveSession, sessionFolder, signInProblem } from '../src/adapters.mjs';
-import { cleanEnv, findExecutable, runInteractive, start } from '../src/process.mjs';
+import { cleanEnv, findExecutable, run, runInteractive, start } from '../src/process.mjs';
 import { addSkill, installedFor, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
@@ -217,6 +217,8 @@ async function startTunnel(local) {
 /**
  * Sign in each CLI the council needs that is not signed in yet, one after the other, in this terminal. Codex signs in
  * with a code to enter on any device when COUNCIL_DEVICE_AUTH is set (the Docker image sets it: no browser there).
+ * A side set to "auth": "api_key" signs in with its key: Codex stores OPENAI_API_KEY (codex login --with-api-key);
+ * Claude Code uses ANTHROPIC_API_KEY as it is, or signs in to the Anthropic Console.
  */
 async function login() {
   const config = loadConfig();
@@ -231,9 +233,19 @@ async function login() {
       failed += 1;
       continue;
     }
-    const args = side === 'claude' ? ['auth', 'login'] : ['login', ...(process.env.COUNCIL_DEVICE_AUTH ? ['--device-auth'] : [])];
-    console.log(`Signing in to ${CLI_NAME[side]} (${side} ${args.join(' ')})${side === 'codex' ? ': choose Sign in with ChatGPT' : ''}…`);
-    await runInteractive(file, args, { env: cleanEnv(config) });
+    const env = cleanEnv(config, side);
+    const apiKey = usesApiKey(config, side);
+    if (side === 'codex' && apiKey && env.OPENAI_API_KEY?.trim()) {
+      console.log(`Signing in to ${CLI_NAME[side]} with OPENAI_API_KEY (codex login --with-api-key)…`);
+      await run(file, ['login', '--with-api-key'], { env, input: `${env.OPENAI_API_KEY.trim()}\n`, timeoutMs: 60_000 });
+    } else {
+      const args = side === 'claude'
+        ? ['auth', 'login', ...(apiKey ? ['--console'] : [])]
+        : ['login', ...(process.env.COUNCIL_DEVICE_AUTH ? ['--device-auth'] : [])];
+      const how = side === 'codex' ? ': choose Sign in with ChatGPT' : apiKey ? ': sign in to the Anthropic Console (billed per token)' : '';
+      console.log(`Signing in to ${CLI_NAME[side]} (${side} ${args.join(' ')})${how}…`);
+      await runInteractive(file, args, { env });
+    }
     const problem = await signInProblem(side, config);
     if (problem) { console.error(`${CLI_NAME[side]}: ${problem}`); failed += 1; } else console.log(`${CLI_NAME[side]} is signed in.`);
   }

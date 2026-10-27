@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -572,15 +573,44 @@ test('a council checks that both CLIs are signed in before sending anything', as
   assert.equal(fake.questionCalls().length, 0, 'a missing CLI also stops the council before it starts');
 });
 
-test('API keys are removed from the CLI environment unless allowed', async () => {
-  await withEnv({ OPENAI_API_KEY: 'sk-test', ANTHROPIC_API_KEY: 'sk-ant', CLAUDECODE: '1' }, async () => {
+test('API keys reach a CLI only when its own side may use one, and never the other side\'s', async () => {
+  const openai = randomUUID();
+  const anthropic = randomUUID();
+  await withEnv({ OPENAI_API_KEY: openai, ANTHROPIC_API_KEY: anthropic, CLAUDECODE: '1' }, async () => {
     const { cleanEnv } = await import('../src/process.mjs');
-    const env = cleanEnv({});
-    assert.equal(env.OPENAI_API_KEY, undefined);
-    assert.equal(env.ANTHROPIC_API_KEY, undefined);
-    assert.equal(env.CLAUDECODE, undefined);
-    assert.equal(cleanEnv({ allow_api_key_auth: true }).OPENAI_API_KEY, 'sk-test');
+    for (const side of ['codex', 'claude', null]) {
+      const env = cleanEnv({}, side);
+      assert.deepEqual([env.OPENAI_API_KEY, env.ANTHROPIC_API_KEY, env.CLAUDECODE], [undefined, undefined, undefined], `subscriptions: ${side}`);
+    }
+    const codexOnKey = { codex: { auth: 'api_key' }, claude: { auth: 'subscription' } };
+    assert.deepEqual([cleanEnv(codexOnKey, 'codex').OPENAI_API_KEY, cleanEnv(codexOnKey, 'codex').ANTHROPIC_API_KEY], [openai, undefined]);
+    assert.equal(cleanEnv(codexOnKey, 'claude').ANTHROPIC_API_KEY, undefined, 'Claude stays on its subscription');
+    assert.equal(cleanEnv(codexOnKey, 'claude').OPENAI_API_KEY, undefined, 'and never sees the OpenAI key');
+    // allow_api_key_auth (before 0.19.0): both sides, each with its own key only.
+    assert.deepEqual([cleanEnv({ allow_api_key_auth: true }, 'claude').ANTHROPIC_API_KEY, cleanEnv({ allow_api_key_auth: true }, 'claude').OPENAI_API_KEY], [anthropic, undefined]);
+    assert.equal(cleanEnv({ allow_api_key_auth: true }, null).OPENAI_API_KEY, undefined, 'nor do other programs (ssh)');
   });
+});
+
+test('auth per side: Codex on an API key with Claude on its plan, and the reverse; set in the config or the environment', async () => {
+  const apiKeyCodex = { FAKE_CODEX_AUTH: 'Logged in using an API key - sk-proj-***' };
+  const apiKeyClaude = { FAKE_CLAUDE_AUTH: '{"loggedIn":true,"authMethod":"api_key"}' };
+  fake.writeConfig({ codex: { auth: 'api_key' } });
+  try {
+    await withEnv(apiKeyCodex, async () => assert.match(await askCodex('q'), /^codex/));
+    await withEnv(apiKeyClaude, () => assert.rejects(askClaude('q'), /Claude Code is using an API key.*"claude": \{ "auth": "api_key" \}/));
+    await withEnv({ FAKE_CODEX_AUTH: 'Not logged in' }, () => assert.rejects(askCodex('q'), /Codex has no API key\. Run `codex login --with-api-key`/));
+    fake.writeConfig({ claude: { auth: 'api_key' } });
+    await withEnv(apiKeyClaude, async () => assert.match(await askClaude('q'), /^claude/));
+    await withEnv(apiKeyCodex, () => assert.rejects(askCodex('q'), /Codex is signed in with an API key.*"codex": \{ "auth": "api_key" \}/));
+    // ANTHROPIC_API_KEY alone is enough for Claude Code on an API key.
+    await withEnv({ FAKE_CLAUDE_AUTH: '{"loggedIn":false}', ANTHROPIC_API_KEY: randomUUID() }, async () => assert.match(await askClaude('q'), /^claude/));
+    fake.writeConfig({});
+    await withEnv({ ...apiKeyCodex, COUNCIL_CODEX_AUTH: 'api_key' }, async () => assert.match(await askCodex('q'), /^codex/));
+    await withEnv({ COUNCIL_CLAUDE_AUTH: 'pay-as-you-go' }, () => assert.rejects(askClaude('q'), /claude\.auth must be "subscription" or "api_key"/));
+  } finally {
+    fake.writeConfig({});
+  }
 });
 
 test('slow calls time out and are killed', () => withEnv({ FAKE_SLEEP_MS: '20000' }, async () => {
