@@ -4,7 +4,7 @@
 #   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
-# - Docker image: ghcr.io with this workflow's token; Docker Hub too when DOCKERHUB_USERNAME (variable) and
+# - Docker image: ghcr.io with this workflow's token; Docker Hub (hamzaazizai/codex-claude-council) too when DOCKERHUB_USERNAME (variable) and
 #   DOCKERHUB_TOKEN (secret) are set (see the step).
 # Before any of them, HOL's AI Plugin Scanner checks the release (see the step).
 # It runs when a release is published, or by hand (Actions > Publish > Run workflow) for the version in package.json,
