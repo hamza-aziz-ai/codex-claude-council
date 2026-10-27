@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { claudeSignInProblem, codexSignInProblem } from './adapters.mjs';
-import { NAME, PACKAGE_ROOT, SIDES, loadConfig, resolveSide, userConfigPath } from './config.mjs';
+import { NAME, PACKAGE_ROOT, SIDES, loadConfig, resolveSide, userConfigPath, usesApiKey } from './config.mjs';
 import { cleanEnv, findExecutable, run } from './process.mjs';
 import { banner, blend, c, ui } from './ui.mjs';
 
@@ -59,14 +59,14 @@ export async function preflight({ quiet = false } = {}) {
       continue;
     }
     result.exes[side] = exe;
-    const opts = { env: cleanEnv(config), timeoutMs: 60_000 };
+    const opts = { env: cleanEnv(config, side), timeoutMs: 60_000 };
     const [version, problem] = await show.spin(`Checking the ${LABEL[side]}`, () => Promise.all([
       run(exe, ['--version'], opts).then(r => (r.stdout || r.stderr).trim().split(/\r?\n/)[0] || 'unknown version').catch(error => error.message),
       (side === 'codex' ? codexSignInProblem : claudeSignInProblem)(exe, config, opts).catch(error => error.message),
     ]));
     show.ok(`${TINT[side](LABEL[side])}: ${version} ${c.dim(`(${exe})`)}`);
     if (problem) result.signIn.push(problem);
-    if (problem) show.warn(`${TINT[side](LABEL[side])} sign-in: ${problem}`); else show.ok(`${TINT[side](LABEL[side])} sign-in: ${c.green('subscription')}`);
+    if (problem) show.warn(`${TINT[side](LABEL[side])} sign-in: ${problem}`); else show.ok(`${TINT[side](LABEL[side])} sign-in: ${c.green(usesApiKey(config, side) ? 'subscription or API key' : 'subscription')}`);
   }
   return result;
 }

@@ -45,12 +45,23 @@ function readJson(path, optional) {
 /** A domain name for Codex's network allowlist, optionally starting with "*." for its subdomains. */
 export const isDomain = value => typeof value === 'string' && /^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/.test(value);
 
+export const AUTHS = Object.freeze(['subscription', 'api_key']);
+
+/** Whether side's CLI may run on an API key (billed per token) rather than only the user's subscription. */
+export const usesApiKey = (config, side) => config.allow_api_key_auth === true || config[side]?.auth === 'api_key';
+
 /** Re-read on every call, so edits to the user config apply without restarting anything. */
 export function loadConfig() {
   const defaults = readJson(join(PACKAGE_ROOT, 'src', 'defaults.json'), false);
   const user = readJson(userConfigPath(), true);
   const config = { ...defaults, ...user };
-  for (const side of SIDES) config[side] = { ...defaults[side], ...(user[side] || {}) };
+  for (const side of SIDES) {
+    config[side] = { ...defaults[side], ...(user[side] || {}) };
+    // COUNCIL_CODEX_AUTH / COUNCIL_CLAUDE_AUTH: the same, for a setup configured by environment (Docker's .env).
+    const fromEnv = process.env[`COUNCIL_${side.toUpperCase()}_AUTH`]?.trim();
+    if (fromEnv) config[side].auth = fromEnv;
+    if (!AUTHS.includes(config[side].auth)) throw new Error(`config: ${side}.auth must be "subscription" or "api_key"`);
+  }
   if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');
   config.synthesizer = sideName(config.synthesizer);
   if (!config.synthesizer) throw new Error('config: synthesizer must be "claude" or "codex" (ChatGPT)');

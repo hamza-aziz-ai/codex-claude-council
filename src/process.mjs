@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
-import { userConfigPath } from './config.mjs';
+import { usesApiKey, userConfigPath } from './config.mjs';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -12,15 +12,19 @@ const HOST_VARS = [
   'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_PLUGIN_ROOT',
   'CLAUDE_PLUGIN_DATA', 'CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED',
 ];
-// Removed unless allow_api_key_auth is true, so calls bill the user's subscriptions, not an API account.
-const API_VARS = [
-  'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_ACCESS_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN',
-  'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX',
-  'CLAUDE_CODE_USE_FOUNDRY',
-];
+// Each side's API credentials and endpoints. A CLI keeps its own side's only when that side may use an API key
+// ("auth": "api_key"), so calls bill the user's subscriptions otherwise; the other side's never reach it, so a model
+// can't read a key it doesn't use.
+const API_VARS = {
+  codex: ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN'],
+  claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK',
+    'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'],
+};
 
-export function cleanEnv(config = {}) {
-  const drop = new Set([...HOST_VARS, ...(config.allow_api_key_auth ? [] : API_VARS)]);
+/** This process's environment for running side's CLI (none: another program, such as ssh): see API_VARS. */
+export function cleanEnv(config = {}, side = null) {
+  const keep = side && usesApiKey(config, side) ? API_VARS[side] : [];
+  const drop = new Set([...HOST_VARS, ...Object.values(API_VARS).flat().filter(name => !keep.includes(name))]);
   return Object.fromEntries(Object.entries(process.env).filter(([key]) => !drop.has(key.toUpperCase())));
 }
 

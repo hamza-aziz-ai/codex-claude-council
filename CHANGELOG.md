@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.0 (2026-10-27)
+
+- **API keys per side, optional.** Each side can now pay per token instead of using a plan: set `"codex": { "auth": "api_key" }` or `"claude": { "auth": "api_key" }` in the config, or `COUNCIL_CODEX_AUTH` / `COUNCIL_CLAUDE_AUTH` in the environment (Docker's `.env`), for example Claude on your Claude plan and ChatGPT through an OpenAI API key. The default stays `subscription` on both sides. Codex takes its key from `codex login --with-api-key`, or from `OPENAI_API_KEY` through `codex-claude-council login`, which stores it; Claude Code uses `ANTHROPIC_API_KEY` as it is, or a Console sign-in (`login` runs `claude auth login --console`). `allow_api_key_auth: true` still works and means both sides. See [API keys instead of a plan](README.md#api-keys-instead-of-a-plan).
+- **Each CLI gets only its own side's key.** API-key variables used to be kept for both CLIs, or for neither. Now a CLI gets its own side's credentials only when that side is set to `api_key`, never the other side's, and other programs the council runs (`ssh`) get none.
+- **Fixed: a Codex that isn't signed in passed the check when API keys were allowed.** Its "Not logged in" status matched "logged in".
+
 ## 0.18.0 (2026-10-27)
 
 - **A fixed address in Docker: your named tunnel.** With `TUNNEL_TOKEN` (a Cloudflare named tunnel's token, from `cloudflared tunnel token <name>`) and `COUNCIL_PUBLIC_URL` (its address) set, `serve --tunnel` runs that tunnel (`cloudflared tunnel run`, the token passed in its environment, not its command line) instead of a quick tunnel, and prints `<COUNCIL_PUBLIC_URL>/mcp/<token>` once the tunnel has connected. The address stays the same across restarts, so the connector never needs updating. `compose.yaml` passes both from `.env`, so the whole setup, fixed address included, runs in one container in the background. See [With Docker Compose](README.md#with-docker-compose-in-the-background).

@@ -279,3 +279,21 @@ test('login signs in each CLI that is not signed in yet, Codex with a code when 
   assert.match(out.stdout, /Signing in to Codex \(ChatGPT\) \(codex login --device-auth\): choose Sign in with ChatGPT…/);
   assert.match(out.stderr, /Codex \(ChatGPT\): Codex is not signed in\.[\s\S]*Claude Code: Claude Code is not signed in\./);
 });
+
+test('login on an API key: Codex stores OPENAI_API_KEY, Claude Code signs in to the Console', () => {
+  const key = randomUUID();
+  fake.writeConfig({ codex: { auth: 'api_key' }, claude: { auth: 'api_key' } });
+  try {
+    fake.clearCalls();
+    const out = spawnSync(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'login'], {
+      input: '', encoding: 'utf8',
+      env: { ...process.env, ...fake.env, OPENAI_API_KEY: key, FAKE_CODEX_AUTH: 'Not logged in', FAKE_CLAUDE_AUTH: '{"loggedIn":false}' },
+    });
+    const signIns = fake.calls().filter(c => (c.cli === 'codex' && c.args[0] === 'login' && c.args[1] !== 'status') || (c.cli === 'claude' && c.args[1] === 'login'));
+    assert.deepEqual(signIns.map(c => `${c.cli} ${c.args.join(' ')}`), ['codex login --with-api-key', 'claude auth login --console']);
+    assert.equal(signIns[0].input.trim(), key, 'the key goes in on stdin, not the command line');
+    assert.match(out.stdout, /Signing in to Codex \(ChatGPT\) with OPENAI_API_KEY/);
+  } finally {
+    fake.writeConfig({});
+  }
+});
