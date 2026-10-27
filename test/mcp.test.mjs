@@ -39,12 +39,41 @@ before(() => {
 // Wait for the server to exit: on Windows, its folder (the test home) cannot be removed while it runs.
 after(async () => { if (server.exitCode === null) { server.kill(); await once(server, 'exit'); } fake.cleanup(); });
 
-test('initialize reports the server and tool capability', async () => {
+test('initialize reports the server and its tool, prompt and resource capabilities', async () => {
   const { result } = await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
   assert.equal(result.protocolVersion, '2025-06-18');
   assert.equal(result.serverInfo.name, 'codex-claude-council');
-  assert.ok(result.capabilities.tools);
+  assert.deepEqual(result.capabilities, { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { subscribe: false, listChanged: false } });
   notify('notifications/initialized');
+});
+
+test('prompts: three starters that name the tool to call, with their arguments checked', async () => {
+  const { result } = await request('prompts/list', {});
+  assert.deepEqual(result.prompts.map(p => [p.name, p.arguments.map(a => `${a.name}${a.required ? '' : '?'}`)]),
+    [['ask_council', ['question']], ['second_opinion', ['question', 'model?']], ['debate', ['question']]]);
+  const text = async (name, args) => (await request('prompts/get', { name, arguments: args })).result.messages[0].content.text;
+  assert.equal(await text('ask_council', { question: 'Postgres or SQLite?' }), 'Ask the council (council_ask): Postgres or SQLite?');
+  assert.match(await text('second_opinion', { question: 'q' }), /^Get a second opinion from Codex \(ChatGPT\) alone \(council_ask_codex\): q$/);
+  assert.match(await text('second_opinion', { question: 'q', model: 'Claude' }), /\(council_ask_claude\): q$/);
+  assert.match(await text('debate', { question: 'q' }), /^Run a council debate \(council_debate\)/);
+  assert.deepEqual((await request('prompts/get', { name: 'ask_council', arguments: {} })).error, { code: -32602, message: 'prompt ask_council needs: question' });
+  assert.equal((await request('prompts/get', { name: 'nope' })).error.code, -32602);
+});
+
+test('resources: the usage guide and the effective config, read-only', async () => {
+  const { result } = await request('resources/list', {});
+  assert.deepEqual(result.resources.map(r => [r.uri, r.mimeType]), [['council://guide', 'text/markdown'], ['council://config', 'application/json']]);
+  assert.deepEqual((await request('resources/templates/list', {})).result, { resourceTemplates: [] });
+  const read = async uri => (await request('resources/read', { uri })).result.contents[0];
+  const guide = await read('council://guide');
+  assert.equal(guide.uri, 'council://guide');
+  assert.match(guide.text, /^# Codex–Claude Council\n\nUse council_ask/);
+  assert.match(guide.text, /- \*\*council_join\*\* \(Discuss with the other model yourself\): /);
+  const config = JSON.parse((await read('council://config')).text);
+  assert.equal(config.config.codex.effort, 'high');
+  assert.equal(typeof config.config.max_rounds, 'number');
+  assert.ok(Array.isArray(config.installed_skills));
+  assert.equal((await request('resources/read', { uri: 'council://nope' })).error.code, -32002);
 });
 
 test('tools/list exposes the council tools, with per-tool model/effort inputs, council_join and council_turn, and the job tools', async () => {
@@ -179,7 +208,7 @@ test('inside a council member\'s own session, the tools refuse to start another 
 
 test('protocol errors and ping', async () => {
   assert.deepEqual((await request('ping')).result, {});
-  assert.equal((await request('resources/list')).error.code, -32601);
+  assert.equal((await request('sampling/createMessage')).error.code, -32601);
   server.stdin.write('{not json\n');
   await new Promise(resolve => setTimeout(resolve, 200));
   assert.equal(unexpected.pop()?.error?.code, -32700);

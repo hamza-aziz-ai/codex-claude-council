@@ -60,8 +60,9 @@ test('the MCPB bundle manifest matches the package and declares every tool', asy
   assert.deepEqual([manifest.name, manifest.version], [pkg.name, pkg.version], 'mcpb/build.mjs refuses a version mismatch, this catches it earlier');
   assert.equal(manifest.server.entry_point, 'src/mcp-server.mjs');
   assert.deepEqual(manifest.server.mcp_config.args, ['${__dirname}/src/mcp-server.mjs']);
-  const { TOOLS } = await import('../src/mcp.mjs');
+  const { PROMPTS, TOOLS } = await import('../src/mcp.mjs');
   assert.deepEqual(manifest.tools.map(tool => tool.name), TOOLS.map(tool => tool.name));
+  assert.deepEqual(manifest.prompts.map(prompt => prompt.name), PROMPTS.map(prompt => prompt.name));
   assert.ok(existsSync(join(ROOT, 'mcpb', manifest.icon)), 'the icon is in mcpb/');
 });
 

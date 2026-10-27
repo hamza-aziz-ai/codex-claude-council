@@ -547,6 +547,8 @@ A step that uses a skill with sub-agents can take several minutes and uses much 
 
 Every tool also returns its result as `structuredContent` (declared in its `outputSchema`): `status` (`done`, `working`, `your_turn` or `stopped`), the `text`, and the `job_id` or `council_id` to use next. The tool names before 0.11.7 (`debate`, `ask_codex`, `ask_claude`) still work.
 
+**Prompts and resources.** Apps that show MCP prompts (claude.ai and Claude Desktop, in their **+** menu) offer three starters: `ask_council` (a question), `second_opinion` (a question, and `model`: `codex`, the default, or `claude`) and `debate` (a question). Each fills in a request that names the tool to use. Two resources can be read or attached: `council://guide`, which tool to use for what, and `council://config`, the settings councils run with now and the installed skills.
+
 - `workspace`: the absolute path of the project folder both models work in. In Claude Code and Codex, the plugin's skill tells the host to pass the folder you are working in.
 - Codex effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`. Claude effort: `low`, `medium`, `high`, `xhigh`, `max`.
 - Claude models: an alias (`opus`, `sonnet`, `fable`) or a full model name. Codex models: any name your Codex CLI accepts.

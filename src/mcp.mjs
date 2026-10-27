@@ -334,16 +334,75 @@ async function callCouncilTool(published, args, { signal, onProgress }) {
   return waitForJob(job, { signal, onProgress });
 }
 
+/** An error answered with its JSON-RPC code (connection() answers others with -32603). */
+const rpcError = (code, message) => Object.assign(new Error(message), { code });
+
+// Prompt templates: apps show them as ready-made starters (claude.ai and Claude Desktop in their "+" menu). Each
+// fills in a request for the app to send, naming the tool, so the app's model calls it.
+const questionArg = { name: 'question', description: 'Your question, with any context the models need', required: true };
+export const PROMPTS = [
+  {
+    name: 'ask_council', title: 'Ask the council',
+    description: 'Codex (ChatGPT) and Claude answer your question, discuss it until they agree, and give one answer.',
+    arguments: [questionArg],
+    text: ({ question }) => `Ask the council (council_ask): ${question}`,
+  },
+  {
+    name: 'second_opinion', title: 'Second opinion from one model',
+    description: 'One model alone answers: Codex (ChatGPT) by default, or Claude.',
+    arguments: [questionArg, { name: 'model', description: '"codex" (ChatGPT, the default) or "claude"', required: false }],
+    text: ({ question, model }) => (/^claude$/i.test(model?.trim() ?? '')
+      ? `Get a second opinion from Claude alone (council_ask_claude): ${question}`
+      : `Get a second opinion from Codex (ChatGPT) alone (council_ask_codex): ${question}`),
+  },
+  {
+    name: 'debate', title: 'Council debate, every step',
+    description: 'The council\'s answer with both opening answers, every exchange and the final check, to see where they disagreed.',
+    arguments: [questionArg],
+    text: ({ question }) => `Run a council debate (council_debate) and show me both answers, every exchange and the final check: ${question}`,
+  },
+];
+
+function getPrompt(name, args = {}) {
+  const prompt = PROMPTS.find(p => p.name === name);
+  if (!prompt) throw rpcError(-32602, `unknown prompt: ${name} (prompts: ${PROMPTS.map(p => p.name).join(', ')})`);
+  const missing = prompt.arguments.filter(arg => arg.required && !(typeof args[arg.name] === 'string' && args[arg.name].trim()));
+  if (missing.length) throw rpcError(-32602, `prompt ${name} needs: ${missing.map(arg => arg.name).join(', ')}`);
+  return { description: prompt.description, messages: [{ role: 'user', content: { type: 'text', text: prompt.text(args) } }] };
+}
+
+// Resources an app can read: how to use the council, and the settings it runs with (the config holds no secrets).
+const RESOURCES = [
+  {
+    uri: 'council://guide', name: 'guide', title: 'How to use the council', mimeType: 'text/markdown',
+    description: 'Which tool to use for what, and how a council runs.',
+    read: () => `# Codex–Claude Council\n\n${INSTRUCTIONS}\n\n## Tools\n\n${TOOLS.map(tool => `- **${tool.name}** (${tool.title}): ${tool.description}`).join('\n')}\n`,
+  },
+  {
+    uri: 'council://config', name: 'config', title: 'Effective configuration', mimeType: 'application/json',
+    description: 'The settings councils run with now (defaults, then the user\'s config file) and the installed skills.',
+    read: () => `${JSON.stringify({ version: packageVersion(), config: loadConfig(), installed_skills: installedSkills }, null, 2)}\n`,
+  },
+];
+
+function readResource(uri) {
+  const resource = RESOURCES.find(r => r.uri === uri);
+  if (!resource) throw rpcError(-32002, `resource not found: ${uri}`);
+  return { contents: [{ uri, mimeType: resource.mimeType, text: resource.read() }] };
+}
+
 const COUNCIL = {
   name: NAME, title: 'Codex–Claude Council', tools: TOOLS, call: callCouncilTool, instructions: INSTRUCTIONS,
+  prompts: PROMPTS.map(({ text, ...listed }) => listed), getPrompt,
+  resources: RESOURCES.map(({ read, ...listed }) => listed), readResource,
   close: () => { for (const job of jobs.values()) job.controller.abort(); },
 };
 
 /**
  * One client's connection: handle(message, send) answers a JSON-RPC request through send, with any progress
  * notifications before the reply. server: { name, title, tools, call(name, args, { signal, onProgress }) -> text or
- * { text, ...structured fields }, instructions }; the council's tools by default. An object is also sent as the
- * result's structuredContent.
+ * { text, ...structured fields }, instructions, and optionally prompts with getPrompt(name, args) and resources with
+ * readResource(uri) }; the council's by default. An object is also sent as the result's structuredContent.
  */
 function connection(server) {
   const inFlight = new Map();
@@ -379,7 +438,11 @@ function connection(server) {
       case 'initialize':
         return reply({
           protocolVersion: params?.protocolVersion || '2025-06-18',
-          capabilities: { tools: { listChanged: false } },
+          capabilities: {
+            tools: { listChanged: false },
+            ...(server.prompts ? { prompts: { listChanged: false } } : {}),
+            ...(server.resources ? { resources: { subscribe: false, listChanged: false } } : {}),
+          },
           serverInfo: { name: server.name, title: server.title, version: packageVersion(), icons: [{ src: ICON_URL, mimeType: 'image/png', sizes: ['1254x1254'] }] },
           instructions: server.instructions,
         });
@@ -389,9 +452,23 @@ function connection(server) {
         return reply({ tools: server.tools });
       case 'tools/call':
         return void callTool(id, params || {}, send);
-      default:
-        return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } });
+      case 'prompts/list':
+        if (server.prompts) return reply({ prompts: server.prompts });
+        break;
+      case 'prompts/get':
+        if (server.prompts) return reply(server.getPrompt(params?.name, params?.arguments));
+        break;
+      case 'resources/list':
+        if (server.resources) return reply({ resources: server.resources });
+        break;
+      case 'resources/templates/list':
+        if (server.resources) return reply({ resourceTemplates: [] });
+        break;
+      case 'resources/read':
+        if (server.resources) return reply(server.readResource(params?.uri));
+        break;
     }
+    return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } });
   }
 
   // A message as received: answered through send, including parse errors. Responses to server requests are
@@ -408,7 +485,7 @@ function connection(server) {
     try {
       handle(message, send);
     } catch (error) {
-      if (message.id !== undefined && message.id !== null) send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: error.message } });
+      if (message.id !== undefined && message.id !== null) send({ jsonrpc: '2.0', id: message.id, error: { code: Number.isInteger(error.code) ? error.code : -32603, message: error.message } });
     }
   }
 
