@@ -3,12 +3,12 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { NAME, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
+import { NAME, SIDES, loadConfig, packageVersion, userConfigPath } from '../src/config.mjs';
 import { councilText, invoke } from '../src/council.mjs';
 import { debateHtml } from '../src/share.mjs';
 import { doctor, initConfig, install, uninstall, update } from '../src/install.mjs';
-import { askClaude, askCodex, resolveSession, sessionFolder } from '../src/adapters.mjs';
-import { findExecutable, start } from '../src/process.mjs';
+import { CLI_NAME, askClaude, askCodex, resolveSession, sessionFolder, signInProblem } from '../src/adapters.mjs';
+import { cleanEnv, findExecutable, runInteractive, start } from '../src/process.mjs';
 import { addSkill, installedFor, listSkills, nativeSkills, removeSkill, skillsDir } from '../src/skills.mjs';
 
 const HELP = `${NAME} ${packageVersion()}
@@ -19,6 +19,8 @@ Usage:
   ${NAME} update [options]         Update the plugin in Claude Code and Codex to the latest version
   ${NAME} uninstall [options]      Remove it again (your config file is kept)
   ${NAME} doctor                   Check Node.js, both CLIs, sign-ins and config
+  ${NAME} login                    Sign in each CLI that is not signed in yet (Codex with ChatGPT, Claude Code
+                                   with your Claude plan); COUNCIL_DEVICE_AUTH=1 signs Codex in with a code
   ${NAME} skill add <url|path>     Install the skills (SKILL.md folders) of a GitHub repository or local folder/file
   ${NAME} skill list               List installed skills
   ${NAME} skill remove <name>      Remove an installed skill
@@ -203,6 +205,32 @@ async function startTunnel(local) {
   return { origin, ...tunnel };
 }
 
+/**
+ * Sign in each CLI the council needs that is not signed in yet, one after the other, in this terminal. Codex signs in
+ * with a code to enter on any device when COUNCIL_DEVICE_AUTH is set (the Docker image sets it: no browser there).
+ */
+async function login() {
+  const config = loadConfig();
+  let failed = 0;
+  for (const side of SIDES) {
+    if (!(await signInProblem(side, config))) { console.log(`${CLI_NAME[side]} is signed in.`); continue; }
+    let file;
+    try {
+      file = findExecutable(side, config[side].command);
+    } catch (error) {
+      console.error(`${CLI_NAME[side]}: ${error.message}`);
+      failed += 1;
+      continue;
+    }
+    const args = side === 'claude' ? ['auth', 'login'] : ['login', ...(process.env.COUNCIL_DEVICE_AUTH ? ['--device-auth'] : [])];
+    console.log(`Signing in to ${CLI_NAME[side]} (${side} ${args.join(' ')})${side === 'codex' ? ': choose Sign in with ChatGPT' : ''}…`);
+    await runInteractive(file, args, { env: cleanEnv(config) });
+    const problem = await signInProblem(side, config);
+    if (problem) { console.error(`${CLI_NAME[side]}: ${problem}`); failed += 1; } else console.log(`${CLI_NAME[side]} is signed in.`);
+  }
+  return failed ? 1 : 0;
+}
+
 async function main() {
   const { values, positionals } = parseArgs({ options: OPTIONS, allowPositionals: true });
   const [commandName, ...rest] = positionals;
@@ -215,6 +243,7 @@ async function main() {
   }
   if (commandName === 'serve') return serveCommand(values);
   if (commandName === 'doctor') return doctor();
+  if (commandName === 'login') return login();
   if (commandName === 'skill') {
     const [action, target] = rest;
     if (action === 'add' && target) {

@@ -232,3 +232,19 @@ test('serve --tunnel: starts a Cloudflare quick tunnel to the server and prints 
     await once(child, 'exit');
   }
 });
+
+test('login signs in each CLI that is not signed in yet, Codex with a code when COUNCIL_DEVICE_AUTH is set', () => {
+  const login = env => spawnSync(process.execPath, [join(ROOT, 'scripts', 'cli.mjs'), 'login'], { input: '', encoding: 'utf8', env: { ...process.env, ...fake.env, ...env } });
+  fake.clearCalls();
+  const ready = login({});
+  assert.equal(ready.status, 0, ready.stderr);
+  assert.equal(ready.stdout, 'Codex (ChatGPT) is signed in.\nClaude Code is signed in.\n');
+  const signIns = () => fake.calls().filter(c => (c.cli === 'codex' && c.args[0] === 'login' && c.args[1] !== 'status') || (c.cli === 'claude' && c.args.join(' ') === 'auth login'));
+  assert.deepEqual(signIns(), [], 'nothing to sign in');
+  // Both signed out (the fake stays signed out after its sign-in, so login reports it).
+  const out = login({ FAKE_CODEX_AUTH: 'Not logged in', FAKE_CLAUDE_AUTH: '{"loggedIn":false}', COUNCIL_DEVICE_AUTH: '1' });
+  assert.equal(out.status, 1);
+  assert.deepEqual(signIns().map(c => `${c.cli} ${c.args.join(' ')}`), ['codex login --device-auth', 'claude auth login']);
+  assert.match(out.stdout, /Signing in to Codex \(ChatGPT\) \(codex login --device-auth\): choose Sign in with ChatGPT…/);
+  assert.match(out.stderr, /Codex \(ChatGPT\): Codex is not signed in\.[\s\S]*Claude Code: Claude Code is not signed in\./);
+});

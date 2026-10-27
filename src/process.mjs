@@ -142,6 +142,15 @@ export function run(file, args, { input = '', cwd, env = process.env, timeoutMs 
   });
 }
 
+/** Run a CLI in this terminal (an interactive sign-in): its input and output are the user's. Resolves its exit code. */
+export function runInteractive(file, args, { env = process.env } = {}) {
+  const spec = command(file, args);
+  return new Promise(resolve => {
+    spawn(spec.file, spec.args, { env, stdio: 'inherit', windowsVerbatimArguments: spec.verbatim })
+      .on('error', () => resolve(null)).on('exit', code => resolve(code));
+  });
+}
+
 /** Start a long-running CLI, such as a tunnel, with its output piped; stop() kills it and its children. */
 export function start(file, args) {
   const spec = command(file, args);

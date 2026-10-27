@@ -366,21 +366,24 @@ export async function claudeSignInProblem(exe, config, opts = {}) {
 }
 
 const SIGN_IN_PROBLEM = { codex: codexSignInProblem, claude: claudeSignInProblem };
-const CLI_NAME = { codex: 'Codex (ChatGPT)', claude: 'Claude Code' };
+export const CLI_NAME = { codex: 'Codex (ChatGPT)', claude: 'Claude Code' };
+
+/** null when that side's CLI is installed and signed in as the council needs, otherwise what to do. */
+export async function signInProblem(side, config = loadConfig(), opts = {}) {
+  try {
+    return await SIGN_IN_PROBLEM[side](findExecutable(side, config[side].command), config, opts);
+  } catch (error) {
+    if (opts.signal?.aborted) throw error;
+    return error.message;
+  }
+}
 
 /**
  * Before a council starts: check that both CLIs are installed and signed in, side by side.
  * Throws one error naming every problem, so nothing is sent to either model until both are ready.
  */
 export async function requireBothSignedIn(config = loadConfig(), { signal, sides = SIDES } = {}) {
-  const problems = await Promise.all(sides.map(async side => {
-    try {
-      return await SIGN_IN_PROBLEM[side](findExecutable(side, config[side].command), config, { signal });
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      return error.message;
-    }
-  }));
+  const problems = await Promise.all(sides.map(side => signInProblem(side, config, { signal })));
   const lines = sides.flatMap((side, i) => (problems[i] ? [`- ${CLI_NAME[side]}: ${problems[i]}`] : []));
   if (lines.length) {
     const needs = sides.length === 1 ? `${CLI_NAME[sides[0]]} signed in. Nothing was sent to it.` : 'both Codex and Claude Code signed in. Nothing was sent to either model.';
