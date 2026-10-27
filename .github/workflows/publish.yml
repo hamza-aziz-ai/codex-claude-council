@@ -4,6 +4,8 @@
 #   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
+# - Docker image: ghcr.io with this workflow's token; Docker Hub too when DOCKERHUB_USERNAME (variable) and
+#   DOCKERHUB_TOKEN (secret) are set (see the step).
 # Before any of them, HOL's AI Plugin Scanner checks the release (see the step).
 # It runs when a release is published, or by hand (Actions > Publish > Run workflow) for the version in package.json,
 # which must already have its release tag; autorelease.yml starts it that way after it creates the release. A version
@@ -79,16 +81,26 @@ jobs:
           node mcpb/build.mjs
           gh release upload "v$VERSION" "mcpb/dist/codex-claude-council-$VERSION.mcpb" --clobber
 
-      # The Docker image for a server of your own (see the README), for amd64 and arm64.
+      # The Docker image for a server of your own (see the README), for amd64 and arm64: on ghcr.io, and on Docker Hub
+      # too when the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN (a Docker Hub access token
+      # with Read & Write) are set.
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Docker image
         env:
           GH_TOKEN: ${{ github.token }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          IMAGE=ghcr.io/hamza-aziz-ai/codex-claude-council
-          docker buildx build --platform linux/amd64,linux/arm64 --tag "$IMAGE:$VERSION" --tag "$IMAGE:latest" --push .
+          IMAGES=(ghcr.io/hamza-aziz-ai/codex-claude-council)
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            IMAGES+=("docker.io/$DOCKERHUB_USERNAME/codex-claude-council")
+          fi
+          TAGS=()
+          for IMAGE in "${IMAGES[@]}"; do TAGS+=(--tag "$IMAGE:$VERSION" --tag "$IMAGE:latest"); done
+          docker buildx build --platform linux/amd64,linux/arm64 "${TAGS[@]}" --push .
 
       # Since 2026-10-25 Smithery refuses updates to a listed server (403 "Updating servers has been removed"), so
       # a failure here doesn't fail the release; it is still tried, in case Smithery takes updates again.
