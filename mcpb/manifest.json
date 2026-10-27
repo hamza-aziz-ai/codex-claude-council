@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "codex-claude-council",
   "display_name": "Codex–Claude Council",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "description": "ChatGPT (Codex CLI) and Claude (Claude Code) discuss your question until they agree, on your own subscriptions.",
   "long_description": "Ask **ChatGPT** (through your Codex CLI) and **Claude** (through your Claude Code CLI) the same question. Each answers on its own, then they reply to each other, round after round, until both agree on one answer. By default no API keys: it runs the CLIs you have already signed in to. Or enter an OpenAI or Anthropic API key in this extension's settings, and that side runs through its API instead, with no CLI needed.\n\n- Both read your project in read-only mode (Claude in plan mode, Codex in its sandbox) and can search the web.\n- Continue your existing Claude Code or Codex sessions, or take part yourself with `council_join`.\n- Needs, for each side, its CLI installed and signed in on this computer, or its API key in the settings.",
   "author": {

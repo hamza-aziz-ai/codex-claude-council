@@ -386,11 +386,22 @@ export async function claudeSignInProblem(exe, config, opts = {}) {
 const SIGN_IN_PROBLEM = { codex: codexSignInProblem, claude: claudeSignInProblem };
 export const CLI_NAME = { codex: 'Codex (ChatGPT)', claude: 'Claude Code' };
 
+/** side's CLI; when it isn't installed, the error also names the way without it: the side's API key. */
+function cliFor(side, config) {
+  try {
+    return findExecutable(side, config[side].command);
+  } catch (error) {
+    const [key, provider] = side === 'codex' ? ['OPENAI_API_KEY', 'OpenAI'] : ['ANTHROPIC_API_KEY', 'Anthropic'];
+    throw new Error(`${error.message}. Or, without the CLI, run this side through the ${provider} API: enter your ${provider} API key in the Claude Desktop extension's settings, `
+      + `or set ${key} and "${side}": { "via": "api" } (see "Without the CLIs" in the README).`);
+  }
+}
+
 /** null when that side's CLI is installed and signed in as the council needs (or its API key is set, with "via": "api"), otherwise what to do. */
 export async function signInProblem(side, config = loadConfig(), opts = {}) {
   if (config[side]?.via === 'api') return apiKeyProblem(side);
   try {
-    return await SIGN_IN_PROBLEM[side](findExecutable(side, config[side].command), config, opts);
+    return await SIGN_IN_PROBLEM[side](cliFor(side, config), config, opts);
   } catch (error) {
     if (opts.signal?.aborted) throw error;
     return error.message;
@@ -465,7 +476,7 @@ export async function askCodex(prompt, overrides = {}, { config = loadConfig(), 
   }
   if (config.codex.via === 'api') return apiMember('codex', prompt, overrides, { config, signal, workspace, web, skill, resume, held, onWait });
   const chosen = resolveSide('codex', overrides, config);
-  const exe = findExecutable('codex', config.codex.command);
+  const exe = cliFor('codex', config);
   const session = sessionFor('codex', workspace, chosen.model, resume && await resolveSession('codex', resume, { workspace }));
   const call = () => inTempDir('council-codex-out-', async outDir => {
     const cwd = workingDir(session, workspace, 'council-codex-');
@@ -564,7 +575,7 @@ export async function askClaude(prompt, overrides = {}, { config = loadConfig(),
   }
   if (config.claude.via === 'api') return apiMember('claude', prompt, overrides, { config, signal, workspace, web, skill, resume, held, onWait });
   const chosen = resolveSide('claude', overrides, config);
-  const exe = findExecutable('claude', config.claude.command);
+  const exe = cliFor('claude', config);
   const session = sessionFor('claude', workspace, chosen.model, resume && await resolveSession('claude', resume, { workspace }));
   const call = async () => {
     const cwd = workingDir(session, workspace, 'council-claude-');

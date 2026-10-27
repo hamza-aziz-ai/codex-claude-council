@@ -197,3 +197,23 @@ test('council_join with only an OpenAI key: the host is the Claude member, ChatG
     fake.writeConfig({});
   }
 });
+
+test('neither the CLI nor an API key: the council stops before sending anything, and says both ways to fix it', async () => {
+  fake.writeConfig({ codex: { command: join(project, 'no-codex') }, claude: { command: join(project, 'no-claude') } });
+  resetSessions();
+  requests.length = 0;
+  const none = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', COUNCIL_OPENAI_API_KEY: '', COUNCIL_ANTHROPIC_API_KEY: '' };
+  try {
+    await withEnv(none, () => assert.rejects(invoke('council_ask', 'q'), error => {
+      assert.match(error.message, /^The council needs both Codex and Claude Code signed in\. Nothing was sent to either model\./);
+      assert.match(error.message, /- Codex \(ChatGPT\): codex CLI not found at .*\. Or, without the CLI, run this side through the OpenAI API: enter your OpenAI API key in the Claude Desktop extension's settings, or set OPENAI_API_KEY and "codex": \{ "via": "api" \}/);
+      assert.match(error.message, /- Claude Code: claude CLI not found at .*through the Anthropic API.*ANTHROPIC_API_KEY and "claude": \{ "via": "api" \}/);
+      return true;
+    }));
+    await withEnv(none, () => assert.rejects(invoke('ask_codex', 'q'), /codex CLI not found at .*through the OpenAI API/));
+    assert.equal(requests.length, 0, 'no API was called');
+    assert.equal(fake.questionCalls().length, 0, 'no CLI got the question');
+  } finally {
+    fake.writeConfig({});
+  }
+});
