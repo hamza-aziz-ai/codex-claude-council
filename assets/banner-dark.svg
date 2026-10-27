@@ -10,12 +10,10 @@
   <text x="470" y="118" font-size="30" font-weight="600" fill="#E6EDF3">Codex–Claude</text>
   <text x="468" y="190" font-size="76" font-weight="800" letter-spacing="6" fill="url(#brand)">COUNCIL</text>
   <text x="470" y="236" font-size="19" fill="#9198A1"><tspan fill="#10A37F" font-weight="700">ChatGPT</tspan> and <tspan fill="#D97757" font-weight="700">Claude</tspan> discuss with each other until they agree</text>
-  <rect x="470" y="268" width="98.3" height="28" rx="14" fill="#21262D" stroke="#3D444D"/>
-    <text x="519.15" y="287" class="chip" fill="#E6EDF3" text-anchor="middle">No API keys</text>
-  <rect x="578.3" y="268" width="178.6" height="28" rx="14" fill="#21262D" stroke="#3D444D"/>
-    <text x="667.5999999999999" y="287" class="chip" fill="#E6EDF3" text-anchor="middle">Your own subscriptions</text>
-  <rect x="766.9" y="268" width="200.5" height="28" rx="14" fill="#21262D" stroke="#3D444D"/>
-    <text x="867.15" y="287" class="chip" fill="#E6EDF3" text-anchor="middle">Read-only in your project</text>
+  <rect x="470" y="268" width="178.6" height="28" rx="14" fill="#21262D" stroke="#3D444D"/>
+    <text x="559.3" y="287" class="chip" fill="#E6EDF3" text-anchor="middle">Your plans or API keys</text>
+  <rect x="658.6" y="268" width="200.5" height="28" rx="14" fill="#21262D" stroke="#3D444D"/>
+    <text x="758.85" y="287" class="chip" fill="#E6EDF3" text-anchor="middle">Read-only in your project</text>
   <rect x="470" y="306" width="266.2" height="28" rx="14" fill="#21262D" stroke="#3D444D"/>
     <text x="603.1" y="325" class="chip" fill="#E6EDF3" text-anchor="middle">Claude Code · Codex · desktop apps</text>
 </svg>

@@ -13,7 +13,7 @@ function emblem({ dark }) {
   const muted = dark ? '#9198A1' : '#59636E';
   const chip = dark ? '#21262D' : '#F6F8FA';
   const chipLine = dark ? '#3D444D' : '#D1D9E0';
-  const chips = ['No API keys', 'Your own subscriptions', 'Read-only in your project', 'Claude Code · Codex · desktop apps'];
+  const chips = ['Your plans or API keys', 'Read-only in your project', 'Claude Code · Codex · desktop apps'];
   let x = 470;
   let y = 268;
   const chipRow = chips.map(label => {

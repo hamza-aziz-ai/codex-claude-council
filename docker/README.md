@@ -31,7 +31,7 @@ docker logs council
 
 ## What to know
 
-- **Your plans, your accounts.** `login` signs in the Codex CLI with ChatGPT (with a code to enter on any device) and Claude Code with your Claude plan. No API keys. It is your council, for your own use.
+- **Your plans, your accounts.** `login` signs in the Codex CLI with ChatGPT (with a code to enter on any device) and Claude Code with your Claude plan, so no API keys are needed. Or run a side through its API instead: `COUNCIL_CODEX_VIA=api` with `OPENAI_API_KEY`, or `COUNCIL_CLAUDE_VIA=api` with `ANTHROPIC_API_KEY`, in `.env`. It is your council, for your own use.
 - **Keep the URL secret.** The token in it is the only key: anyone with it can use your council and plans, and the models can read the mounted projects.
 - **Read-only.** The models read your projects (mount them read-only at `/projects`) and never change them: Codex runs in its read-only sandbox, Claude in plan mode.
 - **`--security-opt seccomp=unconfined`** is needed: Codex's sandbox (bubblewrap) uses user namespaces, which Docker's default seccomp profile blocks.
