@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 (2026-10-27)
+
+- **Docker Compose: the whole setup in the background.** [`compose.yaml`](compose.yaml) runs the published image with `serve --tunnel`, restarts with the machine, keeps sign-ins, config and token in a volume, and mounts a `projects` folder read-only. Three commands: `docker compose up -d`, `docker compose exec council codex-claude-council login` once, and `docker compose logs council` for the URL. See [With Docker Compose](README.md#with-docker-compose-in-the-background).
+- **`login`: sign both CLIs in with one command.** It signs in each CLI that isn't signed in yet, one after the other, in the terminal: Codex with ChatGPT, Claude Code with your Claude plan. With `COUNCIL_DEVICE_AUTH` set, as the Docker image does, Codex signs in with a code to enter on any device, since there is no browser.
+
 ## 0.16.0 (2026-10-27)
 
 - **Prompts: three starters.** Apps that show MCP prompts (claude.ai and Claude Desktop, in their **+** menu) now offer `ask_council`, `second_opinion` (Codex by default, or `model: claude`) and `debate`. Each takes your question and fills in a request that names the tool to call. The Claude Desktop extension's manifest lists them too.
@@ -12,14 +17,14 @@
 ## 0.15.0 (2026-10-26)
 
 - **`serve --tunnel`: online in one command.** It starts a Cloudflare quick tunnel (`cloudflared`, no account needed) to the server and prints the HTTPS URL to add as a connector, `https://<random words>.trycloudflare.com/mcp/<token>`, instead of a second terminal and joining the URL by hand. Ctrl+C stops both; if the tunnel stops, so does the server. Without `cloudflared`, it says how to install it.
-- **A ready-made Docker image**, `ghcr.io/hamza-aziz-ai/codex-claude-council` (amd64 and arm64), published with each release (`:latest` and `:<version>`), with `cloudflared` included: on a server, `docker run … ghcr.io/hamza-aziz-ai/codex-claude-council serve --tunnel`, no clone or build. Its entry point is now the `codex-claude-council` command. See [On a server of your own](README.md#on-a-server-of-your-own-docker).
+- **A ready-made Docker image**, `ghcr.io/hamza-aziz-ai/codex-claude-council` (amd64 and arm64), published with each release (`:latest` and `:<version>`), with `cloudflared` included: on a server, `docker run … ghcr.io/hamza-aziz-ai/codex-claude-council serve --tunnel`, no clone or build. Its entry point is now the `codex-claude-council` command. See [With Docker Compose](README.md#with-docker-compose-in-the-background).
 - **The connector shows the council's icon.** claude.ai shows a connector with its site's favicon, so a tunnel's URL showed Cloudflare's logo. `serve` now answers `/favicon.ico` with the plugin's icon (and `/` with a page naming it), without the token; everything else still needs it.
 - **Releases publish themselves.** When a version bump merges, `autorelease.yml` creates release `v<version>` with its CHANGELOG.md section as the notes and runs Publish.
 
 ## 0.14.0 (2026-10-26)
 
 - **Use it online: `serve` runs the MCP server over HTTP.** Apps on the web and on phones (claude.ai, ChatGPT) connect to MCP servers over HTTPS from their providers' servers, so they couldn't use the council. `npx -y codex-claude-council serve` runs the same server on your computer over Streamable HTTP, at `http://127.0.0.1:8000/mcp/<token>`, with your CLIs and plans as always. The secret token in the path is the only key, so the URL works in connectors that take only a URL; it is generated on the first start and saved next to the config file (`serve-token`), or set with `--token` / `COUNCIL_TOKEN`. `--port` and `--host` choose where it listens (default: this computer only). Put HTTPS in front, such as a Cloudflare Tunnel, and add the URL as a custom connector: see [Use it online](README.md#use-it-online-claudeai-chatgpt-your-phone). Each request gets one JSON response, without progress notifications.
-- **A `Dockerfile` for a server of your own.** It runs `serve` with Node.js and both CLIs; sign them in once with `codex login --device-auth` and `claude auth login`, and a volume keeps the sign-ins, config, skills and token. Codex's read-only sandbox needs user namespaces, which Docker's default seccomp profile blocks, so the README's `docker run` sets `--security-opt seccomp=unconfined`. See [On a server of your own](README.md#on-a-server-of-your-own-docker).
+- **A `Dockerfile` for a server of your own.** It runs `serve` with Node.js and both CLIs; sign them in once with `codex login --device-auth` and `claude auth login`, and a volume keeps the sign-ins, config, skills and token. Codex's read-only sandbox needs user namespaces, which Docker's default seccomp profile blocks, so the README's `docker run` sets `--security-opt seccomp=unconfined`. See [With Docker Compose](README.md#with-docker-compose-in-the-background).
 - **Each release carries the Claude Desktop extension again.** The publish workflow now builds `codex-claude-council-<version>.mcpb` and attaches it to the release; 0.13.5 was released without it.
 
 ## 0.13.5 (2026-10-25)

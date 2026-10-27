@@ -1,6 +1,6 @@
 # The council's MCP server over HTTP (`serve`), with the Codex and Claude Code CLIs and cloudflared, for a server of
 # your own. Published as ghcr.io/hamza-aziz-ai/codex-claude-council. Sign both CLIs in once; the sign-ins, the
-# config and the URL's token live in the /home/node volume. See "On a server of your own" in the README.
+# config and the URL's token live in the /home/node volume. See "With Docker Compose" in the README.
 FROM node:22-slim
 ARG TARGETARCH
 
@@ -21,6 +21,8 @@ LABEL org.opencontainers.image.source="https://github.com/hamza-aziz-ai/codex-cl
 
 USER node
 WORKDIR /home/node
+# No browser in here: `codex-claude-council login` signs Codex in with a code to enter on any device.
+ENV COUNCIL_DEVICE_AUTH=1
 VOLUME /home/node
 EXPOSE 8000
 # `docker run … serve --tunnel` puts it online through a Cloudflare quick tunnel instead of publishing a port.

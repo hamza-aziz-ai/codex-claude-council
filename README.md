@@ -268,26 +268,27 @@ It prints the URL, `https://<random words>.trycloudflare.com/mcp/<token>`. Add i
 - **Options:** `--port` (default 8000), `--host` (default `127.0.0.1`: this computer only). Without `--tunnel`, `serve` prints the local address, `http://127.0.0.1:8000/mcp/<token>`.
 - Each request gets one answer, without progress notifications; a tool call still returns within `tool_wait_seconds`, and the app calls `council_result` until the answer is ready.
 
-#### On a server of your own (Docker)
+#### With Docker Compose, in the background
 
-To keep it online without your computer, run the ready-made image on a server you control (a VPS, a home server; amd64 or arm64): Node.js, both CLIs, cloudflared and `serve`. It is still your council, on your plans: sign both CLIs in with your own accounts, for your own use.
+The whole setup runs in one container, in the background: Node.js, both CLIs, cloudflared and `serve --tunnel`. It runs on a server you control (a VPS or a home server, amd64 or arm64) or on your own computer with Docker Desktop, and it starts again by itself after a reboot. It is still your council, on your plans: sign both CLIs in with your own accounts, for your own use.
+
+In an empty folder, get [`compose.yaml`](compose.yaml) and start it:
 
 ```bash
-docker run -d --name council --restart unless-stopped \
-  --security-opt seccomp=unconfined \
-  -v council-home:/home/node \
-  -v ~/code:/projects:ro \
-  ghcr.io/hamza-aziz-ai/codex-claude-council serve --tunnel
-docker exec -it council codex login --device-auth   # Sign in with ChatGPT, on any device
-docker exec -it council claude auth login           # open the link, paste the code back
-docker logs council                                 # the URL to add as a connector
+curl -fsSLO https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/compose.yaml
+# Windows (PowerShell): irm https://raw.githubusercontent.com/hamza-aziz-ai/codex-claude-council/main/compose.yaml -OutFile compose.yaml
+docker compose up -d
+docker compose exec council codex-claude-council login   # once: sign both CLIs in
+docker compose logs council                              # the URL to add as a connector
 ```
 
-- **`--security-opt seccomp=unconfined`**: Codex's read-only sandbox (bubblewrap) needs user namespaces, which Docker's default seccomp profile blocks; without it, Codex can't run any command. If Codex still reports that bubblewrap can't create a namespace, add `--security-opt apparmor=unconfined` too.
-- **The `council-home` volume** keeps the sign-ins, your config, skills and the token across restarts and new images. To use your own token, add `-e COUNCIL_TOKEN=<secret>`.
-- **Projects:** mount the folders the council should read, read-only, and name them in the question ("in the project at `/projects/app`").
-- **A fixed address:** the quick tunnel's address changes when the container restarts (`docker logs council` shows the new one). Instead, leave out `serve --tunnel` and add `-p 127.0.0.1:8000:8000`: the server then listens on the server's port 8000, for your own named tunnel or reverse proxy with a certificate (such as Caddy) in front; the URL is `https://<your host>/mcp/<token>`, with the token from `docker logs council`.
-- **Update:** `docker pull ghcr.io/hamza-aziz-ai/codex-claude-council`, then `docker rm -f council` and the same `docker run`; the volume keeps everything. Each release is also tagged with its version, such as `:0.15.0`. To build the image yourself, `docker build -t codex-claude-council .` in a clone of this repository.
+- **`login`** signs in each CLI that isn't signed in yet, one after the other. For Codex, it shows a code to enter at the address it prints, on any device; choose **Sign in with ChatGPT**. For Claude Code, open the link it prints and paste the code back. The sign-ins are kept, so this is needed once.
+- **Projects:** the `projects` folder next to `compose.yaml` is mounted read-only at `/projects`. Put or link your projects there, or set `COUNCIL_PROJECTS` to another folder (in a `.env` file next to `compose.yaml`). Name them in the question: "in the project at `/projects/app`".
+- **The `council-home` volume** keeps the sign-ins, your config, skills and the token across restarts and new images. To choose your own token, set `COUNCIL_TOKEN` in `.env`.
+- **The address changes** when the container restarts, since the quick tunnel gets a new one: `docker compose logs council` shows it, then update the connector. For a fixed address, set `command: ["serve", "--host", "0.0.0.0", "--port", "8000"]` and `ports: ["127.0.0.1:8000:8000"]` in `compose.yaml`, and put your own named tunnel or a reverse proxy with a certificate (such as Caddy) in front: the URL is `https://<your host>/mcp/<token>`.
+- **Update:** `docker compose pull`, then `docker compose up -d`. Each release is also tagged with its version, such as `:0.17.0`.
+- **`seccomp=unconfined`** (set in `compose.yaml`): Codex's read-only sandbox (bubblewrap) needs user namespaces, which Docker's default seccomp profile blocks; without it, Codex can't run any command. If Codex still reports that bubblewrap can't create a namespace, add `apparmor=unconfined` under `security_opt` too.
+- **Without Compose:** `docker run -d --name council --restart unless-stopped --security-opt seccomp=unconfined -v council-home:/home/node -v ~/code:/projects:ro ghcr.io/hamza-aziz-ai/codex-claude-council serve --tunnel`, then `docker exec -it council codex-claude-council login` and `docker logs council`. To build the image yourself: `docker build -t codex-claude-council .` in a clone of this repository.
 
 ## Use it
 

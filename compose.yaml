@@ -1,0 +1,25 @@
+# The council online, in the background, with Docker Compose: on a server of your own or on your computer.
+#   docker compose up -d                                        start it (and again after a restart of the machine)
+#   docker compose exec council codex-claude-council login     sign both CLIs in, once
+#   docker compose logs council                                 the URL to add as a connector
+# See "With Docker Compose" in the README.
+services:
+  council:
+    image: ghcr.io/hamza-aziz-ai/codex-claude-council:latest
+    # Online through a Cloudflare quick tunnel; its address changes when the container restarts (see the logs).
+    command: ["serve", "--tunnel"]
+    restart: unless-stopped
+    # Codex's read-only sandbox (bubblewrap) needs user namespaces, which Docker's default seccomp profile blocks.
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      # Your own secret for the URL; empty: one is generated once and kept in the volume.
+      COUNCIL_TOKEN: ${COUNCIL_TOKEN:-}
+    volumes:
+      # The sign-ins, config, skills and token, across restarts and new images.
+      - council-home:/home/node
+      # The projects the council may read (read-only): ask about "the project at /projects/<name>".
+      - ${COUNCIL_PROJECTS:-./projects}:/projects:ro
+
+volumes:
+  council-home:
