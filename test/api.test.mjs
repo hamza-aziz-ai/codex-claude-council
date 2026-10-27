@@ -139,10 +139,60 @@ test('an API side without its key stops before anything is sent, and can\'t cont
   resetSessions();
   requests.length = 0;
   try {
-    await withEnv({ ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '' }, () => assert.rejects(invoke('council_ask', 'q'), /Claude Code: Claude runs through the Anthropic API \("via": "api"\), but ANTHROPIC_API_KEY is not set/));
+    await withEnv({ ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', COUNCIL_ANTHROPIC_API_KEY: '' }, () => assert.rejects(invoke('council_ask', 'q'),
+      /Claude Code: Claude runs through the Anthropic API \("via": "api"\), but it has no key: set ANTHROPIC_API_KEY, or enter the key in the Claude Desktop extension's settings/));
     assert.equal(requests.length, 0);
     await withEnv(apiEnv(), () => assert.rejects(invoke('ask_claude', 'q', { session_id: randomUUID() }), /can't continue a Claude Code session/));
     await withEnv({ COUNCIL_CODEX_VIA: 'web' }, () => assert.rejects(invoke('ask_codex', 'q'), /codex\.via must be "cli" or "api"/));
+  } finally {
+    fake.writeConfig({});
+  }
+});
+
+test('the Claude Desktop extension\'s settings: a key switches its side to the API, an empty field changes nothing', async () => {
+  const { loadConfig } = await import('../src/config.mjs');
+  const { cleanEnv } = await import('../src/process.mjs');
+  const key = randomUUID();
+  // An optional field left empty can arrive as its placeholder (built here, so no key-like literal is in the file).
+  const unfilled = ['${user_config', 'anthropic_api_key}'].join('.');
+  fake.writeConfig({});
+  await withEnv({ COUNCIL_OPENAI_API_KEY: key, COUNCIL_CODEX_MODEL: 'gpt-6.1-sol', COUNCIL_ANTHROPIC_API_KEY: unfilled, COUNCIL_CLAUDE_MODEL: '' }, async () => {
+    const config = loadConfig();
+    assert.deepEqual([config.codex.via, config.codex.model, config.claude.via, config.claude.model], ['api', 'gpt-6.1-sol', 'cli', null]);
+    assert.equal(cleanEnv(config, 'codex').COUNCIL_OPENAI_API_KEY, undefined, 'the CLIs never get the extension\'s keys');
+    // The key reaches OpenAI, from the settings alone.
+    resetSessions();
+    requests.length = 0;
+    const answer = await withEnv({ OPENAI_API_KEY: '', OPENAI_BASE_URL: `${base}/v1` }, () => invoke('ask_codex', 'ping', { web_search: false }));
+    assert.equal(answer, 'codex-api: ping');
+    assert.equal(requests[0].headers.authorization, `Bearer ${key}`);
+    assert.equal(requests[0].body.model, 'gpt-6.1-sol');
+  });
+  // The config file still decides when it says so.
+  fake.writeConfig({ codex: { via: 'cli' } });
+  try {
+    await withEnv({ COUNCIL_OPENAI_API_KEY: key }, async () => assert.equal(loadConfig().codex.via, 'cli'));
+  } finally {
+    fake.writeConfig({});
+  }
+});
+
+test('council_join with only an OpenAI key: the host is the Claude member, ChatGPT runs through the API', async () => {
+  fake.writeConfig({ claude: { command: join(project, 'no-claude') }, codex: { command: join(project, 'no-codex') } });
+  resetSessions();
+  requests.length = 0;
+  const turns = [];
+  // The host (Claude Desktop) answers, agrees, and writes the final answer.
+  const hostTurn = async prompt => {
+    turns.push(prompt);
+    if (/now agree/.test(prompt)) return 'THE JOINT ANSWER\n---NOTES---\nnone';
+    return turns.length === 1 ? 'HOST ANSWER' : 'HOST VIEW\nVERDICT: AGREE';
+  };
+  try {
+    const answer = await withEnv({ COUNCIL_OPENAI_API_KEY: randomUUID(), OPENAI_API_KEY: '', OPENAI_BASE_URL: `${base}/v1`, ANTHROPIC_API_KEY: '' },
+      () => invoke('council_join', 'Which is better?', { me: 'claude', web_search: false }, { hostTurn }));
+    assert.match(answer, /^THE JOINT ANSWER/);
+    assert.ok(requests.length >= 2 && requests.every(r => r.path === '/v1/responses'), 'only OpenAI was called');
   } finally {
     fake.writeConfig({});
   }

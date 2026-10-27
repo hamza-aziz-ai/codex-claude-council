@@ -45,6 +45,18 @@ function readJson(path, optional) {
 /** A domain name for Codex's network allowlist, optionally starting with "*." for its subdomains. */
 export const isDomain = value => typeof value === 'string' && /^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/.test(value);
 
+/** The environment variables the Claude Desktop extension's settings fill with each side's API key. */
+export const DESKTOP_KEY = Object.freeze({ codex: 'COUNCIL_OPENAI_API_KEY', claude: 'COUNCIL_ANTHROPIC_API_KEY' });
+
+/**
+ * An environment variable's value, or null when it is unset, blank or an extension setting left empty (Claude
+ * Desktop may pass an unfilled optional field as its "${user_config.…}" placeholder).
+ */
+export function settingValue(name) {
+  const value = process.env[name]?.trim();
+  return value && !/^\$\{user_config\./.test(value) ? value : null;
+}
+
 export const AUTHS = Object.freeze(['subscription', 'api_key']);
 export const VIAS = Object.freeze(['cli', 'api']);
 
@@ -65,6 +77,11 @@ export function loadConfig() {
     // "via": "api" runs that side through its provider's API instead of its CLI (COUNCIL_CODEX_VIA / COUNCIL_CLAUDE_VIA).
     const viaEnv = process.env[`COUNCIL_${side.toUpperCase()}_VIA`]?.trim();
     if (viaEnv) config[side].via = viaEnv;
+    // A key entered in the Claude Desktop extension's settings switches that side to its API, unless the config file
+    // or COUNCIL_<SIDE>_VIA chooses; its model field, when filled in, is that side's model.
+    else if (settingValue(DESKTOP_KEY[side]) && user[side]?.via === undefined) config[side].via = 'api';
+    const modelSetting = settingValue(`COUNCIL_${side.toUpperCase()}_MODEL`);
+    if (modelSetting) config[side].model = modelSetting;
     if (!VIAS.includes(config[side].via)) throw new Error(`config: ${side}.via must be "cli" or "api"`);
   }
   if (!(Number(config.timeout_seconds) > 0)) throw new Error('config: timeout_seconds must be a positive number');

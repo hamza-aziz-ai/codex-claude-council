@@ -64,6 +64,12 @@ test('the MCPB bundle manifest matches the package and declares every tool', asy
   assert.deepEqual(manifest.tools.map(tool => tool.name), TOOLS.map(tool => tool.name));
   assert.deepEqual(manifest.prompts.map(prompt => prompt.name), PROMPTS.map(prompt => prompt.name));
   assert.ok(existsSync(join(ROOT, 'mcpb', manifest.icon)), 'the icon is in mcpb/');
+  // The extension's settings reach the server as the variables it reads, the keys masked.
+  const { DESKTOP_KEY } = await import('../src/config.mjs');
+  const env = manifest.server.mcp_config.env;
+  for (const value of Object.values(env)) assert.ok(manifest.user_config[value.match(/^\$\{user_config\.(\w+)\}$/)?.[1]], value);
+  assert.deepEqual(Object.keys(env).sort(), [DESKTOP_KEY.claude, DESKTOP_KEY.codex, 'COUNCIL_CLAUDE_MODEL', 'COUNCIL_CODEX_MODEL'].sort());
+  for (const name of Object.values(DESKTOP_KEY)) assert.equal(manifest.user_config[env[name].slice(14, -1)].sensitive, true, name);
 });
 
 test('every manifest points at the one icon, mcpb/icon.png', () => {

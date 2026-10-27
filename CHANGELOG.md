@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0 (2026-10-27)
+
+- **Claude Desktop: enter a partner model's API key in the extension's settings.** The `.mcpb` extension now has settings (Claude Desktop: **Settings → Extensions → Codex–Claude Council**): an OpenAI API key, an Anthropic API key, and a model for each side, all optional. A side with a key runs through its API with no CLI needed; a side without one uses its CLI, as before. The keys are marked sensitive, so Claude Desktop masks them, and this server never passes them on to the CLIs. With only an OpenAI key, "Discuss with ChatGPT whether …" (`council_join`) makes Claude Desktop itself the Claude member, so it needs neither Claude Code nor an Anthropic key. A config file that sets a side's `via` still decides. See [Without the CLIs](README.md#without-the-clis-through-the-apis).
+- **The extension includes the providers' SDKs,** so no `api-setup` there (6.8 MB, was 0.6 MB).
+
 ## 0.20.0 (2026-10-27)
 
 - **Without the CLIs: a side through its API, optional.** An add-on to the CLIs, which stay the default: set `"codex": { "via": "api" }` or `"claude": { "via": "api" }` (or `COUNCIL_CODEX_VIA` / `COUNCIL_CLAUDE_VIA` in the environment) and that side runs through its provider's API with its API key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), so its CLI needn't be installed. Claude goes through Anthropic's Messages API (default `claude-opus-5-5`, adaptive thinking, your `effort`, server-side refusal fallback on the models that have it), the ChatGPT side through OpenAI's Responses API (default `gpt-6-astra`, your reasoning effort, `store: false`), with the official SDKs. Such a member reads the project with three read-only tools of the council's own, confined to the project folder (`list_files`, `read_file`, `search`), searches the web with its provider's search, and keeps its conversation in the server's memory; it can't continue your own CLI sessions, and it gets skills as text. Mix freely, such as Claude Code on your plan with ChatGPT through the API. See [Without the CLIs](README.md#without-the-clis-through-the-apis).

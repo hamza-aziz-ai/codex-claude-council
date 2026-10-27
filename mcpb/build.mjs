@@ -37,15 +37,19 @@ if (manifest.version !== version) throw new Error(`mcpb/manifest.json is version
 const stage = join(HERE, 'dist', 'stage');
 rmSync(join(HERE, 'dist'), { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
-for (const item of ['src', 'assets/logos', 'package.json', 'LICENSE', 'README.md']) cpSync(join(ROOT, item), join(stage, item), { recursive: true });
+for (const item of ['src', 'assets/logos', 'package.json', 'package-lock.json', 'LICENSE', 'README.md']) cpSync(join(ROOT, item), join(stage, item), { recursive: true });
 for (const item of ['manifest.json', 'icon.png']) cpSync(join(HERE, item), join(stage, item));
 
 const out = join(HERE, 'dist', `codex-claude-council-${version}.mcpb`);
-// npx run through this Node (no shell): npm's npx script sits beside the node binary on Windows, and under
+// npm and npx run through this Node (no shell): npm's scripts sit beside the node binary on Windows, and under
 // ../lib/node_modules on macOS and Linux.
-const npx = [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js'), join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js')]
+const npmBin = name => [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', name), join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', name)]
   .find(path => existsSync(path));
+const npx = npmBin('npx-cli.js');
 if (!npx) throw new Error(`npm's npx-cli.js is not beside ${process.execPath}`);
+// The dependencies (the providers' SDKs, for a side whose API key is entered in the settings) go in the bundle: Claude
+// Desktop runs it as it is, without installing anything.
+execFileSync(process.execPath, [npmBin('npm-cli.js'), 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: stage, stdio: 'inherit' });
 const mcpb = (...args) => execFileSync(process.execPath, [npx, '-y', MCPB, ...args], { stdio: 'inherit' });
 mcpb('validate', join(stage, 'manifest.json'));
 mcpb('pack', stage, out);

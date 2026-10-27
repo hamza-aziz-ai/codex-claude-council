@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "codex-claude-council",
   "display_name": "Codex–Claude Council",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "ChatGPT (Codex CLI) and Claude (Claude Code) discuss your question until they agree, on your own subscriptions.",
-  "long_description": "Ask **ChatGPT** (through your Codex CLI) and **Claude** (through your Claude Code CLI) the same question. Each answers on its own, then they reply to each other, round after round, until both agree on one answer. No API keys: it runs the CLIs you have already signed in to.\n\n- Both read your project in read-only mode (Claude in plan mode, Codex in its sandbox) and can search the web.\n- Continue your existing Claude Code or Codex sessions, or take part yourself with `council_join`.\n- Requires the Claude Code CLI and the Codex CLI to be installed and signed in on this computer.",
+  "long_description": "Ask **ChatGPT** (through your Codex CLI) and **Claude** (through your Claude Code CLI) the same question. Each answers on its own, then they reply to each other, round after round, until both agree on one answer. By default no API keys: it runs the CLIs you have already signed in to. Or enter an OpenAI or Anthropic API key in this extension's settings, and that side runs through its API instead, with no CLI needed.\n\n- Both read your project in read-only mode (Claude in plan mode, Codex in its sandbox) and can search the web.\n- Continue your existing Claude Code or Codex sessions, or take part yourself with `council_join`.\n- Needs, for each side, its CLI installed and signed in on this computer, or its API key in the settings.",
   "author": {
     "name": "Hamza Aziz",
     "url": "https://github.com/hamza-aziz-ai"
@@ -22,7 +22,41 @@
     "entry_point": "src/mcp-server.mjs",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/src/mcp-server.mjs"]
+      "args": ["${__dirname}/src/mcp-server.mjs"],
+      "env": {
+        "COUNCIL_OPENAI_API_KEY": "${user_config.openai_api_key}",
+        "COUNCIL_CODEX_MODEL": "${user_config.openai_model}",
+        "COUNCIL_ANTHROPIC_API_KEY": "${user_config.anthropic_api_key}",
+        "COUNCIL_CLAUDE_MODEL": "${user_config.claude_model}"
+      }
+    }
+  },
+  "user_config": {
+    "openai_api_key": {
+      "type": "string",
+      "title": "OpenAI API key (optional)",
+      "description": "Fill in to run the ChatGPT side through the OpenAI API, billed per token: no Codex CLI needed. Leave empty to use the Codex CLI with your ChatGPT plan.",
+      "sensitive": true,
+      "required": false
+    },
+    "openai_model": {
+      "type": "string",
+      "title": "ChatGPT side's model (optional)",
+      "description": "Such as gpt-6.1-sol. Empty: gpt-6-astra through the API, or the Codex CLI's own default.",
+      "required": false
+    },
+    "anthropic_api_key": {
+      "type": "string",
+      "title": "Anthropic API key (optional)",
+      "description": "Fill in to run the Claude side through the Anthropic API, billed per token: no Claude Code needed. Leave empty to use Claude Code with your Claude plan.",
+      "sensitive": true,
+      "required": false
+    },
+    "claude_model": {
+      "type": "string",
+      "title": "Claude side's model (optional)",
+      "description": "Such as claude-sonnet-5-5, or opus, sonnet, haiku. Empty: claude-opus-5-5 through the API, or Claude Code's own default.",
+      "required": false
     }
   },
   "tools": [
