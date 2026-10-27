@@ -285,11 +285,29 @@ docker compose logs council                              # the URL to add as a c
 - **`login`** signs in each CLI that isn't signed in yet, one after the other. For Codex, it shows a code to enter at the address it prints, on any device; choose **Sign in with ChatGPT**. For Claude Code, open the link it prints and paste the code back. The sign-ins are kept, so this is needed once.
 - **Projects:** the `projects` folder next to `compose.yaml` is mounted read-only at `/projects`. Put or link your projects there, or set `COUNCIL_PROJECTS` to another folder (in a `.env` file next to `compose.yaml`). Name them in the question: "in the project at `/projects/app`".
 - **The `council-home` volume** keeps the sign-ins, your config, skills and the token across restarts and new images. To choose your own token, set `COUNCIL_TOKEN` in `.env`.
-- **The address changes** when the container restarts, since the quick tunnel gets a new one: `docker compose logs council` shows it, then update the connector. For a fixed address, set `command: ["serve", "--host", "0.0.0.0", "--port", "8000"]` and `ports: ["127.0.0.1:8000:8000"]` in `compose.yaml`, and put your own named tunnel or a reverse proxy with a certificate (such as Caddy) in front: the URL is `https://<your host>/mcp/<token>`.
+- **The address changes** when the container restarts, since the quick tunnel gets a new one: `docker compose logs council` shows it, then update the connector. For a fixed address, use a Cloudflare named tunnel on a domain of yours (see below).
 - **Update:** `docker compose pull`, then `docker compose up -d`. Each release is also tagged with its version, such as `:0.17.0`.
 - **Also on Docker Hub** as [`hamzaazizai/codex-claude-council`](https://hub.docker.com/r/hamzaazizai/codex-claude-council), the same image with the same tags: to pull it from there, set `image: hamzaazizai/codex-claude-council:latest` in `compose.yaml`.
 - **`seccomp=unconfined`** (set in `compose.yaml`): Codex's read-only sandbox (bubblewrap) needs user namespaces, which Docker's default seccomp profile blocks; without it, Codex can't run any command. If Codex still reports that bubblewrap can't create a namespace, add `apparmor=unconfined` under `security_opt` too.
 - **Without Compose:** `docker run -d --name council --restart unless-stopped --security-opt seccomp=unconfined -v council-home:/home/node -v ~/code:/projects:ro ghcr.io/hamza-aziz-ai/codex-claude-council serve --tunnel`, then `docker exec -it council codex-claude-council login` and `docker logs council`. To build the image yourself: `docker build -t codex-claude-council .` in a clone of this repository.
+
+**A fixed address with your own domain.** With a [Cloudflare named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/) on a domain whose DNS is on Cloudflare, the container runs that tunnel itself and the address stays the same. Once, with cloudflared installed on your computer (this opens Cloudflare in your browser):
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create council
+cloudflared tunnel route dns council council.example.com
+```
+
+Then, next to `compose.yaml`, add to `.env` the tunnel's token and its address (PowerShell; `cloudflared tunnel token council` prints the token, so this writes it to the file without showing it):
+
+```powershell
+Add-Content .env "TUNNEL_TOKEN=$(cloudflared tunnel token council)"
+Add-Content .env "COUNCIL_PUBLIC_URL=https://council.example.com"
+docker compose up -d
+```
+
+`docker compose logs council` then shows `https://council.example.com/mcp/<token>`, the same after every restart. The tunnel token is a secret: keep `.env` to yourself. To keep the URL you already use elsewhere, add its token too: `COUNCIL_TOKEN=<the part after /mcp/>`.
 
 ## Use it
 

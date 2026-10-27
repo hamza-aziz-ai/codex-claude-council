@@ -15,6 +15,10 @@ services:
     environment:
       # Your own secret for the URL; empty: one is generated once and kept in the volume.
       COUNCIL_TOKEN: ${COUNCIL_TOKEN:-}
+      # A fixed address: your Cloudflare named tunnel's token and its public address, such as
+      # https://council.example.com (see the README). Empty: a quick tunnel, whose address changes on each restart.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+      COUNCIL_PUBLIC_URL: ${COUNCIL_PUBLIC_URL:-}
     volumes:
       # The sign-ins, config, skills and token, across restarts and new images.
       - council-home:/home/node

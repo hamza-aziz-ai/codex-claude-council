@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.0 (2026-10-27)
+
+- **A fixed address in Docker: your named tunnel.** With `TUNNEL_TOKEN` (a Cloudflare named tunnel's token, from `cloudflared tunnel token <name>`) and `COUNCIL_PUBLIC_URL` (its address) set, `serve --tunnel` runs that tunnel (`cloudflared tunnel run`, the token passed in its environment, not its command line) instead of a quick tunnel, and prints `<COUNCIL_PUBLIC_URL>/mcp/<token>` once the tunnel has connected. The address stays the same across restarts, so the connector never needs updating. `compose.yaml` passes both from `.env`, so the whole setup, fixed address included, runs in one container in the background. See [With Docker Compose](README.md#with-docker-compose-in-the-background).
+
 ## 0.17.0 (2026-10-27)
 
 - **Docker Compose: the whole setup in the background.** [`compose.yaml`](compose.yaml) runs the published image with `serve --tunnel`, restarts with the machine, keeps sign-ins, config and token in a volume, and mounts a `projects` folder read-only. Three commands: `docker compose up -d`, `docker compose exec council codex-claude-council login` once, and `docker compose logs council` for the URL. See [With Docker Compose](README.md#with-docker-compose-in-the-background).
