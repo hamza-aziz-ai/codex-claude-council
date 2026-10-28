@@ -2,6 +2,7 @@
 # passwords, and attaches the Claude Desktop bundle (.mcpb) to the release:
 # - npm: trusted publishing (OIDC). Once, on npmjs.com: the package's Settings > Trusted publishing > GitHub Actions,
 #   user hamza-aziz-ai, repository codex-claude-council, workflow publish.yml, "Allow npm publish".
+# - GitHub Packages: the npm package as @hamza-aziz-ai/codex-claude-council, with this workflow's token.
 # - MCP Registry: mcp-publisher logs in with this workflow's GitHub identity (github-oidc).
 # - Smithery: only when the repository secret SMITHERY_API_KEY is set (smithery.ai > API keys).
 # - Docker image: ghcr.io with this workflow's token; Docker Hub (hamzaazizai/codex-claude-council) too when DOCKERHUB_USERNAME (variable) and
@@ -20,7 +21,7 @@ on:
 permissions:
   id-token: write
   contents: write # the release bundle
-  packages: write # the Docker image
+  packages: write # the Docker image and GitHub Packages
 
 jobs:
   publish:
@@ -58,6 +59,22 @@ jobs:
         run: |
           # The package's README: GitHub-only syntax (alerts, Mermaid) converted for npmjs.com; the repository's is unchanged.
           if npm view "codex-claude-council@$VERSION" version >/dev/null 2>&1; then echo "$VERSION is already on npm"; else node scripts/npm-readme.mjs && npm publish; fi
+
+      # The same package on GitHub Packages (the repository's Packages list), whose npm registry takes only scoped names:
+      # @hamza-aziz-ai/codex-claude-council. package.json gets its name back afterwards for the steps below.
+      - name: GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          npm config set //npm.pkg.github.com/:_authToken '${NODE_AUTH_TOKEN}'
+          SCOPED=@hamza-aziz-ai/codex-claude-council
+          if npm view "$SCOPED@$VERSION" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "$VERSION is already on GitHub Packages"
+          else
+            npm pkg set name="$SCOPED"
+            npm publish --registry https://npm.pkg.github.com
+            git checkout package.json
+          fi
 
       - name: MCP Registry
         run: |
