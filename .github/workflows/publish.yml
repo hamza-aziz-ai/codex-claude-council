@@ -50,7 +50,7 @@ jobs:
 
       # HOL's AI Plugin Scanner: a release with a high or critical finding, or a score under 80, is not published.
       - name: HOL plugin scan
-        uses: hashgraph-online/ai-plugin-scanner-action@8b2992cc969481db3ee0335c984526611e26a450 # v1.2.805
+        uses: hashgraph-online/ai-plugin-scanner-action@8c2dd4f9cc381ad56496ca44aab10ce19f6bdd0f # v1.2.813
         with:
           fail_on_severity: high
           min_score: 80
