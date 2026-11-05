@@ -1,7 +1,7 @@
 # The council's MCP server over HTTP (`serve`), with the Codex and Claude Code CLIs and cloudflared, for a server of
 # your own. Published as ghcr.io/hamza-aziz-ai/codex-claude-council. Sign both CLIs in once; the sign-ins, the
 # config and the URL's token live in the /home/node volume. See "With Docker Compose" in the README.
-FROM node:22-slim
+FROM node:26.13.0-slim
 ARG TARGETARCH
 
 RUN apt-get update \
